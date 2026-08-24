@@ -23,7 +23,8 @@ const GAP: f32 = 24.0;
 fn main() {
     let out = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "/tmp/theme.png".into());
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("theme.png"));
 
     let width = (PANEL.0 * 2.0 + GAP * 3.0) as u32;
     let height = (PANEL.1 * 2.0 + GAP * 3.0 + 28.0) as u32;
@@ -47,7 +48,7 @@ fn main() {
     }
 
     sheet.save_png(&out).expect("write the sheet");
-    println!("\nwrote {out}");
+    println!("\nwrote {}", out.display());
 }
 
 fn panel(sheet: &mut Pixmap, c: &Palette, mode: Mode, scheme: Scheme, x: f32, y: f32) {

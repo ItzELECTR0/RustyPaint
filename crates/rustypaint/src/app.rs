@@ -686,11 +686,11 @@ impl App {
         row![
             hint(
                 strip(icons::FIT, Message::ZoomFit),
-                strings::with_key(strings::FIT_TO_WINDOW, "Ctrl+0"),
+                strings::with_key(strings::FIT_TO_WINDOW, &strings::command_key("0")),
             ),
             hint(
                 strip(icons::ZOOM_OUT, Message::ZoomOut),
-                strings::with_key(strings::ZOOM_OUT, "Ctrl+-"),
+                strings::with_key(strings::ZOOM_OUT, &strings::command_key("-")),
             ),
             iced::widget::slider(range, steps, Message::ZoomPicked)
                 .step(0.01_f32)
@@ -698,13 +698,13 @@ impl App {
                 .width(Length::Fixed(140.0)),
             hint(
                 strip(icons::ZOOM_IN, Message::ZoomIn),
-                strings::with_key(strings::ZOOM_IN, "Ctrl++"),
+                strings::with_key(strings::ZOOM_IN, &strings::command_key("+")),
             ),
             hint(
                 button(text(format!("{:.0}%", self.view.zoom * 100.0)).size(12))
                     .style(|_t, _s| tool_style(false))
                     .on_press(Message::ZoomActual),
-                strings::with_key(strings::ACTUAL_SIZE, "Ctrl+1"),
+                strings::with_key(strings::ACTUAL_SIZE, &strings::command_key("1")),
             ),
         ]
         .spacing(4)
@@ -2363,7 +2363,7 @@ impl App {
                     .style(|_t, _s| tab_style(false)),
                     self.can_undo().then_some(Message::Undo),
                 ),
-                strings::with_key(strings::UNDO, "Ctrl+Z"),
+                strings::with_key(strings::UNDO, &strings::command_key("Z")),
             ),
             hint(
                 sidebar::pressable(
@@ -2375,7 +2375,7 @@ impl App {
                     .style(|_t, _s| tab_style(false)),
                     self.can_redo().then_some(Message::Redo),
                 ),
-                strings::with_key(strings::REDO, "Ctrl+Y"),
+                strings::with_key(strings::REDO, &strings::command_key("Y")),
             ),
         ]
         .padding(iced::Padding {

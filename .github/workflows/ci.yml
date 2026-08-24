@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check-platforms:
+    name: Check ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            runner: ubuntu-24.04
+          - name: Windows
+            runner: windows-2025
+          - name: macOS Apple Silicon
+            runner: macos-15
+          - name: macOS Intel
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Select stable Rust
+        run: rustup default stable
+      - name: Check every target
+        run: cargo check --workspace --all-targets --locked
+
+  quality:
+    name: Tests and lints
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Select stable Rust
+        run: rustup default stable
+      - name: Install lint tools
+        run: rustup component add clippy rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Run tests
+        run: cargo test --workspace --locked
+
+  minimum-rust:
+    name: Rust 1.95
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install the minimum Rust version
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Check the workspace
+        run: cargo +1.95.0 check --workspace --all-targets --locked

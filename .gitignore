@@ -1,5 +1,13 @@
 /target
+/dist
+/.flatpak-builder
+/flatpak_app
+/repo
+*.flatpak
 *.pkg.tar.zst
 packaging/src
 packaging/pkg
+packaging/flatpak/.flatpak-builder
+packaging/flatpak/build
+packaging/flatpak/repo
 shot.sh

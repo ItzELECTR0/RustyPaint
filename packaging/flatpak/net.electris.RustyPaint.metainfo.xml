@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>net.electris.RustyPaint</id>
+  <name>RustyPaint</name>
+  <summary>Paint 3D's 2D editor, without the 3D</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <description>
+    <p>RustyPaint brings back Paint 3D's simple 2D editing tools and adds a few of its own.</p>
+  </description>
+  <developer id="net.electris">
+    <name>ELECTRO</name>
+  </developer>
+  <launchable type="desktop-id">net.electris.RustyPaint.desktop</launchable>
+  <provides>
+    <binary>rustypaint</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+</component>

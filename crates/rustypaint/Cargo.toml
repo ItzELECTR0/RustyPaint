@@ -5,23 +5,66 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Paint 3D's 2D editor, without the 3D"
+authors = ["ELECTRO <electro@electris.net>"]
 
 [dependencies]
 arboard = { version = "3.6.1", default-features = false, features = ["image-data", "wayland-data-control"] }
 bytemuck = { version = "1.25.2", features = ["derive"] }
+dark-light = "3.0.0"
 iced = { version = "0.14.0", features = ["wgpu", "advanced", "image", "svg", "canvas"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "bmp", "gif", "tiff", "webp"] }
 rfd = "0.17.2"
 wgpu = "27"
 
-# Shape rasterising: tiny-skia fills and strokes, usvg turns Paint 3D's own
-# outlines into paths so there is no path parser to write or get wrong.
 tiny-skia = "0.11"
 usvg = "0.45"
 cosmic-text = "0.15"
 
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.4"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.31"
+
+[package.metadata.packager]
+before-packaging-command = "cargo build --profile dist -p rustypaint"
+product-name = "RustyPaint"
+identifier = "net.electris.RustyPaint"
+publisher = "ELECTRO"
+category = "GraphicsAndDesign"
+long-description = "A 2D image editor inspired by Paint 3D."
+icons = ["../../res/icons/icon-*.png", "../../res/icon.ico"]
+license-file = "../../LICENSE"
+
+[package.metadata.packager.deb]
+package-name = "rustypaint"
+desktop-template = "../../packaging/net.electris.RustyPaint.desktop"
+depends = ["libfontconfig1", "libvulkan1", "libxkbcommon0"]
+
+[package.metadata.packager.deb.files]
+"../../LICENSE" = "/usr/share/doc/rustypaint/copyright"
+
+[package.metadata.packager.appimage.files]
+"../../packaging/flatpak/net.electris.RustyPaint.metainfo.xml" = "/usr/share/metainfo/net.electris.RustyPaint.metainfo.xml"
+"../../packaging/net.electris.RustyPaint.desktop" = "/usr/share/applications/net.electris.RustyPaint.desktop"
+"../../LICENSE" = "/usr/share/licenses/rustypaint/LICENSE"
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/rustypaint", dest = "/usr/bin/rustypaint", mode = "755" },
+    { source = "packaging/net.electris.RustyPaint.desktop", dest = "/usr/share/applications/net.electris.RustyPaint.desktop", mode = "644" },
+    { source = "res/icons/icon-16.png", dest = "/usr/share/icons/hicolor/16x16/apps/rustypaint.png", mode = "644" },
+    { source = "res/icons/icon-24.png", dest = "/usr/share/icons/hicolor/24x24/apps/rustypaint.png", mode = "644" },
+    { source = "res/icons/icon-32.png", dest = "/usr/share/icons/hicolor/32x32/apps/rustypaint.png", mode = "644" },
+    { source = "res/icons/icon-48.png", dest = "/usr/share/icons/hicolor/48x48/apps/rustypaint.png", mode = "644" },
+    { source = "res/icons/icon-64.png", dest = "/usr/share/icons/hicolor/64x64/apps/rustypaint.png", mode = "644" },
+    { source = "res/icons/icon-128.png", dest = "/usr/share/icons/hicolor/128x128/apps/rustypaint.png", mode = "644" },
+    { source = "res/icons/icon-256.png", dest = "/usr/share/icons/hicolor/256x256/apps/rustypaint.png", mode = "644" },
+    { source = "res/icons/icon-512.png", dest = "/usr/share/icons/hicolor/512x512/apps/rustypaint.png", mode = "644" },
+    { source = "packaging/flatpak/net.electris.RustyPaint.metainfo.xml", dest = "/usr/share/metainfo/net.electris.RustyPaint.metainfo.xml", mode = "644" },
+    { source = "LICENSE", dest = "/usr/share/licenses/rustypaint/LICENSE", mode = "644", doc = true },
+]
+requires = { fontconfig = "*", libxkbcommon = "*", vulkan-loader = "*" }
 
 [dev-dependencies]
 naga = { version = "27", features = ["wgsl-in"] }

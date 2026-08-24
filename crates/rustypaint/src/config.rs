@@ -68,11 +68,31 @@ pub fn boot() -> &'static (Config, Option<String>) {
 }
 
 pub fn path() -> Option<PathBuf> {
-    let base = match std::env::var_os("XDG_CONFIG_HOME").filter(|d| !d.is_empty()) {
-        Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(std::env::var_os("HOME")?).join(".config"),
-    };
-    Some(base.join("rustypaint").join("config.toml"))
+    Some(config_dir()?.join("config.toml"))
+}
+
+#[cfg(target_os = "windows")]
+fn config_dir() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var_os("APPDATA")?).join("RustyPaint"))
+}
+
+#[cfg(target_os = "macos")]
+fn config_dir() -> Option<PathBuf> {
+    Some(
+        PathBuf::from(std::env::var_os("HOME")?)
+            .join("Library")
+            .join("Application Support")
+            .join("RustyPaint"),
+    )
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn config_dir() -> Option<PathBuf> {
+    let root = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".config")))?;
+    Some(root.join("rustypaint"))
 }
 
 fn first_line(error: &toml::de::Error) -> String {
