@@ -42,7 +42,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Install build tools
-        run: pacman -Syu --noconfirm git rustup fontconfig vulkan-icd-loader
+        run: pacman -Syu --noconfirm git rustup fontconfig libxkbcommon vulkan-icd-loader
       - uses: actions/checkout@v6
       - name: Create an unprivileged builder
         run: |

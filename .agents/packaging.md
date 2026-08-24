@@ -9,10 +9,16 @@ placing it at the repository root would collide with project source. `prepare()`
 of build inputs into `$srcdir`; it must not mutate the checkout or copy makepkg scratch directories
 back into themselves.
 
+The AUR recipes live in `packaging/aur/rustypaint/` and `packaging/aur/rustypaint-git/`, ready to be
+copied into their separate AUR repositories. They clone `https://github.com/ItzELECTR0/RustyPaint`
+rather than borrowing the local checkout. The stable recipe pins the latest release tag manually;
+the Git recipe follows HEAD and derives `pkgver` from `git describe`.
+
 Everyday development uses optimized dependencies and lightly optimized project code. Release builds
 use thin LTO for reasonable iteration time. The `dist` profile is the package build: fat LTO and one
 codegen unit. `_native=1` is an explicit local-only package option because such binaries may not run
-on older CPUs.
+on older CPUs. Both AUR recipes deliberately enable it because AUR packages are compiled on the
+installing machine.
 
 The workspace version is the source of truth for both crates and must not change without maintainer
 direction. Keep `packaging/PKGBUILD` synchronized when a release version is chosen; version changes

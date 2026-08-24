@@ -33,7 +33,15 @@ identifier = "net.electris.RustyPaint"
 publisher = "ELECTRO"
 category = "GraphicsAndDesign"
 long-description = "A 2D image editor inspired by Paint 3D."
-icons = ["../../res/icons/icon-*.png", "../../res/icon.ico"]
+icons = [
+    "../../res/icons/icon-16.png",
+    "../../res/icons/icon-32.png",
+    "../../res/icons/icon-64.png",
+    "../../res/icons/icon-128.png",
+    "../../res/icons/icon-256.png",
+    "../../res/icons/icon-512.png",
+    "../../res/icon.ico",
+]
 license-file = "../../LICENSE"
 
 [package.metadata.packager.deb]

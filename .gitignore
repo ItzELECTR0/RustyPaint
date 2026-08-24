@@ -10,4 +10,8 @@ packaging/pkg
 packaging/flatpak/.flatpak-builder
 packaging/flatpak/build
 packaging/flatpak/repo
+packaging/aur/*/pkg
+packaging/aur/*/src
+packaging/aur/*/rustypaint
+packaging/aur/*/*.pkg.tar.zst
 shot.sh
