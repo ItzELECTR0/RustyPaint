@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- The same, mirrored the other way. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke-dasharray="3 3" d="M 4 16 H 28"/>
+    <path fill="currentColor" d="M 8.5 12.5 L 16 5 L 23.5 12.5 Z"/>
+    <path d="M 8.5 19.5 L 16 27 L 23.5 19.5 Z"/>
+  </g>
+</svg>

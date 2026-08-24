@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- The selection box with a spark on it: the same dashed rectangle the
+       plain select tool has, and the spark is the part that does the work. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 4 9 V 6 h 3 M 15 6 h 3 M 26 6 h 3 v 3 M 29 17 v 3 M 29 26 h -3 M 18 26 h -3 M 7 26 H 4 v -3 M 4 17 v -3"
+          stroke-dasharray="0 0"/>
+    <path d="M 20 8 l 2.2 4.8 L 27 15 l -4.8 2.2 L 20 22 l -2.2 -4.8 L 13 15 l 4.8 -2.2 Z"
+          fill="currentColor"/>
+  </g>
+</svg>

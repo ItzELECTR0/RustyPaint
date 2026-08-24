@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 35" width="20" height="35">
+  <!-- A round brush, loaded. -->
+  <defs>
+    <linearGradient id="tuft" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8c471"/>
+      <stop offset="1" stop-color="#e08a2a"/>
+    </linearGradient>
+    <linearGradient id="ferrule" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8dae4"/>
+      <stop offset="1" stop-color="#a5aabd"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9a6534"/>
+      <stop offset="1" stop-color="#6b4220"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#222255" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="url(#tuft)" d="M 4 12.5 C 4 6 8 2.6 10 2.6 C 12 2.6 16 6 16 12.5 Z"/>
+    <path fill="url(#ferrule)" d="M 3.3 12.5 H 16.7 V 18.6 H 3.3 Z"/>
+    <path fill="none" d="M 3.3 15.6 H 16.7"/>
+    <path fill="url(#handle)" d="M 5 18.6 H 15 V 36 H 5 Z"/>
+  </g>
+</svg>

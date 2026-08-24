@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Something coming down into a tray. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 16 5 V 19"/>
+    <path d="M 10.5 13.5 L 16 19 L 21.5 13.5"/>
+    <path d="M 5 20 V 26.5 H 27 V 20"/>
+  </g>
+</svg>

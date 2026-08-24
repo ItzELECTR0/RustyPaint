@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Three points. The dots are where the bones are, and the line through them is
+       the spline the tool actually draws. -->
+  <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 5 24 C 6.83 21.33 12.33 8.00 16 8 C 19.67 8.00 25.17 21.33 27 24"/>
+    <circle cx="5" cy="24" r="2.4" fill="currentColor" stroke="none"/>
+    <circle cx="16" cy="8" r="2.4" fill="currentColor" stroke="none"/>
+    <circle cx="27" cy="24" r="2.4" fill="currentColor" stroke="none"/>
+  </g>
+</svg>

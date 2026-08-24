@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- A dropper, for taking a colour off the canvas. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="rotate(45 16 16)">
+    <path d="M 12 16.5 V 9.5 a 4 4 0 0 1 8 0 v 7 Z"/>
+    <path d="M 11.5 16.5 H 20.5 V 19.5 H 11.5 Z"/>
+    <path d="M 14 19.5 L 16 27 L 18 19.5"/>
+    </g>
+  </g>
+</svg>

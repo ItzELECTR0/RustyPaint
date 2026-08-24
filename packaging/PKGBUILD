@@ -1,0 +1,51 @@
+# Maintainer: ELECTRO <electro@electris.net>
+
+pkgname=rustypaint
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="Paint 3D's 2D editor, without the 3D"
+arch=('x86_64')
+license=('GPL-3.0-only')
+depends=('vulkan-icd-loader' 'fontconfig')
+makedepends=('rust')
+optdepends=('xdg-desktop-portal: native file dialogs, and following the system colour scheme'
+            'vulkan-radeon: AMD GPU driver'
+            'nvidia-utils: NVIDIA GPU driver'
+            'vulkan-intel: Intel GPU driver')
+options=('!debug')
+
+prepare() {
+    rm -rf "$srcdir/$pkgname"
+    mkdir -p "$srcdir/$pkgname"
+    cp -a "${startdir%/*}"/{Cargo.toml,Cargo.lock,crates,res,README.md} \
+        "$srcdir/$pkgname/"
+
+    cd "$srcdir/$pkgname"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$srcdir/$pkgname"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+
+    if [[ -n "${_native:-}" ]]; then
+        export RUSTFLAGS="${RUSTFLAGS:-} -C target-cpu=native"
+    fi
+
+    cargo build --profile dist --frozen -p rustypaint
+}
+
+package() {
+    cd "$srcdir/$pkgname"
+    install -Dm755 target/dist/rustypaint "$pkgdir/usr/bin/rustypaint"
+    install -Dm644 "$startdir/RustyPaint.desktop" \
+        "$pkgdir/usr/share/applications/RustyPaint.desktop"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+    for size in 16 24 32 48 64 128 256; do
+        install -Dm644 "res/icons/icon-$size.png" \
+            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/rustypaint.png"
+    done
+}

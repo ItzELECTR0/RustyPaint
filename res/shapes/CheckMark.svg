@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <!-- A tick, drawn as a ribbon so it fills and outlines like the rest. -->
+  <path d="M 360 1000 L 0 640 L 190 450 L 360 620 L 810 170 L 1000 360 Z"/>
+</svg>

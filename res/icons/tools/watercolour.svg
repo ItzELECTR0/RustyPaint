@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 35" width="20" height="35">
+  <!-- A soft brush, come to a point. -->
+  <defs>
+    <linearGradient id="tuft" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8fcdec"/>
+      <stop offset="1" stop-color="#3f8fc4"/>
+    </linearGradient>
+    <linearGradient id="ferrule" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8dae4"/>
+      <stop offset="1" stop-color="#a5aabd"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f7ea8"/>
+      <stop offset="1" stop-color="#2f5b80"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#222255" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="url(#tuft)" d="M 10 2.2 C 14 8 15.6 13 15.6 16.4 H 4.4 C 4.4 13 6 8 10 2.2 Z"/>
+    <path fill="url(#ferrule)" d="M 3.6 16.4 H 16.4 V 21.4 H 3.6 Z"/>
+    <path fill="url(#handle)" d="M 5.2 21.4 H 14.8 V 36 H 5.2 Z"/>
+  </g>
+</svg>

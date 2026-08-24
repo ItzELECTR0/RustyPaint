@@ -1,0 +1,5 @@
+/target
+*.pkg.tar.zst
+packaging/src
+packaging/pkg
+shot.sh

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 35" width="20" height="35">
+  <!-- A chisel marker, seen head on. The felt tip is the half that says marker, so it gets the room. -->
+  <defs>
+    <linearGradient id="felt" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e6e8f0"/>
+      <stop offset="1" stop-color="#b9bdd0"/>
+    </linearGradient>
+    <linearGradient id="collar" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8dae4"/>
+      <stop offset="1" stop-color="#a5aabd"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6d97d2"/>
+      <stop offset="1" stop-color="#2f5da0"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#222255" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="url(#felt)" d="M 5.4 11 L 7.4 2.6 H 12.6 L 14.6 11 Z"/>
+    <path fill="url(#collar)" d="M 4.2 11 H 15.8 V 15 H 4.2 Z"/>
+    <path fill="url(#body)" d="M 3 15 H 17 V 36 H 3 Z"/>
+  </g>
+</svg>

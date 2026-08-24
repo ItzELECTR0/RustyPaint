@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <!-- A bubble with a tail at the bottom left. -->
+  <path d="M 140 0 H 860 A 140 140 0 0 1 1000 140 V 560 A 140 140 0 0 1 860 700 H 420 L 180 1000 L 210 700 H 140 A 140 140 0 0 1 0 560 V 140 A 140 140 0 0 1 140 0 Z"/>
+</svg>

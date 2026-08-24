@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <!-- A cloud with two puffs trailing off it. Three lobes traced as one
+       outline, each arc running from where it meets its neighbour, so an
+       outlined one has no arcs crossing the middle of it. -->
+  <path d="M 149.5 755.0 A 235.0 235.0 0 0 1 208.3 314.7 A 315.0 315.0 0 0 1 834.3 338.3 A 215.0 215.0 0 0 1 821.1 755.0 Z M 140 828 a 92 92 0 1 1 184 0 a 92 92 0 1 1 -184 0 Z M 45 942 a 53 53 0 1 1 106 0 a 53 53 0 1 1 -106 0 Z"/>
+</svg>

@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <!-- A crescent: a circle with a bigger one bitten out of it. -->
+  <path d="M 640 0 A 500 500 0 1 0 640 1000 A 620 620 0 0 1 640 0 Z"/>
+</svg>

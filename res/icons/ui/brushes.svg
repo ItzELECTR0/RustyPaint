@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- A brush, stood up and drawn the way the tools in the panel are: handle,
+       the band that holds the tuft, and the tuft. Angled it turned into a
+       smudge at the size the tabs draw it. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 16 4 V 13"/>
+    <path d="M 10.5 13 H 21.5 V 18.5 H 10.5 Z"/>
+    <path d="M 11.5 18.5 H 20.5 L 19 26 a 3 3 0 0 1 -6 0 Z" fill="currentColor"/>
+  </g>
+</svg>

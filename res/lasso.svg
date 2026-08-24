@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- A loop drawn by hand and left slightly open, which is what the tool
+       does: the closing is implied. Stroked with the current colour, so it
+       tints like the glyph icons beside it. -->
+  <path fill="none" stroke="currentColor" stroke-width="2.6"
+        stroke-linecap="round" stroke-linejoin="round"
+        d="M 17.5 5.5
+           C 24.5 5.5 29 9.5 29 14
+           C 29 18.5 23.5 21.5 17 21.5
+           C 10.5 21.5 5 18.5 5 14
+           C 5 10.5 8 7.5 12.5 6.2"/>
+  <path fill="none" stroke="currentColor" stroke-width="2.6"
+        stroke-linecap="round" stroke-linejoin="round"
+        d="M 12.5 21 C 12 24 11 26 9.5 27.5"/>
+  <circle cx="8.5" cy="28.5" r="2.2" fill="currentColor"/>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Text ranged against the left edge. Drawn here because Paint 3D took its
+       alignment icons from Segoe MDL2, which is a Windows font rather than
+       one the appx ships. -->
+  <rect x="5.0" y="5.0" width="22" height="3" rx="1.5" fill="currentColor"/>
+  <rect x="5.0" y="11.0" width="14" height="3" rx="1.5" fill="currentColor"/>
+  <rect x="5.0" y="17.0" width="22" height="3" rx="1.5" fill="currentColor"/>
+  <rect x="5.0" y="23.0" width="14" height="3" rx="1.5" fill="currentColor"/>
+</svg>

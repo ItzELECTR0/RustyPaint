@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 35" width="20" height="35">
+  <!-- A steel nib on a wooden holder. -->
+  <defs>
+    <linearGradient id="nib" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8dae4"/>
+      <stop offset="1" stop-color="#a5aabd"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b57a45"/>
+      <stop offset="1" stop-color="#7a4d24"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#222255" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="url(#nib)" d="M 10 2 L 15.5 11 V 14 H 4.5 V 11 Z"/>
+    <path fill="none" d="M 10 6.5 V 10"/>
+    <path fill="url(#nib)" d="M 10 11.6 m -1.3 0 a 1.3 1.3 0 1 0 2.6 0 a 1.3 1.3 0 1 0 -2.6 0"/>
+    <path fill="url(#body)" d="M 4.5 14 H 15.5 V 36 H 4.5 Z"/>
+  </g>
+</svg>

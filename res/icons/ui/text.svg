@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- A capital T, as every text tool in the world has. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 6.5 8 H 25.5"/>
+    <path d="M 16 8 V 24.5"/>
+    <path d="M 11.5 24.5 H 20.5"/>
+  </g>
+</svg>

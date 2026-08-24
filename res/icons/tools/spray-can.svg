@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 35" width="20" height="35">
+  <!-- A can, held the way you would hold one. -->
+  <defs>
+    <linearGradient id="cap" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5a5f73"/>
+      <stop offset="1" stop-color="#31354a"/>
+    </linearGradient>
+    <linearGradient id="can" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8dae4"/>
+      <stop offset="1" stop-color="#a5aabd"/>
+    </linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8ac54"/>
+      <stop offset="1" stop-color="#e0761f"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#222255" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="url(#cap)" d="M 8.2 1.8 H 11.8 V 4.6 H 8.2 Z"/>
+    <path fill="url(#can)" d="M 3.6 11.4 C 3.6 6.8 6.5 4.6 10 4.6 C 13.5 4.6 16.4 6.8 16.4 11.4 Z"/>
+    <path fill="url(#can)" d="M 3.6 11.4 H 16.4 V 36 H 3.6 Z"/>
+    <path fill="url(#band)" d="M 3.6 17.4 H 16.4 V 25 H 3.6 Z"/>
+  </g>
+</svg>

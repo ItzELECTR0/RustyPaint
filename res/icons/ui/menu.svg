@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Three lines, which is what a menu button has been for years. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 6 10 H 26"/>
+    <path d="M 6 16 H 26"/>
+    <path d="M 6 22 H 26"/>
+  </g>
+</svg>

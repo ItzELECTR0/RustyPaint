@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=RustyPaint
+GenericName=Image Editor
+Comment=Paint 3D's 2D editor, minus the 3D
+Exec=rustypaint %f
+Icon=rustypaint
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;
+MimeType=image/png;image/jpeg;image/bmp;image/gif;image/tiff;image/webp;
+StartupWMClass=rustypaint

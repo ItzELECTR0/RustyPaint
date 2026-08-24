@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <!-- A ribbon, notched at both ends. -->
+  <path d="M 0 120 H 1000 L 790 500 L 1000 880 H 0 L 210 500 Z"/>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- A turn the other way. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(32,0) scale(-1,1)">
+    <path d="M 16.00 6.50 A 9.5 9.5 0 1 1 6.50 16.00"/>
+    <path d="M 9.15 20.24 L 6.50 16.00 L 3.85 20.24"/>
+    </g>
+  </g>
+</svg>

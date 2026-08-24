@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <!-- A ring left open on one side. -->
+  <path d="M 1000 500 A 500 500 0 1 1 500 0 V 280 A 220 220 0 1 0 720 500 Z"/>
+</svg>

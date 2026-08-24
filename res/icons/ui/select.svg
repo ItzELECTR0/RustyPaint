@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- The dashed box a selection is dragged out as. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke-dasharray="4.5 3.5" d="M 6 8 H 26 V 24 H 6 Z"/>
+  </g>
+</svg>

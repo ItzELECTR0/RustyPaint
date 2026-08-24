@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 35" width="20" height="35">
+  <!-- A pen that draws in whole pixels, so its tip is a staircase. -->
+  <defs>
+    <linearGradient id="tip" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5a5f73"/>
+      <stop offset="1" stop-color="#31354a"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b39ae0"/>
+      <stop offset="1" stop-color="#6f52ae"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#222255" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="url(#tip)" d="M 8.4 3 H 11.6 V 6.4 H 14 V 9.8 H 16.4 V 13.2 H 3.6 V 9.8 H 6 V 6.4 H 8.4 Z"/>
+    <path fill="url(#body)" d="M 3.6 13.2 H 16.4 V 36 H 3.6 Z"/>
+  </g>
+</svg>

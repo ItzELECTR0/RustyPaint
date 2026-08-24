@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Two halves either side of a mirror line. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke-dasharray="3 3" d="M 16 4 V 28"/>
+    <path fill="currentColor" d="M 12.5 8.5 L 5 16 L 12.5 23.5 Z"/>
+    <path d="M 19.5 8.5 L 27 16 L 19.5 23.5 Z"/>
+  </g>
+</svg>

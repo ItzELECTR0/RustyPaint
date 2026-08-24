@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 35" width="20" height="35">
+  <!-- The yellow one, sharpened. -->
+  <defs>
+    <linearGradient id="lead" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5a5f73"/>
+      <stop offset="1" stop-color="#31354a"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f3d3ad"/>
+      <stop offset="1" stop-color="#d9a877"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fbd76a"/>
+      <stop offset="1" stop-color="#e0a52c"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#222255" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="url(#lead)" d="M 10 2 L 12.7 7.6 H 7.3 Z"/>
+    <path fill="url(#wood)" d="M 7.3 7.6 H 12.7 L 15.6 13.8 H 4.4 Z"/>
+    <path fill="url(#body)" d="M 4.4 13.8 H 15.6 V 36 H 4.4 Z"/>
+    <path fill="none" d="M 8 13.8 V 36 M 12 13.8 V 36"/>
+  </g>
+</svg>

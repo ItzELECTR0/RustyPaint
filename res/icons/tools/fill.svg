@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 35" width="20" height="35">
+  <!-- A bucket with the paint going over the side of it. -->
+  <defs>
+    <linearGradient id="paint" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8ac54"/>
+      <stop offset="1" stop-color="#e0761f"/>
+    </linearGradient>
+    <linearGradient id="bucket" x1="0" y1="0" x2="20" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8dae4"/>
+      <stop offset="1" stop-color="#a5aabd"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#222255" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="url(#paint)" d="M 3.2 8.6 C 4.6 5.4 7 8.4 9.4 6.2 C 11.8 4 14.2 7.4 16.8 6.2 V 10.4 H 3.2 Z"/>
+    <path fill="url(#bucket)" d="M 3.2 10.4 H 16.8 L 15.3 36 H 4.7 Z"/>
+    <path fill="url(#paint)" d="M 16.4 13 c 1.6 3 2.2 4.4 2.2 5.4 a 2.2 2.2 0 0 1 -4.4 0 c 0 -1 0.6 -2.4 2.2 -5.4 Z"/>
+  </g>
+</svg>

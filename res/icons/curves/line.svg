@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Two points and the line between them. The dots are where the bones are, and the line through them is
+       the spline the tool actually draws. -->
+  <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 6 25 L 26 7"/>
+    <circle cx="6" cy="25" r="2.4" fill="currentColor" stroke="none"/>
+    <circle cx="26" cy="7" r="2.4" fill="currentColor" stroke="none"/>
+  </g>
+</svg>

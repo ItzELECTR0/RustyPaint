@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFD766"/>
+      <stop offset="1" stop-color="#F5AE00"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFA23A"/>
+      <stop offset="1" stop-color="#EE7A00"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#DE2436"/>
+      <stop offset="1" stop-color="#A80C1C"/>
+    </linearGradient>
+    <clipPath id="drop">
+      <path d="M 186.3 172.0 L 217.7 125.9 L 222.3 70.9 L 182.3 30.2 L 128.0 9.0 L 72.4 28.6 L 32.7 70.6 L 36.3 126.5 L 68.4 173.6 L 128.0 250.0 Z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#drop)">
+    <path fill="url(#gold)" d="M -30.0 -40.0 L 286.0 -40.0 L 286.0 108.0 L -30.0 74.0 Z"/>
+    <path fill="url(#amber)" d="M -30.0 74.0 L 286.0 108.0 L 286.0 196.0 L -30.0 146.0 Z"/>
+    <path fill="url(#red)" d="M -30.0 146.0 L 286.0 196.0 L 286.0 300.0 L -30.0 300.0 Z"/>
+  </g>
+</svg>
