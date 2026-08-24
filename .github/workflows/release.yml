@@ -133,7 +133,12 @@ jobs:
           bundle: RustyPaint-${{ matrix.arch }}.flatpak
           arch: ${{ matrix.arch }}
           cache-key: flatpak-builder-${{ matrix.arch }}-${{ github.sha }}
-          artifact-name: rustypaint-flatpak-${{ matrix.arch }}
+          upload-artifact: false
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rustypaint-flatpak-${{ matrix.arch }}
+          path: RustyPaint-${{ matrix.arch }}.flatpak
+          if-no-files-found: error
 
   publish:
     name: Publish GitHub release
@@ -154,6 +159,7 @@ jobs:
       - name: Create or update release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" release/* --clobber
