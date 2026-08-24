@@ -1,5 +1,9 @@
 # RustyPaint
 
+<p align="center">
+  <img src=".github/assets/rustypaint.png" alt="RustyPaint logo" width="160">
+</p>
+
 Paint3D but without the 3D.<br>
 A spiritual successor built in Rust with only the 2D tools.
 
@@ -30,7 +34,7 @@ It also has some QoL features like dark mode, editable curve and shape points, a
 
 Releases offer multiple builds. An AppImage, Arch package, Debian package, RPM, Flatpak bundle, Windows MSI, and macOS DMGs for both Apple Silicon and Intel.
 
-The AUR packages are coming soon. Once they are published, install the stable or Git version with your favourite helper:
+On Arch, install the [stable](https://aur.archlinux.org/packages/rustypaint) or [Git](https://aur.archlinux.org/packages/rustypaint-git) AUR package with your favourite helper:
 
 For `yay`:
 ```sh
