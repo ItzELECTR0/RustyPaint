@@ -67,6 +67,23 @@ impl CanvasPanel {
         }
     }
 
+    fn preview(&mut self, size: (u32, u32), current: (u32, u32)) {
+        if self.percent {
+            let percentage = |value: u32, base: u32| {
+                let shown = format!("{:.2}", value as f64 / base.max(1) as f64 * 100.0);
+                shown
+                    .trim_end_matches('0')
+                    .trim_end_matches('.')
+                    .to_string()
+            };
+            self.width = percentage(size.0, current.0);
+            self.height = percentage(size.1, current.1);
+        } else {
+            self.width = size.0.to_string();
+            self.height = size.1.to_string();
+        }
+    }
+
     fn target(&self, size: (u32, u32)) -> Option<(u32, u32)> {
         let w: f32 = self.width.trim().parse().ok()?;
         let h: f32 = self.height.trim().parse().ok()?;
@@ -1686,8 +1703,14 @@ impl App {
                     self.float_version += 1;
                 }
             }
-            gpu::Interaction::ResizePreview(w, h) => self.resize_preview = Some((w, h)),
-            gpu::Interaction::ResizeCancelled => self.resize_preview = None,
+            gpu::Interaction::ResizePreview(w, h) => {
+                self.resize_preview = Some((w, h));
+                self.panel.preview((w, h), self.doc.size());
+            }
+            gpu::Interaction::ResizeCancelled => {
+                self.resize_preview = None;
+                self.panel.sync(self.doc.size());
+            }
             gpu::Interaction::Resized(w, h, handle) => {
                 self.resize_preview = None;
                 self.doc.resize_canvas(w, h, handle.anchor());
@@ -2353,7 +2376,7 @@ impl App {
                         self.tab,
                         &self.brush,
                         &self.panel,
-                        self.doc.size(),
+                        self.resize_preview.unwrap_or(self.doc.size()),
                         self.doc.transparent,
                         self.drawing,
                         self.shape_style,
@@ -5995,9 +6018,17 @@ mod tests {
             &mut app,
             Message::Canvas(gpu::Interaction::ResizePreview(150, 100)),
         );
+        assert_eq!(
+            (app.panel.width.as_str(), app.panel.height.as_str()),
+            ("150", "100")
+        );
         send(
             &mut app,
             Message::Canvas(gpu::Interaction::ResizePreview(180, 100)),
+        );
+        assert_eq!(
+            (app.panel.width.as_str(), app.panel.height.as_str()),
+            ("180", "100")
         );
         assert_eq!(
             app.doc.size(),
@@ -6028,7 +6059,25 @@ mod tests {
         send(&mut app, Message::Canvas(gpu::Interaction::ResizeCancelled));
         assert_eq!(app.doc.size(), (100, 100));
         assert_eq!(app.resize_preview, None);
+        assert_eq!(
+            (app.panel.width.as_str(), app.panel.height.as_str()),
+            ("100", "100")
+        );
         assert!(!app.doc.can_undo());
+    }
+
+    #[test]
+    fn a_resize_preview_keeps_percent_fields_in_percent() {
+        let mut app = app(200, 100);
+        send(&mut app, Message::CanvasUnitPicked(true));
+        send(
+            &mut app,
+            Message::Canvas(gpu::Interaction::ResizePreview(301, 75)),
+        );
+        assert_eq!(
+            (app.panel.width.as_str(), app.panel.height.as_str()),
+            ("150.5", "75")
+        );
     }
 
     #[test]
