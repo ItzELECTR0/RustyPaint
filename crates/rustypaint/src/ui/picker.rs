@@ -67,7 +67,8 @@ pub fn view(picker: &Picker) -> Element<'_, Message> {
     ])
     .on_press(Message::PickerFieldPressed)
     .on_move(|at| Message::PickerFieldPicked(at.x / FIELD as f32, 1.0 - at.y / FIELD as f32))
-    .on_release(Message::PickerReleased);
+    .on_release(Message::PickerReleased)
+    .on_exit(Message::PickerReleased);
 
     let strip = mouse_area(iced::widget::stack![
         image(hues()).width(STRIP as f32).height(FIELD as f32),
@@ -77,7 +78,8 @@ pub fn view(picker: &Picker) -> Element<'_, Message> {
     ])
     .on_press(Message::PickerStripPressed)
     .on_move(|at| Message::PickerHuePicked(at.y / FIELD as f32 * 360.0))
-    .on_release(Message::PickerReleased);
+    .on_release(Message::PickerReleased)
+    .on_exit(Message::PickerReleased);
 
     let preview = container(Space::new().width(Length::Fill).height(Length::Fixed(40.0))).style(
         move |_theme| container::Style {
