@@ -400,6 +400,8 @@ fn tile<'a>(
         text(label).size(12),
         iced::widget::tooltip::Position::Bottom,
     )
+    .style(tooltip_style)
+    .padding(6)
     .into()
 }
 
@@ -574,19 +576,23 @@ fn brush_grid<'a>(selected: Tool) -> Element<'a, Message> {
         for tool in chunk {
             let tool = *tool;
             let active = tool == selected;
-            line = line.push(iced::widget::tooltip(
-                button(crate::ui::centred(icons::art(
-                    icons::for_tool(tool),
-                    34.0,
-                    None,
-                )))
-                .width(Length::Fixed(40.0))
-                .height(Length::Fixed(40.0))
-                .style(move |_theme, _status| tile_style(active))
-                .on_press(Message::ToolPicked(tool)),
-                text(tool.name()).size(12),
-                iced::widget::tooltip::Position::Bottom,
-            ));
+            line = line.push(
+                iced::widget::tooltip(
+                    button(crate::ui::centred(icons::art(
+                        icons::for_tool(tool),
+                        34.0,
+                        None,
+                    )))
+                    .width(Length::Fixed(40.0))
+                    .height(Length::Fixed(40.0))
+                    .style(move |_theme, _status| tile_style(active))
+                    .on_press(Message::ToolPicked(tool)),
+                    text(tool.name()).size(12),
+                    iced::widget::tooltip::Position::Bottom,
+                )
+                .style(tooltip_style)
+                .padding(6),
+            );
         }
         grid = grid.push(line);
     }
@@ -835,6 +841,19 @@ fn tile_style(active: bool) -> button::Style {
         border: iced::Border {
             color: Color::TRANSPARENT,
             width: 0.0,
+            radius: 2.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn tooltip_style(_theme: &iced::Theme) -> container::Style {
+    container::Style {
+        background: Some(theme::colours().control.into()),
+        text_color: Some(theme::colours().text),
+        border: iced::Border {
+            color: theme::colours().border,
+            width: 1.0,
             radius: 2.0.into(),
         },
         ..Default::default()
