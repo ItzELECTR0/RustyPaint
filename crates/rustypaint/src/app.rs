@@ -377,6 +377,8 @@ pub struct App {
     shape_style: shapes::ShapeStyle,
     colour_target: bool,
     picker: Option<Picker>,
+    editing_custom_colour: Option<usize>,
+    custom_colour_menu: Option<usize>,
     picking_field: Option<bool>,
     text_style: TextStyle,
     caret_on: bool,
@@ -455,7 +457,11 @@ pub enum Message {
     PickerHuePicked(f32),
     PickerReleased,
     PickerHexEdited(String),
+    PickerRgbEdited(usize, String),
     CustomColourPicked(usize),
+    CustomColourMenuOpened(usize),
+    CustomColourEditRequested(usize),
+    CustomColourRemoved(usize),
     StickerRecalled(usize),
     TextToolPicked,
     BonesRequested,
@@ -600,6 +606,8 @@ impl App {
             shape_style: shapes::ShapeStyle::default(),
             colour_target: false,
             picker: None,
+            editing_custom_colour: None,
+            custom_colour_menu: None,
             picking_field: None,
             float_version: 0,
             grab_from: None,
@@ -1113,15 +1121,25 @@ impl App {
                 }
                 Discard::Keep => {}
             },
-            Message::PickerOpened => self.picker = Some(Picker::on(self.brush.colour)),
+            Message::PickerOpened => {
+                self.picker = Some(Picker::on(self.brush.colour));
+                self.editing_custom_colour = None;
+                self.custom_colour_menu = None;
+            }
             Message::PickerClosed => {
                 self.picker = None;
+                self.editing_custom_colour = None;
                 self.picking_field = None;
             }
             Message::PickerConfirmed => {
                 if let Some(picker) = self.picker.take() {
                     let colour = picker.colour();
-                    if !self.config.custom_colours.contains(&colour) {
+                    if let Some(index) = self.editing_custom_colour.take() {
+                        if let Some(custom) = self.config.custom_colours.get_mut(index) {
+                            *custom = colour;
+                            self.save_config();
+                        }
+                    } else if !self.config.custom_colours.contains(&colour) {
                         self.config.custom_colours.push(colour);
                         while self.config.custom_colours.len() > 6 {
                             self.config.custom_colours.remove(0);
@@ -1141,7 +1159,7 @@ impl App {
                 {
                     picker.saturation = saturation.clamp(0.0, 1.0);
                     picker.value = value.clamp(0.0, 1.0);
-                    picker.typed = None;
+                    picker.clear_typed();
                 }
             }
             Message::PickerHuePicked(hue) => {
@@ -1149,7 +1167,7 @@ impl App {
                     && let Some(picker) = &mut self.picker
                 {
                     picker.hue = hue.clamp(0.0, 360.0);
-                    picker.typed = None;
+                    picker.clear_typed();
                 }
             }
             Message::PickerHexEdited(hex) => {
@@ -1157,10 +1175,33 @@ impl App {
                     picker.typed(hex);
                 }
             }
+            Message::PickerRgbEdited(channel, value) => {
+                if let Some(picker) = &mut self.picker {
+                    picker.typed_channel(channel, value);
+                }
+            }
             Message::CustomColourPicked(i) => {
                 if let Some(colour) = self.config.custom_colours.get(i).copied() {
                     self.take_colour(colour);
                 }
+                self.custom_colour_menu = None;
+            }
+            Message::CustomColourMenuOpened(i) => {
+                self.custom_colour_menu = (i < self.config.custom_colours.len()).then_some(i);
+            }
+            Message::CustomColourEditRequested(i) => {
+                if let Some(colour) = self.config.custom_colours.get(i).copied() {
+                    self.picker = Some(Picker::on(colour));
+                    self.editing_custom_colour = Some(i);
+                }
+                self.custom_colour_menu = None;
+            }
+            Message::CustomColourRemoved(i) => {
+                if i < self.config.custom_colours.len() {
+                    self.config.custom_colours.remove(i);
+                    self.save_config();
+                }
+                self.custom_colour_menu = None;
             }
             Message::TextToolPicked => return self.update(Message::TabPicked(Tab::Text)),
             Message::CropOpened => {
@@ -2321,6 +2362,7 @@ impl App {
                         self.colour_target,
                         self.live_drawing(),
                         &self.config.custom_colours,
+                        self.custom_colour_menu,
                         &self.stickers,
                     ),
                 },
@@ -5281,6 +5323,47 @@ mod tests {
 
         send(&mut app, Message::CustomColourPicked(0));
         assert_eq!(app.brush.colour, [0, 100, 182, 255]);
+    }
+
+    #[test]
+    fn a_custom_colour_can_be_edited_in_place() {
+        let mut app = app(60, 60);
+        for hex in ["#112233", "#445566"] {
+            send(&mut app, Message::PickerOpened);
+            send(&mut app, Message::PickerHexEdited(hex.into()));
+            send(&mut app, Message::PickerConfirmed);
+        }
+
+        send(&mut app, Message::CustomColourMenuOpened(0));
+        assert_eq!(app.custom_colour_menu, Some(0));
+        send(&mut app, Message::CustomColourEditRequested(0));
+        assert_eq!(
+            app.picker.as_ref().unwrap().colour(),
+            [0x11, 0x22, 0x33, 255]
+        );
+        send(&mut app, Message::PickerHexEdited("#abcdef".into()));
+        send(&mut app, Message::PickerConfirmed);
+
+        assert_eq!(
+            app.config.custom_colours,
+            vec![[0xab, 0xcd, 0xef, 255], [0x44, 0x55, 0x66, 255]]
+        );
+        assert_eq!(app.brush.colour, [0xab, 0xcd, 0xef, 255]);
+    }
+
+    #[test]
+    fn a_custom_colour_can_be_removed_from_its_menu() {
+        let mut app = app(60, 60);
+        for hex in ["#112233", "#445566"] {
+            send(&mut app, Message::PickerOpened);
+            send(&mut app, Message::PickerHexEdited(hex.into()));
+            send(&mut app, Message::PickerConfirmed);
+        }
+
+        send(&mut app, Message::CustomColourMenuOpened(0));
+        send(&mut app, Message::CustomColourRemoved(0));
+        assert_eq!(app.config.custom_colours, vec![[0x44, 0x55, 0x66, 255]]);
+        assert!(app.custom_colour_menu.is_none());
     }
 
     #[test]

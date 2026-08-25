@@ -7,7 +7,9 @@ use crate::ui::controls;
 use crate::ui::icons::{self, icon};
 use crate::ui::theme::{self, metrics};
 
-use iced::widget::{Space, button, checkbox, column, container, row, slider, text, text_input};
+use iced::widget::{
+    Space, button, checkbox, column, container, mouse_area, row, slider, text, text_input,
+};
 use iced::{Color, Element, Length};
 
 pub const TABS: [(&str, &[u8], Option<Tab>); 5] = [
@@ -35,15 +37,16 @@ pub fn panel<'a>(
     colour_target: bool,
     live: Option<Live>,
     custom: &[[u8; 4]],
+    custom_menu: Option<usize>,
     history: &'a [crate::app::Sticker],
 ) -> Element<'a, Message> {
     let [gutter_l, _, gutter_r, _] = metrics::SIDE_PANEL_GUTTER_MARGIN;
 
     let body = match tab {
-        Tab::Brushes => brushes(brush, custom),
-        Tab::Shapes => shapes_panel(drawing, style, colour_target, live, custom),
+        Tab::Brushes => brushes(brush, custom, custom_menu),
+        Tab::Shapes => shapes_panel(drawing, style, colour_target, live, custom, custom_menu),
         Tab::Stickers => stickers(history),
-        Tab::Text => text_panel(text_style, custom),
+        Tab::Text => text_panel(text_style, custom, custom_menu),
         Tab::Canvas => canvas_panel(canvas, size, transparent),
     };
 
@@ -69,9 +72,10 @@ fn shapes_panel<'a>(
     target: bool,
     live: Option<Live>,
     custom: &[[u8; 4]],
+    custom_menu: Option<usize>,
 ) -> Element<'a, Message> {
     match live {
-        Some(live) => shape_style_panel(style, target, live, custom),
+        Some(live) => shape_style_panel(style, target, live, custom, custom_menu),
         None => shape_grid(chosen),
     }
 }
@@ -136,6 +140,7 @@ fn shape_style_panel<'a>(
     target: bool,
     live: Live,
     custom: &[[u8; 4]],
+    custom_menu: Option<usize>,
 ) -> Element<'a, Message> {
     let mut panel = column![heading(live.name)].spacing(10);
 
@@ -202,6 +207,7 @@ fn shape_style_panel<'a>(
         .push(swatches(
             style.outline.or(style.fill).unwrap_or([0, 0, 0, 255]),
             custom,
+            custom_menu,
         ));
 
     if live.bones {
@@ -285,7 +291,11 @@ fn paint_row<'a>(
     .into()
 }
 
-fn text_panel<'a>(style: &'a TextStyle, custom: &[[u8; 4]]) -> Element<'a, Message> {
+fn text_panel<'a>(
+    style: &'a TextStyle,
+    custom: &[[u8; 4]],
+    custom_menu: Option<usize>,
+) -> Element<'a, Message> {
     let family = iced::widget::pick_list(
         crate::text::FAMILIES.as_slice(),
         Some(&style.family),
@@ -347,7 +357,7 @@ fn text_panel<'a>(style: &'a TextStyle, custom: &[[u8; 4]]) -> Element<'a, Messa
             .text_size(13)
             .on_toggle(Message::TextBackgroundToggled),
         section("Colour"),
-        swatches(style.colour, custom),
+        swatches(style.colour, custom, custom_menu),
         text("Drag on the canvas to make a text box.")
             .size(12)
             .color(theme::colours().text_dim),
@@ -488,7 +498,11 @@ fn heading<'a>(label: &'a str) -> Element<'a, Message> {
         .into()
 }
 
-fn brushes<'a>(brush: &Brush, custom: &[[u8; 4]]) -> Element<'a, Message> {
+fn brushes<'a>(
+    brush: &Brush,
+    custom: &[[u8; 4]],
+    custom_menu: Option<usize>,
+) -> Element<'a, Message> {
     let mut panel = column![heading(brush.tool.name()), brush_grid(brush.tool)].spacing(12);
 
     if brush.tool.profile().is_some() {
@@ -531,7 +545,7 @@ fn brushes<'a>(brush: &Brush, custom: &[[u8; 4]]) -> Element<'a, Message> {
     panel
         .push(Space::new().height(Length::Fixed(8.0)))
         .push(current_colour(brush))
-        .push(swatches(brush.colour, custom))
+        .push(swatches(brush.colour, custom, custom_menu))
         .into()
 }
 
@@ -599,7 +613,11 @@ fn brush_grid<'a>(selected: Tool) -> Element<'a, Message> {
     grid.into()
 }
 
-fn swatches<'a>(current: [u8; 4], custom: &[[u8; 4]]) -> Element<'a, Message> {
+fn swatches<'a>(
+    current: [u8; 4],
+    custom: &[[u8; 4]],
+    custom_menu: Option<usize>,
+) -> Element<'a, Message> {
     let mut grid = column![].spacing(2);
     for (r, chunk) in theme::SWATCHES.chunks(6).enumerate() {
         let mut line = row![].spacing(2);
@@ -612,17 +630,66 @@ fn swatches<'a>(current: [u8; 4], custom: &[[u8; 4]]) -> Element<'a, Message> {
     if !custom.is_empty() {
         let mut line = row![].spacing(2);
         for (i, colour) in custom.iter().enumerate() {
-            line = line.push(swatch(
-                from_bytes(*colour),
-                current,
-                Message::CustomColourPicked(i),
-            ));
+            line = line.push(
+                mouse_area(swatch(
+                    from_bytes(*colour),
+                    current,
+                    Message::CustomColourPicked(i),
+                ))
+                .on_right_press(Message::CustomColourMenuOpened(i)),
+            );
         }
         grid = grid.push(line);
     }
 
+    if let Some(i) = custom_menu.filter(|i| *i < custom.len()) {
+        grid = grid.push(
+            row![
+                Space::new().width(Length::Fixed(i.min(3) as f32 * 34.0)),
+                custom_menu_view(i),
+            ]
+            .width(Length::Fill),
+        );
+    }
+
     column![grid, wide_button("+  Add colour", Message::PickerOpened)]
         .spacing(6)
+        .into()
+}
+
+fn custom_menu_view<'a>(index: usize) -> Element<'a, Message> {
+    container(
+        column![
+            context_button("Edit", Message::CustomColourEditRequested(index)),
+            context_button("Remove", Message::CustomColourRemoved(index)),
+        ]
+        .spacing(2),
+    )
+    .width(Length::Fixed(112.0))
+    .padding(4)
+    .style(|_theme| container::Style {
+        background: Some(theme::colours().side_panel.into()),
+        border: iced::Border {
+            color: theme::colours().border,
+            width: 1.0,
+            radius: 2.0.into(),
+        },
+        ..Default::default()
+    })
+    .into()
+}
+
+fn context_button<'a>(label: &'a str, press: Message) -> Element<'a, Message> {
+    button(text(label).size(13))
+        .width(Length::Fill)
+        .height(Length::Fixed(28.0))
+        .style(|_theme, status| button::Style {
+            background: matches!(status, button::Status::Hovered)
+                .then(|| theme::colours().control_hover.into()),
+            text_color: theme::colours().text,
+            ..Default::default()
+        })
+        .on_press(press)
         .into()
 }
 

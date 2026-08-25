@@ -7,8 +7,8 @@ use iced::{Element, Length};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-pub const FIELD: u16 = 208;
-pub const STRIP: u16 = 24;
+pub const FIELD: u16 = 260;
+pub const STRIP: u16 = 32;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Picker {
@@ -16,6 +16,7 @@ pub struct Picker {
     pub saturation: f32,
     pub value: f32,
     pub typed: Option<String>,
+    channels: [String; 3],
 }
 
 impl Picker {
@@ -26,6 +27,11 @@ impl Picker {
             saturation,
             value,
             typed: None,
+            channels: [
+                colour[0].to_string(),
+                colour[1].to_string(),
+                colour[2].to_string(),
+            ],
         }
     }
 
@@ -39,8 +45,43 @@ impl Picker {
             self.hue = if s > 0.0 { h } else { self.hue };
             self.saturation = s;
             self.value = v;
+            self.channels = [
+                colour[0].to_string(),
+                colour[1].to_string(),
+                colour[2].to_string(),
+            ];
         }
         self.typed = Some(hex);
+    }
+
+    pub fn typed_channel(&mut self, channel: usize, value: String) {
+        let Some(typed) = self.channels.get_mut(channel) else {
+            return;
+        };
+        *typed = value;
+        self.typed = None;
+
+        let (Ok(red), Ok(green), Ok(blue)) = (
+            self.channels[0].parse::<u8>(),
+            self.channels[1].parse::<u8>(),
+            self.channels[2].parse::<u8>(),
+        ) else {
+            return;
+        };
+        let (hue, saturation, value) = to_hsv([red, green, blue, 255]);
+        self.hue = if saturation > 0.0 { hue } else { self.hue };
+        self.saturation = saturation;
+        self.value = value;
+    }
+
+    pub fn channel(&self, channel: usize) -> &str {
+        &self.channels[channel]
+    }
+
+    pub fn clear_typed(&mut self) {
+        self.typed = None;
+        let [r, g, b, _] = self.colour();
+        self.channels = [r.to_string(), g.to_string(), b.to_string()];
     }
 
     pub fn hex(&self) -> String {
@@ -71,18 +112,20 @@ pub fn view(picker: &Picker) -> Element<'_, Message> {
     .on_exit(Message::PickerReleased);
 
     let strip = mouse_area(iced::widget::stack![
-        image(hues()).width(STRIP as f32).height(FIELD as f32),
-        iced::widget::canvas(Marker::Line(picker.hue / 360.0))
-            .width(STRIP as f32)
-            .height(FIELD as f32),
+        image(hues()).width(FIELD as f32).height(STRIP as f32),
+        iced::widget::canvas(Marker::Hue(picker.hue / 360.0))
+            .width(FIELD as f32)
+            .height(STRIP as f32),
     ])
     .on_press(Message::PickerStripPressed)
-    .on_move(|at| Message::PickerHuePicked(at.y / FIELD as f32 * 360.0))
+    .on_move(|at| Message::PickerHuePicked(at.x / FIELD as f32 * 360.0))
     .on_release(Message::PickerReleased)
     .on_exit(Message::PickerReleased);
 
-    let preview = container(Space::new().width(Length::Fill).height(Length::Fixed(40.0))).style(
-        move |_theme| container::Style {
+    let preview = container(Space::new().width(Length::Fill).height(Length::Fill))
+        .width(Length::Fixed(90.0))
+        .height(Length::Fixed(90.0))
+        .style(move |_theme| container::Style {
             background: Some(super::sidebar::from_bytes(colour).into()),
             border: iced::Border {
                 color: theme::colours().border,
@@ -90,42 +133,47 @@ pub fn view(picker: &Picker) -> Element<'_, Message> {
                 radius: 0.0.into(),
             },
             ..Default::default()
-        },
-    );
+        });
 
-    let card = column![
-        text("Add colour")
-            .size(20)
-            .color(theme::colours().accent_text),
-        row![field, strip].spacing(10),
+    let values = column![
         preview,
-        row![
-            text("Hex").size(13).color(theme::colours().text),
+        channel_field(picker, "Red", 0),
+        channel_field(picker, "Green", 1),
+        channel_field(picker, "Blue", 2),
+        column![
+            text("Hex").size(12).color(theme::colours().text),
             text_input("#000000", &picker.hex())
                 .style(crate::ui::controls::text_input_style)
                 .on_input(Message::PickerHexEdited)
                 .on_submit(Message::PickerConfirmed)
                 .size(13)
-                .width(Length::Fixed(110.0)),
-            Space::new().width(Length::Fill),
-            values(colour),
+                .width(Length::Fill),
         ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center),
-        row![
-            Space::new().width(Length::Fill),
-            flat("Cancel", Message::PickerClosed),
-            flat("Add", Message::PickerConfirmed),
-        ]
-        .spacing(8),
+        .spacing(3),
     ]
-    .spacing(14)
-    .width(Length::Fixed((FIELD + STRIP) as f32 + 10.0));
+    .spacing(8)
+    .width(Length::Fixed(90.0));
+
+    let card = column![
+        text("Choose a new colour")
+            .size(20)
+            .color(theme::colours().accent_text),
+        row![column![field, strip].spacing(12), values]
+            .spacing(24)
+            .align_y(iced::Alignment::Start),
+        row![
+            flat("OK", Message::PickerConfirmed),
+            flat("Cancel", Message::PickerClosed),
+        ]
+        .spacing(12),
+    ]
+    .spacing(18)
+    .width(Length::Fixed(FIELD as f32 + 114.0));
 
     let backdrop = mouse_area(
         container(
             container(card)
-                .padding(18)
+                .padding(24)
                 .style(|_theme| container::Style {
                     background: Some(theme::colours().side_panel.into()),
                     border: iced::Border {
@@ -155,18 +203,27 @@ pub fn view(picker: &Picker) -> Element<'_, Message> {
     backdrop.into()
 }
 
-fn values<'a>(colour: [u8; 4]) -> Element<'a, Message> {
-    let [r, g, b, _] = colour;
-    text(format!("R {r}   G {g}   B {b}"))
-        .size(12)
-        .color(theme::colours().text_dim)
-        .wrapping(iced::widget::text::Wrapping::None)
-        .into()
+fn channel_field<'a>(
+    picker: &'a Picker,
+    label: &'static str,
+    channel: usize,
+) -> Element<'a, Message> {
+    column![
+        text(label).size(12).color(theme::colours().text),
+        text_input("0", picker.channel(channel))
+            .style(crate::ui::controls::text_input_style)
+            .on_input(move |value| Message::PickerRgbEdited(channel, value))
+            .on_submit(Message::PickerConfirmed)
+            .size(13)
+            .width(Length::Fill),
+    ]
+    .spacing(3)
+    .into()
 }
 
 enum Marker {
     Spot(f32, f32),
-    Line(f32),
+    Hue(f32),
 }
 
 impl iced::widget::canvas::Program<Message> for Marker {
@@ -204,14 +261,20 @@ impl iced::widget::canvas::Program<Message> for Marker {
                     x.clamp(0.0, 1.0) * bounds.width,
                     y.clamp(0.0, 1.0) * bounds.height,
                 );
-                pair(&mut frame, &Path::circle(at, 6.0));
+                pair(
+                    &mut frame,
+                    &Path::rectangle(
+                        iced::Point::new(at.x - 9.0, at.y - 9.0),
+                        iced::Size::new(18.0, 18.0),
+                    ),
+                );
             }
-            Marker::Line(y) => {
-                let y = y.clamp(0.0, 1.0) * bounds.height;
-                let path = Path::new(|b| {
-                    b.move_to(iced::Point::new(0.0, y));
-                    b.line_to(iced::Point::new(bounds.width, y));
-                });
+            Marker::Hue(x) => {
+                let x = x.clamp(0.0, 1.0) * bounds.width;
+                let path = Path::rectangle(
+                    iced::Point::new(x - 7.0, 1.0),
+                    iced::Size::new(14.0, bounds.height - 2.0),
+                );
                 pair(&mut frame, &path);
             }
         }
@@ -221,8 +284,8 @@ impl iced::widget::canvas::Program<Message> for Marker {
 
 fn flat<'a>(label: &'a str, press: Message) -> Element<'a, Message> {
     button(crate::ui::centred(text(label).size(13).center()))
-        .width(Length::Fixed(88.0))
-        .height(Length::Fixed(30.0))
+        .width(Length::Fill)
+        .height(Length::Fixed(32.0))
         .style(|_theme, status| button::Style {
             background: Some(
                 if matches!(status, button::Status::Hovered) {
@@ -269,12 +332,12 @@ fn square(hue: f32) -> image::Handle {
 
 fn hues() -> image::Handle {
     static HUES: LazyLock<image::Handle> = LazyLock::new(|| {
-        let (w, h) = (STRIP as u32, FIELD as u32);
+        let (w, h) = (FIELD as u32, STRIP as u32);
         let mut pixels = Vec::with_capacity((w * h * 4) as usize);
-        for y in 0..h {
-            let hue = y as f32 / (h - 1) as f32 * 360.0;
-            let colour = from_hsv(hue, 1.0, 1.0);
-            for _ in 0..w {
+        for _ in 0..h {
+            for x in 0..w {
+                let hue = x as f32 / (w - 1) as f32 * 360.0;
+                let colour = from_hsv(hue, 1.0, 1.0);
                 pixels.extend_from_slice(&colour);
             }
         }
@@ -382,6 +445,19 @@ mod tests {
         picker.typed("#00ff00".into());
         assert_eq!(picker.colour(), [0, 255, 0, 255]);
         assert!((picker.hue - 120.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn typing_rgb_channels_moves_the_square_and_preserves_half_typed_input() {
+        let mut picker = Picker::on([0, 0, 0, 255]);
+        picker.typed_channel(0, "128".into());
+        picker.typed_channel(1, "64".into());
+        picker.typed_channel(2, "32".into());
+        assert_eq!(picker.colour(), [128, 64, 32, 255]);
+
+        picker.typed_channel(0, "256".into());
+        assert_eq!(picker.colour(), [128, 64, 32, 255]);
+        assert_eq!(picker.channel(0), "256");
     }
 
     #[test]
