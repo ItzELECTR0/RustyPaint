@@ -1472,7 +1472,7 @@ impl App {
                     if self.panel.resize_image {
                         self.doc.resize_image(w, h);
                     } else {
-                        self.doc.resize_canvas(w, h, Anchor::TopLeft);
+                        self.doc.resize_canvas(w, h, Anchor::Centre);
                     }
                     self.reshaped();
                 }
@@ -5933,6 +5933,24 @@ mod tests {
         resize_to(&mut app, "200", "150");
         assert_eq!(app.doc.size(), (200, 150));
         assert_eq!(app.doc.pixels().as_bytes().len(), 200 * 150 * 4);
+    }
+
+    #[test]
+    fn the_panel_resizes_the_canvas_around_its_centre() {
+        let mut app = app(5, 5);
+        let middle = (2 * 5 + 2) * 4;
+        app.doc.edit().pixels_mut()[middle..middle + 4].copy_from_slice(&[255, 0, 0, 255]);
+        send(&mut app, Message::LockAspectToggled(false));
+
+        resize_to(&mut app, "3", "3");
+        assert_eq!(pixel(&app, 1, 1), [255, 0, 0, 255]);
+
+        resize_to(&mut app, "6", "6");
+        assert_eq!(
+            pixel(&app, 2, 2),
+            [255, 0, 0, 255],
+            "the odd spare pixel goes to the right and bottom"
+        );
     }
 
     #[test]

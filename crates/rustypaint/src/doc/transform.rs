@@ -7,7 +7,6 @@ pub enum Anchor {
     Top,
     TopRight,
     Left,
-    #[allow(dead_code, reason = "centred resize is not exposed yet")]
     Centre,
     Right,
     BottomLeft,
