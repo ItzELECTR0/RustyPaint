@@ -50,6 +50,8 @@ paru -S rustypaint
 paru -S rustypaint-git
 ```
 
+There is also an `experimental` pre-release at the top of the releases list, built from the latest commit on `main`. It is replaced on every push, so it changes without warning and can be broken. Take it only if you want the newest thing rather than a working one.
+
 Windows and macOS packages are not code-signed yet, so those systems will warn before opening them.
 
 ## How do I build it?

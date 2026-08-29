@@ -25,10 +25,14 @@ The workspace version is the source of truth for both crates and must not change
 direction. Keep `packaging/PKGBUILD` synchronized when a release version is chosen; version changes
 are not incidental cleanup.
 
-`.github/workflows/release.yml` builds AppImage, Debian, RPM, Arch, Flatpak, Windows MSI, and macOS
-DMG artifacts. A tag beginning with `v` also creates or updates its GitHub release. Manual runs only
-store workflow artifacts. Windows and macOS packages remain unsigned until signing credentials are
-configured.
+`.github/workflows/build-packages.yml` builds AppImage, Debian, RPM, Arch, Flatpak, Windows MSI, and
+macOS DMG artifacts. It is reusable and has no triggers of its own, so the build steps have a single
+owner. `release.yml` calls it for a tag beginning with `v` and creates or updates that tag's GitHub
+release; a manual run only stores workflow artifacts. `experimental.yml` calls it for every push to
+`main` and replaces the rolling `experimental` pre-release, deleting and recreating it so GitHub
+lists it above the tagged releases. That build carries the version in `packaging/PKGBUILD`, which is
+the last release rather than anything derived from the commit. Windows and macOS packages remain
+unsigned until signing credentials are configured.
 
 Cargo-packager owns the shared Linux, Windows, and macOS bundle metadata in
 `crates/rustypaint/Cargo.toml`. RPM metadata lives beside it because cargo-generate-rpm reads the

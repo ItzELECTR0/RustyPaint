@@ -1,0 +1,56 @@
+name: Build experimental packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: experimental
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Packages
+    uses: ./.github/workflows/build-packages.yml
+
+  publish:
+    name: Publish experimental release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: rustypaint-*
+          path: release
+          merge-multiple: true
+      - name: Create checksums
+        working-directory: release
+        run: sha256sum * > SHA256SUMS
+      - name: Write the release notes
+        run: |
+          cat > notes.md <<NOTES
+          Packages built from [${GITHUB_SHA:0:7}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) on main.
+
+          Builds from the latest commit, not a release. These files are replaced on every push and can be broken. Take a tagged release if you want something stable.
+
+          Windows and macOS packages are unsigned.
+          NOTES
+      - name: Replace the experimental release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete experimental --yes --cleanup-tag || true
+          gh api -X DELETE "repos/$GH_REPO/git/refs/tags/experimental" || true
+          gh release create experimental release/* \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Experimental (${GITHUB_SHA:0:7})" \
+            --notes-file notes.md
