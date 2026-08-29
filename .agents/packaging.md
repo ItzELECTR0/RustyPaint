@@ -12,7 +12,8 @@ back into themselves.
 The AUR recipes live in `packaging/aur/rustypaint/` and `packaging/aur/rustypaint-git/`, ready to be
 copied into their separate AUR repositories. They clone `https://github.com/ItzELECTR0/RustyPaint`
 rather than borrowing the local checkout. The stable recipe pins the latest release tag manually;
-the Git recipe follows HEAD and derives `pkgver` from `git describe`.
+the Git recipe follows HEAD and derives `pkgver` from `git describe`, matched against `v*` tags so
+the rolling `experimental` tag cannot become a version.
 
 Everyday development uses optimized dependencies and lightly optimized project code. Release builds
 use thin LTO for reasonable iteration time. The `dist` profile is the package build: fat LTO and one
