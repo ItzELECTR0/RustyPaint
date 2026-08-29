@@ -651,13 +651,17 @@ impl App {
         let measure = iced::window::latest()
             .and_then(iced::window::size)
             .map(Message::WindowResized);
+        let watch_drops = iced::window::latest()
+            .and_then(|id| iced::window::run(id, crate::dnd::watch))
+            .discard();
+        let start = Task::batch([measure, watch_drops]);
 
         let task = match std::env::args_os().nth(1) {
             Some(arg) => {
                 let path = PathBuf::from(arg);
-                Task::batch([measure, Task::perform(load(path), Message::Opened)])
+                Task::batch([start, Task::perform(load(path), Message::Opened)])
             }
-            None => measure,
+            None => start,
         };
         (app, task)
     }
@@ -675,6 +679,7 @@ impl App {
             } else {
                 iced::Subscription::none()
             },
+            crate::dnd::drops().map(Message::FileDropped),
             iced::event::listen_with(|event, _status, _window| match event {
                 iced::Event::Window(iced::window::Event::FileDropped(path)) => {
                     Some(Message::FileDropped(path))

@@ -16,7 +16,7 @@ A spiritual successor built in Rust with only the 2D tools.
 Microsoft retired Paint3D without ever releasing its source code.
 RustyPaint brings back its simple 2D tools that I've personally grown really used to.
 
-It's usable for everyday edits. It includes brushes, erasing, fill, colour picking, transparency, clipboard, image stickers, crop, rectangle and freeform selection, Smart cutout, shapes, editable curves, adding text and basically everything that Paint3D was able to do with 2D.
+It's usable for everyday edits. It includes brushes, erasing, fill, colour picking, transparency, clipboard, image stickers dragged in or opened, crop, rectangle and freeform selection, Smart cutout, shapes, editable curves, adding text and basically everything that Paint3D was able to do with 2D.
 
 It also has some QoL features like dark mode, editable curve and shape points, and a configurable new-canvas size. Things I wished Paint3D would've had. I also gave it a theme of its own, but the old colour scheme is also available.
 

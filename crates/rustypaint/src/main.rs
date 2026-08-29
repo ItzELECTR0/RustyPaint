@@ -4,6 +4,7 @@ mod app;
 mod assets;
 mod canvas;
 mod config;
+mod dnd;
 mod doc;
 mod gpu;
 mod paint;

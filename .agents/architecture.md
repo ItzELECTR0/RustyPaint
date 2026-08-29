@@ -29,6 +29,20 @@ High-rate pointer samples for live-object transforms are coalesced until redraw.
 the last sample before completing the operation. Viewport-only animation such as marching ants and
 the caret stays out of the application update loop unless application state actually changes.
 
+## Dropped files and the clipboard
+
+A dropped image floats over the canvas like a pasted one rather than replacing the document. Paste
+prefers pixels on the clipboard, then a copied image file, then text, so copying a file in a file
+manager inserts the picture instead of its path. File managers hand over a CRLF separated
+`text/uri-list`, and the trailing carriage return has to be trimmed off each path.
+
+winit reports dropped files on Windows, macOS and X11 but not on Wayland, so `dnd::wayland` follows
+the drag by hand: a guest `wayland-client` backend over winit's `wl_display` gets its own event
+queue on its own thread, binds a `wl_data_device` and accepts `text/uri-list`. Compositors that fan
+drag events out to every one of a client's data devices, wlroots among them, deliver drops to it.
+Hyprland instead routes to the client's first data device only, which `iced` claims for
+smithay-clipboard when it opens the window, so drops never arrive there.
+
 ## Compatibility
 
 Configuration is a small TOML file with defaults for every field. Older files must continue to load,
