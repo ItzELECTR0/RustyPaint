@@ -848,11 +848,11 @@ impl App {
     }
 
     fn unsaved(&self) -> bool {
-        self.doc.modified || self.floating.is_some()
+        self.doc.modified() || self.floating.is_some()
     }
 
     fn untouched(&self) -> bool {
-        !self.doc.modified && self.doc.path.is_none() && !self.doc.can_undo()
+        !self.doc.modified() && self.doc.path.is_none() && !self.doc.can_undo()
     }
 
     fn blank(&mut self) {
@@ -918,7 +918,7 @@ impl App {
                 return Task::perform(pick_and_save(self.for_saving()), Message::Saved);
             }
             Message::Saved(Ok(path)) => {
-                self.doc.modified = false;
+                self.doc.mark_saved();
                 self.doc.path = Some(path);
                 self.status.clear();
                 match self.after_save.take() {
@@ -2175,8 +2175,9 @@ impl App {
         let version = self.doc.version();
         let (colour, tolerance) = (self.brush.colour, self.brush.tolerance);
 
+        let mut filled = before.clone();
         let Some(touched) = fill::flood(
-            self.doc.edit(),
+            &mut filled,
             x.floor() as i64,
             y.floor() as i64,
             colour,
@@ -2184,6 +2185,7 @@ impl App {
         ) else {
             return;
         };
+        *self.doc.edit() = filled;
         self.doc.commit("Fill", touched, &before);
         self.dirty = Some((version, touched));
     }
@@ -2231,7 +2233,7 @@ impl App {
         let Some(floating) = self.floating.take() else {
             return;
         };
-        let active = (self.doc.pixels().clone(), self.doc.modified);
+        let active = (self.doc.pixels().clone(), self.doc.touched());
         let canvas = floating.cancel(&mut self.doc).then_some(active);
         self.live_redo = Some(LiveRedo {
             floating,
@@ -2251,8 +2253,8 @@ impl App {
         if redo.version != self.doc.version() {
             return false;
         }
-        if let Some((pixels, modified)) = redo.canvas {
-            self.doc.restore_live(pixels, modified);
+        if let Some((pixels, touched)) = redo.canvas {
+            self.doc.restore_live(pixels, touched);
         }
         self.floating = Some(redo.floating);
         self.float_version += 1;
@@ -2329,7 +2331,7 @@ impl App {
             return menu::view(
                 page,
                 self.document_name(),
-                self.doc.modified,
+                self.doc.modified(),
                 &self.config,
                 self.viewport,
                 (&self.custom_canvas.0, &self.custom_canvas.1),
@@ -3202,6 +3204,32 @@ mod tests {
     }
 
     #[test]
+    fn undoing_the_work_leaves_nothing_to_ask_about() {
+        let mut app = app(8, 8);
+        app.brush.tool = Tool::Fill;
+        app.brush.colour = [255, 0, 0, 255];
+        click(&mut app, 4.0, 4.0);
+        assert!(app.unsaved());
+
+        send(&mut app, Message::Undo);
+        assert!(!app.unsaved(), "there is no difference left to save");
+
+        send(&mut app, Message::Redo);
+        assert!(app.unsaved(), "and redoing brings it back");
+    }
+
+    #[test]
+    fn a_fill_that_paints_what_is_already_there_is_not_unsaved_work() {
+        let mut app = app(8, 8);
+        app.brush.tool = Tool::Fill;
+        app.brush.colour = [0, 0, 0, 0];
+
+        click(&mut app, 4.0, 4.0);
+        assert!(!app.unsaved(), "the canvas was already transparent");
+        assert!(!app.doc.can_undo(), "and it is not an undo step");
+    }
+
+    #[test]
     fn the_bucket_ignores_a_click_off_the_canvas() {
         let mut app = app(8, 8);
         app.brush.tool = Tool::Fill;
@@ -3226,7 +3254,7 @@ mod tests {
 
         assert_eq!(app.brush.colour, [12, 34, 56, 255]);
         assert!(
-            !app.doc.modified || app.doc.can_undo(),
+            !app.doc.modified() || app.doc.can_undo(),
             "picking must not add an edit"
         );
         let edits_before = app.doc.can_redo();
@@ -3413,13 +3441,13 @@ mod tests {
     fn cancelling_a_selection_restores_the_documents_modified_state() {
         let mut app = app(16, 16);
         app.doc = Document::from_image(Rgba8::new(16, 16, RED), None);
-        assert!(!app.doc.modified);
+        assert!(!app.doc.modified());
 
         drag_selection(&mut app, (2.0, 2.0), (8.0, 8.0));
-        assert!(app.doc.modified, "lifting touched the canvas");
+        assert!(app.doc.modified(), "lifting touched the canvas");
         send(&mut app, Message::Undo);
         assert!(
-            !app.doc.modified,
+            !app.doc.modified(),
             "cancelling returned to the clean document"
         );
         assert_eq!(pixel(&app, 4, 4), RED);
@@ -5128,7 +5156,7 @@ mod tests {
     #[test]
     fn new_on_an_untouched_document_does_not_ask() {
         let mut app = app(64, 48);
-        assert!(!app.doc.modified);
+        assert!(!app.doc.modified());
         send(&mut app, Message::NewRequested);
         assert_eq!(
             app.doc.size(),
@@ -5176,7 +5204,7 @@ mod tests {
         };
         let (mut app, _boot) = App::boot(config, None, None);
         app.doc = Document::blank_sized(300, 200, false);
-        app.doc.modified = true;
+        app.doc.edit();
 
         send(&mut app, Message::WindowResized(Size::new(1280.0, 800.0)));
         assert_eq!(
@@ -5568,7 +5596,7 @@ mod tests {
     fn new_on_a_modified_document_waits_for_an_answer() {
         let mut app = app(64, 48);
         click(&mut app, 10.0, 10.0);
-        assert!(app.doc.modified);
+        assert!(app.doc.modified());
         let size = app.doc.size();
 
         send(&mut app, Message::NewRequested);
@@ -5669,7 +5697,7 @@ mod tests {
 
         send(&mut app, Message::OpenRequested);
         assert!(
-            app.doc.modified,
+            app.doc.modified(),
             "the answer is still coming, nothing has gone"
         );
 
@@ -5808,12 +5836,12 @@ mod tests {
         assert!(app.unsaved());
         send(&mut app, Message::WindowClosed);
         assert!(
-            app.doc.modified,
+            app.doc.modified(),
             "nothing has happened yet, the answer is still coming"
         );
 
         send(&mut app, Message::CloseConfirmed(Discard::Keep));
-        assert!(app.doc.modified, "cancelling leaves it alone");
+        assert!(app.doc.modified(), "cancelling leaves it alone");
         assert_eq!(app.after_save, None, "and nothing is waiting on a save");
 
         send(&mut app, Message::CloseConfirmed(Discard::Save));
@@ -5825,7 +5853,7 @@ mod tests {
 
         send(&mut app, Message::Saved(Err(String::new())));
         assert_eq!(app.after_save, None, "the close is off");
-        assert!(app.doc.modified, "and the work is still here");
+        assert!(app.doc.modified(), "and the work is still here");
     }
 
     #[test]
@@ -5843,7 +5871,7 @@ mod tests {
         send(&mut app, Message::Canvas(gpu::Interaction::SelectEnded));
         send(&mut app, Message::TextEdited(TextAction::Insert('h')));
 
-        assert!(!app.doc.modified, "the canvas itself is untouched");
+        assert!(!app.doc.modified(), "the canvas itself is untouched");
         assert!(app.unsaved(), "but there is a box with a letter in it");
     }
 

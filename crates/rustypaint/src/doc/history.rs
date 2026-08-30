@@ -57,6 +57,7 @@ struct Entry {
     #[allow(dead_code, reason = "surfaced by the history flyout, which is Phase 7")]
     label: &'static str,
     edit: Edit,
+    serial: u64,
 }
 
 #[derive(Default)]
@@ -64,6 +65,8 @@ pub struct History {
     entries: Vec<Entry>,
     depth: usize,
     bytes: usize,
+    serials: u64,
+    base: u64,
 }
 
 impl History {
@@ -72,15 +75,28 @@ impl History {
             self.bytes -= dropped.edit.bytes();
         }
         self.bytes += edit.bytes();
-        self.entries.push(Entry { label, edit });
+        self.serials += 1;
+        self.entries.push(Entry {
+            label,
+            edit,
+            serial: self.serials,
+        });
         self.depth = self.entries.len();
         self.trim();
+    }
+
+    // Names the state the canvas is in, so a save can be recognised again after undo and redo.
+    pub fn mark(&self) -> u64 {
+        self.depth
+            .checked_sub(1)
+            .map_or(self.base, |i| self.entries[i].serial)
     }
 
     fn trim(&mut self) {
         while self.bytes > BUDGET_BYTES && self.entries.len() > 1 {
             let dropped = self.entries.remove(0);
             self.bytes -= dropped.edit.bytes();
+            self.base = dropped.serial;
             self.depth -= 1;
         }
     }
@@ -220,6 +236,34 @@ mod tests {
         h.push("Marker", paint(&mut img, Rect::new(0, 0, 4, 4), BLUE));
         assert!(!h.can_redo(), "the undone edit should be gone");
         assert!(h.can_undo());
+    }
+
+    #[test]
+    fn the_mark_names_a_state_rather_than_a_step() {
+        let mut img = image(WHITE);
+        let mut h = History::default();
+        let pristine = h.mark();
+
+        h.push("Marker", paint(&mut img, Rect::new(0, 0, 4, 4), RED));
+        let painted = h.mark();
+        assert_ne!(painted, pristine);
+
+        h.undo(&mut img, &mut false).unwrap();
+        assert_eq!(h.mark(), pristine, "undo comes back to where it started");
+        h.redo(&mut img, &mut false).unwrap();
+        assert_eq!(h.mark(), painted, "and redo goes back to the edit");
+    }
+
+    #[test]
+    fn a_mark_on_a_dropped_branch_never_comes_back() {
+        let mut img = image(WHITE);
+        let mut h = History::default();
+        h.push("Marker", paint(&mut img, Rect::new(0, 0, 4, 4), RED));
+        let dropped = h.mark();
+
+        h.undo(&mut img, &mut false).unwrap();
+        h.push("Marker", paint(&mut img, Rect::new(0, 0, 4, 4), BLUE));
+        assert_ne!(h.mark(), dropped);
     }
 
     #[test]

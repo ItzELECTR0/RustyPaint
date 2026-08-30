@@ -18,7 +18,8 @@ pub struct Document {
     version: Version,
     pub transparent: bool,
     pub path: Option<PathBuf>,
-    pub modified: bool,
+    touched: bool,
+    saved: u64,
     history: History,
 }
 
@@ -31,7 +32,8 @@ impl Document {
             version: 1,
             transparent,
             path: None,
-            modified: false,
+            touched: false,
+            saved: 0,
             history: History::default(),
         }
     }
@@ -43,7 +45,8 @@ impl Document {
             version: 1,
             transparent,
             path,
-            modified: false,
+            touched: false,
+            saved: 0,
             history: History::default(),
         }
     }
@@ -78,27 +81,49 @@ impl Document {
 
     pub fn edit(&mut self) -> &mut Rgba8 {
         self.version += 1;
-        self.modified = true;
+        self.touched = true;
         &mut self.pixels
     }
 
-    pub(crate) fn restore_live(&mut self, pixels: Rgba8, modified: bool) {
+    // True between an edit and the commit that files it, when the canvas is ahead of its history.
+    pub fn touched(&self) -> bool {
+        self.touched
+    }
+
+    pub fn modified(&self) -> bool {
+        self.touched || self.history.mark() != self.saved
+    }
+
+    pub fn mark_saved(&mut self) {
+        self.touched = false;
+        self.saved = self.history.mark();
+    }
+
+    pub(crate) fn restore_live(&mut self, pixels: Rgba8, touched: bool) {
         self.pixels = pixels;
         self.version += 1;
-        self.modified = modified;
+        self.touched = touched;
     }
 
     pub fn commit(&mut self, label: &'static str, rect: Rect, before: &Rgba8) {
+        self.touched = false;
         let rect = rect.clamped(self.pixels.width(), self.pixels.height());
         if rect.is_empty() {
+            return;
+        }
+        let (was, now) = (
+            Edit::extract(before, rect),
+            Edit::extract(&self.pixels, rect),
+        );
+        if was == now {
             return;
         }
         self.history.push(
             label,
             Edit::Region {
                 rect,
-                before: Edit::extract(before, rect),
-                after: Edit::extract(&self.pixels, rect),
+                before: was,
+                after: now,
             },
         );
     }
@@ -128,7 +153,7 @@ impl Document {
             },
         );
         self.version += 1;
-        self.modified = true;
+        self.touched = false;
     }
 
     pub fn resize_canvas(&mut self, width: u32, height: u32, anchor: transform::Anchor) {
@@ -206,14 +231,14 @@ impl Document {
     pub fn undo(&mut self) -> Option<Option<Rect>> {
         let changed = self.history.undo(&mut self.pixels, &mut self.transparent)?;
         self.version += 1;
-        self.modified = true;
+        self.touched = false;
         Some(changed)
     }
 
     pub fn redo(&mut self) -> Option<Option<Rect>> {
         let changed = self.history.redo(&mut self.pixels, &mut self.transparent)?;
         self.version += 1;
-        self.modified = true;
+        self.touched = false;
         Some(changed)
     }
 
@@ -224,7 +249,7 @@ impl Document {
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "Untitled".to_owned());
-        if self.modified {
+        if self.modified() {
             format!("{name}*")
         } else {
             name
@@ -272,6 +297,55 @@ mod tests {
         let v1 = d.version();
         d.resize_canvas(4, 4, transform::Anchor::TopLeft);
         assert!(d.version() > v1);
+    }
+
+    fn paint(d: &mut Document, colour: [u8; 4]) {
+        let before = d.pixels().clone();
+        let rect = Rect::new(0, 0, 2, 2);
+        let stride = d.size().0 as usize * image::CHANNELS;
+        let dst = d.edit().pixels_mut();
+        for y in rect.rows() {
+            for x in rect.cols() {
+                let i = y as usize * stride + x as usize * image::CHANNELS;
+                dst[i..i + image::CHANNELS].copy_from_slice(&colour);
+            }
+        }
+        d.commit("Marker", rect, &before);
+    }
+
+    #[test]
+    fn undoing_every_change_leaves_nothing_to_save() {
+        let mut d = Document::blank_sized(8, 8, false);
+        paint(&mut d, [255, 0, 0, 255]);
+        assert!(d.modified());
+
+        d.undo().unwrap();
+        assert!(!d.modified(), "the canvas is back where it started");
+        d.redo().unwrap();
+        assert!(d.modified(), "and the change is a change again");
+    }
+
+    #[test]
+    fn saving_moves_the_mark_the_undo_stack_is_measured_against() {
+        let mut d = Document::blank_sized(8, 8, false);
+        paint(&mut d, [255, 0, 0, 255]);
+        d.mark_saved();
+        assert!(!d.modified());
+
+        paint(&mut d, [0, 0, 255, 255]);
+        assert!(d.modified());
+        d.undo().unwrap();
+        assert!(!d.modified(), "back at what is on disk");
+        d.undo().unwrap();
+        assert!(d.modified(), "past it is a change again");
+    }
+
+    #[test]
+    fn an_edit_that_changes_no_pixels_is_no_change_at_all() {
+        let mut d = Document::blank_sized(8, 8, false);
+        paint(&mut d, [0, 0, 0, 0]);
+        assert!(!d.modified(), "the canvas was already empty there");
+        assert!(!d.can_undo(), "and there is nothing to undo");
     }
 
     #[test]

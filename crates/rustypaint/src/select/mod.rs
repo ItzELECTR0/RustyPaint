@@ -43,7 +43,7 @@ pub struct Floating {
     flip: (bool, bool),
     masked: bool,
     backup: Rgba8,
-    backup_modified: bool,
+    backup_touched: bool,
 }
 
 impl Floating {
@@ -58,7 +58,7 @@ impl Floating {
         };
         let masked = mask.is_some();
         let backup = doc.pixels().clone();
-        let backup_modified = doc.modified;
+        let backup_touched = doc.touched();
         let mut pixels = crate::doc::transform::crop(doc.pixels(), rect);
         if let Some(mask) = mask {
             for (px, cover) in pixels
@@ -106,7 +106,7 @@ impl Floating {
             flip: (false, false),
             masked,
             backup,
-            backup_modified,
+            backup_touched,
         })
     }
 
@@ -135,7 +135,7 @@ impl Floating {
             flip: (false, false),
             masked: false,
             backup: doc.pixels().clone(),
-            backup_modified: doc.modified,
+            backup_touched: doc.touched(),
         }
     }
 
@@ -152,7 +152,7 @@ impl Floating {
             flip: (false, false),
             masked: false,
             backup: doc.pixels().clone(),
-            backup_modified: doc.modified,
+            backup_touched: doc.touched(),
         };
         floating.redraw();
         floating
@@ -188,7 +188,7 @@ impl Floating {
             flip: (false, false),
             masked: false,
             backup: doc.pixels().clone(),
-            backup_modified: doc.modified,
+            backup_touched: doc.touched(),
         };
         floating.redraw();
         floating
@@ -208,7 +208,7 @@ impl Floating {
             flip: (false, false),
             masked: false,
             backup: doc.pixels().clone(),
-            backup_modified: doc.modified,
+            backup_touched: doc.touched(),
         };
         floating.redraw();
         floating
@@ -237,7 +237,7 @@ impl Floating {
             flip: (false, false),
             masked: false,
             backup: doc.pixels().clone(),
-            backup_modified: doc.modified,
+            backup_touched: doc.touched(),
         };
         floating.redraw();
         floating.xform.x = at.0 - floating.xform.width / 2.0;
@@ -601,7 +601,7 @@ impl Floating {
         if self.lifted_from.is_none() {
             return false;
         }
-        doc.restore_live(self.backup.clone(), self.backup_modified);
+        doc.restore_live(self.backup.clone(), self.backup_touched);
         true
     }
 

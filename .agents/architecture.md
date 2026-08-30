@@ -15,6 +15,16 @@ Document history stores before-and-after regions for local edits and copy-on-wri
 canvas-wide changes. Live objects sit outside that history. Undo first resolves live state: text uses
 its own edit journal, while another live object is cancelled before committed document history moves.
 
+## Unsaved work
+
+There is no stored "modified" flag. Every history entry carries a serial, the current position names
+the state the canvas is in, and a save records that name; the document is modified when the position
+has a different name, so undoing back to what is on disk really is no change. A serial from a
+discarded redo branch or from an entry trimmed off the bottom can never be reached again, which is
+what should happen. Between an edit and the commit that files it the canvas is ahead of its history,
+so `touched` covers that gap and a commit clears it. A commit whose region comes out byte for byte
+the same records nothing at all.
+
 ## Coordinates and input
 
 Keep image, viewport-logical, and physical-pixel coordinates explicit. Painting and selection work
