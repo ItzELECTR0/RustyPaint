@@ -7,6 +7,16 @@
   <project_license>GPL-3.0-only</project_license>
   <description>
     <p>RustyPaint brings back Paint 3D's simple 2D editing tools and adds a few of its own.</p>
+    <p>It covers what the original could do on a flat canvas:</p>
+    <ul>
+      <li>Brushes, pencils, erasing, spray and a fill bucket</li>
+      <li>Rectangle and freeform selection, moved and stretched with the mouse or the arrow keys</li>
+      <li>Smart cutout for lifting a subject off its background</li>
+      <li>Shapes, editable curves and text</li>
+      <li>Cropping, resizing, rotating and a transparent canvas</li>
+      <li>Stickers dragged in, pasted or opened from a file</li>
+    </ul>
+    <p>The extras are enhancements Paint 3D never had: a dark mode, editable curve and shape points, and a default canvas size.</p>
   </description>
   <developer id="net.electris">
     <name>ELECTRO</name>
@@ -15,5 +25,64 @@
   <provides>
     <binary>rustypaint</binary>
   </provides>
+  <url type="homepage">https://github.com/ItzELECTR0/RustyPaint</url>
+  <url type="bugtracker">https://github.com/ItzELECTR0/RustyPaint/issues</url>
+  <url type="vcs-browser">https://github.com/ItzELECTR0/RustyPaint</url>
+  <categories>
+    <category>Graphics</category>
+    <category>RasterGraphics</category>
+  </categories>
+  <keywords>
+    <keyword>paint</keyword>
+    <keyword>draw</keyword>
+    <keyword>image</keyword>
+    <keyword>editor</keyword>
+    <keyword>canvas</keyword>
+  </keywords>
+  <branding>
+    <color type="primary" scheme_preference="light">#ffd9a8</color>
+    <color type="primary" scheme_preference="dark">#5c3a0d</color>
+  </branding>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Brushes on a fresh canvas</caption>
+      <image type="source" width="2560" height="1440">https://raw.githubusercontent.com/ItzELECTR0/RustyPaint/main/.github/assets/screenshots/classic-light-screenshot-1.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A sticker turned on the canvas, in the dark theme</caption>
+      <image type="source" width="2560" height="1440">https://raw.githubusercontent.com/ItzELECTR0/RustyPaint/main/.github/assets/screenshots/rusty-dark-screenshot-4.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A five point curve with its points still editable</caption>
+      <image type="source" width="2560" height="1440">https://raw.githubusercontent.com/ItzELECTR0/RustyPaint/main/.github/assets/screenshots/classic-light-screenshot-3.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Adding text over a picture</caption>
+      <image type="source" width="2560" height="1440">https://raw.githubusercontent.com/ItzELECTR0/RustyPaint/main/.github/assets/screenshots/rusty-dark-screenshot-5.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Drawing a rectangle with the 2D shape tools</caption>
+      <image type="source" width="2560" height="1440">https://raw.githubusercontent.com/ItzELECTR0/RustyPaint/main/.github/assets/screenshots/classic-light-screenshot-2.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.2.1" date="2026-08-25">
+      <url type="details">https://github.com/ItzELECTR0/RustyPaint/releases/tag/v0.2.1</url>
+      <description>
+        <ul>
+          <li>Custom colour swatches can be edited and removed</li>
+          <li>Resizing the canvas shows its dimensions as you drag</li>
+          <li>Colour picker drags end cleanly at the edge of the field</li>
+          <li>Brush and shape tooltips got their backgrounds back</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.2.0" date="2026-08-25">
+      <url type="details">https://github.com/ItzELECTR0/RustyPaint/releases/tag/v0.2.0</url>
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
   <content_rating type="oars-1.1"/>
 </component>
