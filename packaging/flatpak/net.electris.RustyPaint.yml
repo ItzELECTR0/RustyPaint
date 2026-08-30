@@ -31,4 +31,8 @@ modules:
     sources:
       - type: dir
         path: ../..
+        skip:
+          - .flatpak-builder
+          - .git
+          - target
       - cargo-sources.json
