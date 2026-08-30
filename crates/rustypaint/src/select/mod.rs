@@ -10,6 +10,7 @@ pub use lasso::Lasso;
 pub use xform::Xform;
 
 use crate::doc::{Document, Rect, Rgba8, image::CHANNELS, transform};
+use crate::gpu::Handle;
 use crate::paint::curve::{self, CurveKind};
 use crate::paint::shapes::{self, ShapeKind, ShapeStyle};
 use crate::text::{TextBox, TextStyle};
@@ -42,6 +43,8 @@ pub struct Floating {
     turns: u8,
     flip: (bool, bool),
     masked: bool,
+    // The grip the box was last dragged by, so arrow keys stretch the same edge it did.
+    pub stretched: Option<Handle>,
     backup: Rgba8,
     backup_touched: bool,
 }
@@ -105,6 +108,7 @@ impl Floating {
             turns: 0,
             flip: (false, false),
             masked,
+            stretched: None,
             backup,
             backup_touched,
         })
@@ -134,6 +138,7 @@ impl Floating {
             turns: 0,
             flip: (false, false),
             masked: false,
+            stretched: None,
             backup: doc.pixels().clone(),
             backup_touched: doc.touched(),
         }
@@ -151,6 +156,7 @@ impl Floating {
             turns: 0,
             flip: (false, false),
             masked: false,
+            stretched: None,
             backup: doc.pixels().clone(),
             backup_touched: doc.touched(),
         };
@@ -187,6 +193,7 @@ impl Floating {
             turns: 0,
             flip: (false, false),
             masked: false,
+            stretched: None,
             backup: doc.pixels().clone(),
             backup_touched: doc.touched(),
         };
@@ -207,6 +214,7 @@ impl Floating {
             turns: 0,
             flip: (false, false),
             masked: false,
+            stretched: None,
             backup: doc.pixels().clone(),
             backup_touched: doc.touched(),
         };
@@ -236,6 +244,7 @@ impl Floating {
             turns: 0,
             flip: (false, false),
             masked: false,
+            stretched: None,
             backup: doc.pixels().clone(),
             backup_touched: doc.touched(),
         };

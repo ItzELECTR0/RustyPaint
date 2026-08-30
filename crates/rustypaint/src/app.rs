@@ -18,6 +18,7 @@ use crate::ui::strings;
 use crate::ui::theme::{self, Choice, Scheme, metrics};
 use crate::ui::titlebar;
 
+use iced::time::Instant;
 use iced::widget::{Space, button, column, container, row, shader, text};
 use iced::{Element, Length, Point, Size, Task};
 use std::path::PathBuf;
@@ -420,6 +421,15 @@ pub struct App {
     last_copy: Option<u64>,
     after_save: Option<Pending>,
     asking: Option<Pending>,
+    nudge: Option<Nudge>,
+}
+
+// A held arrow key walking a selection along, slowly at first and then at a rate you can still read.
+struct Nudge {
+    arrow: Arrow,
+    since: Instant,
+    last: Instant,
+    carry: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -536,6 +546,10 @@ pub enum Message {
     NewCanvasWidthEdited(String),
     NewCanvasHeightEdited(String),
     WindowFocused,
+    WindowUnfocused,
+    NudgeStarted(Arrow),
+    NudgeEnded(Arrow),
+    NudgeTick(Instant),
     DiscardAnswered(Discard),
     ConfirmDiscardToggled(bool),
     AcrylicToggled(bool),
@@ -561,6 +575,25 @@ pub enum TextAction {
     Motion(Motion),
     Click(f32, f32),
     Drag(f32, f32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arrow {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+impl Arrow {
+    fn step(self) -> (f32, f32) {
+        match self {
+            Arrow::Left => (-1.0, 0.0),
+            Arrow::Right => (1.0, 0.0),
+            Arrow::Up => (0.0, -1.0),
+            Arrow::Down => (0.0, 1.0),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -645,6 +678,7 @@ impl App {
             last_copy: None,
             after_save: None,
             asking: None,
+            nudge: None,
             config,
             config_path,
             dirty: None,
@@ -680,6 +714,8 @@ impl App {
             },
             if self.spraying() {
                 iced::window::frames().map(|_| Message::SprayTick)
+            } else if self.nudge.is_some() {
+                iced::window::frames().map(Message::NudgeTick)
             } else {
                 iced::Subscription::none()
             },
@@ -689,6 +725,9 @@ impl App {
                     Some(Message::FileDropped(path))
                 }
                 iced::Event::Window(iced::window::Event::Focused) => Some(Message::WindowFocused),
+                iced::Event::Window(iced::window::Event::Unfocused) => {
+                    Some(Message::WindowUnfocused)
+                }
                 iced::Event::Window(iced::window::Event::CloseRequested) => {
                     Some(Message::WindowClosed)
                 }
@@ -1414,6 +1453,44 @@ impl App {
                     Discard::Keep => {}
                 }
             }
+            Message::WindowUnfocused => self.nudge = None,
+            Message::NudgeStarted(arrow) => {
+                if self.floating.is_none() {
+                    return Task::none();
+                }
+                self.nudge_float(arrow);
+                let now = Instant::now();
+                self.nudge = Some(Nudge {
+                    arrow,
+                    since: now,
+                    last: now,
+                    carry: 0.0,
+                });
+            }
+            Message::NudgeEnded(arrow) => {
+                if self.nudge.as_ref().is_some_and(|held| held.arrow == arrow) {
+                    self.nudge = None;
+                }
+            }
+            Message::NudgeTick(now) => {
+                let Some(held) = &mut self.nudge else {
+                    return Task::none();
+                };
+                let waited = now.duration_since(held.since).as_secs_f32();
+                let elapsed = now.duration_since(held.last).as_secs_f32().min(NUDGE_STALL);
+                held.last = now;
+                if waited < NUDGE_DELAY {
+                    return Task::none();
+                }
+                let ramp = ((waited - NUDGE_DELAY) / NUDGE_RAMP).clamp(0.0, 1.0);
+                held.carry += elapsed * (NUDGE_SLOW + (NUDGE_FAST - NUDGE_SLOW) * ramp);
+                let steps = held.carry.floor();
+                held.carry -= steps;
+                let arrow = held.arrow;
+                for _ in 0..steps as u32 {
+                    self.nudge_float(arrow);
+                }
+            }
             Message::ConfirmDiscardToggled(on) => {
                 self.config.confirm_discard = on;
                 self.save_config();
@@ -1618,7 +1695,12 @@ impl App {
             }
 
             gpu::Interaction::FloatGrabbed(grab, x, y) => {
-                if let Some(floating) = &self.floating {
+                if let Some(floating) = &mut self.floating {
+                    match grab {
+                        gpu::Grab::Resize(handle) => floating.stretched = Some(handle),
+                        gpu::Grab::Move | gpu::Grab::Rotate => floating.stretched = None,
+                        gpu::Grab::Point(_) | gpu::Grab::Caret => {}
+                    }
                     self.grab_from = Some(Grabbed {
                         at: (x, y),
                         xform: floating.xform,
@@ -2044,6 +2126,39 @@ impl App {
                 self.float_version += 1;
             }
             gpu::Grab::Caret => self.edit_text(TextAction::Drag(x, y)),
+        }
+    }
+
+    fn nudge_float(&mut self, arrow: Arrow) {
+        let (dx, dy) = arrow.step();
+        let shift = self.mods.shift();
+        let Some(floating) = &self.floating else {
+            self.nudge = None;
+            return;
+        };
+        let was = floating.xform;
+        let grip = match floating.stretched {
+            Some(handle) => was.handle_at(handle),
+            None => was.centre(),
+        };
+        let to = self.within_reach((grip.0 + dx, grip.1 + dy));
+        let (dx, dy) = (to.0 - grip.0, to.1 - grip.1);
+
+        let Some(floating) = &mut self.floating else {
+            return;
+        };
+        match floating.stretched {
+            None => {
+                let moved = was.moved_by(dx, dy);
+                floating.shift_to(moved.x, moved.y);
+            }
+            Some(handle) => {
+                let keep = floating.keeps_ratio() != shift;
+                let target = was.resized(handle, to.0, to.1, keep);
+                let points = floating.points().to_vec();
+                floating.refit(was, target, &points);
+                self.float_version += 1;
+            }
         }
     }
 
@@ -2827,12 +2942,39 @@ fn fingerprint(pixels: &Rgba8) -> u64 {
 
 const POINT_REACH: f32 = 12.0;
 
+const NUDGE_DELAY: f32 = 0.35;
+const NUDGE_RAMP: f32 = 1.2;
+const NUDGE_SLOW: f32 = 8.0;
+const NUDGE_FAST: f32 = 45.0;
+const NUDGE_STALL: f32 = 0.1;
+
 const OVERHANG: f32 = 512.0;
+
+fn arrow(key: iced::keyboard::Key<&str>) -> Option<Arrow> {
+    use iced::keyboard::{Key, key::Named};
+
+    match key {
+        Key::Named(Named::ArrowLeft) => Some(Arrow::Left),
+        Key::Named(Named::ArrowRight) => Some(Arrow::Right),
+        Key::Named(Named::ArrowUp) => Some(Arrow::Up),
+        Key::Named(Named::ArrowDown) => Some(Arrow::Down),
+        _ => None,
+    }
+}
 
 fn shortcut(event: iced::keyboard::Event) -> Option<Message> {
     use iced::keyboard::{Event, Key, key::Named};
 
-    let Event::KeyPressed { key, modifiers, .. } = event else {
+    if let Event::KeyReleased { key, .. } = &event {
+        return arrow(key.as_ref()).map(Message::NudgeEnded);
+    }
+    let Event::KeyPressed {
+        key,
+        modifiers,
+        repeat,
+        ..
+    } = event
+    else {
         return None;
     };
 
@@ -2840,6 +2982,10 @@ fn shortcut(event: iced::keyboard::Event) -> Option<Message> {
         return Some(Message::Deselect);
     }
     if !modifiers.command() {
+        // The ramp is ours to draw out, so the keyboard's own repeat is not wanted.
+        if let Some(arrow) = arrow(key.as_ref()) {
+            return (!repeat).then_some(Message::NudgeStarted(arrow));
+        }
         return match key.as_ref() {
             Key::Named(Named::Delete) => Some(Message::DeleteFloating),
             Key::Character("[") => Some(Message::ThicknessNudged(-1.0)),
@@ -3124,6 +3270,7 @@ impl Outline<'_> {
 mod tests {
     use super::*;
     use crate::gpu::Handle;
+    use iced::time::Duration;
 
     #[test]
     fn a_tile_that_is_not_selected_lets_its_bar_through() {
@@ -3494,6 +3641,155 @@ mod tests {
             before.as_bytes(),
             "one step back to the start"
         );
+    }
+
+    fn xform(app: &App) -> Xform {
+        app.floating.as_ref().unwrap().xform
+    }
+
+    fn grab_grip(app: &mut App, grab: gpu::Grab) {
+        let at = match grab {
+            gpu::Grab::Resize(handle) => xform(app).handle_at(handle),
+            _ => xform(app).centre(),
+        };
+        send(
+            app,
+            Message::Canvas(gpu::Interaction::FloatGrabbed(grab, at.0, at.1)),
+        );
+        send(app, Message::Canvas(gpu::Interaction::FloatReleased));
+    }
+
+    fn selection(width: u32, height: u32) -> App {
+        let mut app = app(width, height);
+        fill_canvas(&mut app, [255, 0, 0, 255]);
+        drag_selection(&mut app, (20.0, 20.0), (80.0, 60.0));
+        assert!(app.floating.is_some(), "there is a selection to nudge");
+        app
+    }
+
+    #[test]
+    fn an_arrow_walks_a_selection_a_pixel_at_a_time() {
+        let mut app = selection(200, 200);
+        let was = xform(&app);
+
+        send(&mut app, Message::NudgeStarted(Arrow::Left));
+        assert_eq!(xform(&app).x, was.x - 1.0);
+        assert_eq!(xform(&app).y, was.y, "and nothing else moves");
+
+        send(&mut app, Message::NudgeEnded(Arrow::Left));
+        send(&mut app, Message::NudgeStarted(Arrow::Down));
+        assert_eq!(xform(&app).y, was.y + 1.0);
+        assert_eq!(xform(&app).width, was.width, "moving is not stretching");
+    }
+
+    #[test]
+    fn arrows_stretch_the_edge_that_was_last_dragged() {
+        let mut app = selection(200, 200);
+        grab_grip(&mut app, gpu::Grab::Resize(gpu::Handle::Left));
+        let was = xform(&app);
+
+        send(&mut app, Message::NudgeStarted(Arrow::Left));
+        let out = xform(&app);
+        assert!(
+            (out.width - was.width - 1.0).abs() < 0.01,
+            "left grows the left edge outwards, got {}",
+            out.width
+        );
+        assert!(
+            (out.height - was.height).abs() < 0.01,
+            "the height is not its axis"
+        );
+
+        send(&mut app, Message::NudgeEnded(Arrow::Left));
+        send(&mut app, Message::NudgeStarted(Arrow::Right));
+        assert!(
+            (xform(&app).width - was.width).abs() < 0.01,
+            "and right takes it back"
+        );
+
+        send(&mut app, Message::NudgeEnded(Arrow::Right));
+        send(&mut app, Message::NudgeStarted(Arrow::Up));
+        assert!(
+            (xform(&app).height - was.height).abs() < 0.01,
+            "up and down have nothing to do on a side grip"
+        );
+    }
+
+    #[test]
+    fn the_top_grip_gives_the_arrows_the_other_axis() {
+        let mut app = selection(200, 200);
+        grab_grip(&mut app, gpu::Grab::Resize(gpu::Handle::Top));
+        let was = xform(&app);
+
+        send(&mut app, Message::NudgeStarted(Arrow::Up));
+        assert!((xform(&app).height - was.height - 1.0).abs() < 0.01);
+
+        send(&mut app, Message::NudgeEnded(Arrow::Up));
+        send(&mut app, Message::NudgeStarted(Arrow::Left));
+        assert!((xform(&app).width - was.width).abs() < 0.01);
+    }
+
+    #[test]
+    fn moving_it_with_the_mouse_puts_the_arrows_back_to_moving() {
+        let mut app = selection(200, 200);
+        grab_grip(&mut app, gpu::Grab::Resize(gpu::Handle::Left));
+        grab_grip(&mut app, gpu::Grab::Move);
+        let was = xform(&app);
+
+        send(&mut app, Message::NudgeStarted(Arrow::Left));
+        assert_eq!(xform(&app).x, was.x - 1.0);
+        assert!((xform(&app).width - was.width).abs() < 0.01);
+    }
+
+    #[test]
+    fn arrows_are_idle_with_nothing_in_hand() {
+        let mut app = app(64, 48);
+        send(&mut app, Message::NudgeStarted(Arrow::Left));
+        assert!(app.nudge.is_none(), "there is nothing to walk about");
+    }
+
+    #[test]
+    fn a_held_arrow_waits_then_speeds_up_to_a_cap() {
+        let mut app = selection(400, 400);
+        send(&mut app, Message::NudgeStarted(Arrow::Right));
+        let base = Instant::now();
+        let tapped = xform(&app).x;
+
+        let mut at = 0.0_f32;
+        let run = |app: &mut App, to: f32, at: &mut f32| {
+            while *at < to {
+                send(app, Message::NudgeTick(base + Duration::from_secs_f32(*at)));
+                *at += 1.0 / 60.0;
+            }
+        };
+
+        run(&mut app, NUDGE_DELAY - 0.02, &mut at);
+        assert_eq!(xform(&app).x, tapped, "a tap does not run away on its own");
+
+        let before_slow = xform(&app).x;
+        run(&mut app, NUDGE_DELAY + 0.5, &mut at);
+        let slow = xform(&app).x - before_slow;
+        assert!(slow > 0.0, "it does get going, moved {slow}");
+
+        run(&mut app, 4.0, &mut at);
+        let before_fast = xform(&app).x;
+        run(&mut app, 4.5, &mut at);
+        let fast = xform(&app).x - before_fast;
+        assert!(fast > slow, "it speeds up: {slow} then {fast}");
+        assert!(
+            fast <= NUDGE_FAST * 0.5 + 1.0,
+            "but never past the cap, {fast} in half a second"
+        );
+    }
+
+    #[test]
+    fn letting_go_of_a_different_key_does_not_stop_the_held_one() {
+        let mut app = selection(200, 200);
+        send(&mut app, Message::NudgeStarted(Arrow::Right));
+        send(&mut app, Message::NudgeEnded(Arrow::Left));
+        assert!(app.nudge.is_some());
+        send(&mut app, Message::NudgeEnded(Arrow::Right));
+        assert!(app.nudge.is_none());
     }
 
     #[test]

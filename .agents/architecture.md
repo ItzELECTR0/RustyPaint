@@ -41,7 +41,13 @@ grabbable on every tab. A press that commits one live object and starts another 
 not a discarded click.
 
 High-rate pointer samples for live-object transforms are coalesced until redraw. Release must flush
-the last sample before completing the operation. Viewport-only animation such as marching ants and
+the last sample before completing the operation.
+
+Arrow keys work the live object a pixel at a time, and what they do follows the last grip it was
+dragged by: a move grip leaves them moving it, a resize grip leaves them stretching that same edge,
+so the axis a side grip does not own stays still. The keyboard's own repeat is ignored and the ramp
+is driven off frames instead, holding still for a moment and then climbing to a capped rate, because
+the point of the keys is to be followed by eye. A stalled frame is clamped rather than paid back. Viewport-only animation such as marching ants and
 the caret stays out of the application update loop unless application state actually changes.
 
 ## Dropped files and the clipboard
