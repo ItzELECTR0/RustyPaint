@@ -34,6 +34,22 @@ lists it above the tagged releases. That build carries the version in `packaging
 the last release rather than anything derived from the commit. Windows and macOS packages remain
 unsigned until signing credentials are configured.
 
+The window carries `net.electris.RustyPaint` as its Linux application id, set in `main.rs` because
+iced leaves it empty by default. Compositors match that id against the desktop file's basename to
+find the window's icon, so it, the desktop file's name, and `StartupWMClass` have to stay equal; an
+empty id leaves a Flatpak window with no icon in the dock at all.
+
+`packaging/flatpak/net.electris.RustyPaint.metainfo.xml` is the AppStream data every Linux package
+ships, not just the Flatpak, so software centres read it from the AppImage and RPM too. Keep it
+passing `appstreamcli validate`, and add a `releases` entry when a version is tagged. Screenshots are
+served from `main` on GitHub rather than pinned to a tag, so they follow the current interface.
+
+The Flatpak manifest builds from a `dir` source pointing at the checkout because CI bundles whatever
+commit it is run against, including the rolling `experimental` build. Flathub would need a pinned
+`git` source with a tag and commit instead, so that switch belongs with a Flathub submission rather
+than in the manifest that feeds the bundle. `runtime-version` has to move together with the
+container image in `build-packages.yml`.
+
 Cargo-packager owns the shared Linux, Windows, and macOS bundle metadata in
 `crates/rustypaint/Cargo.toml`. RPM metadata lives beside it because cargo-generate-rpm reads the
 crate manifest. The AUR-ready `PKGBUILD` and Flatpak manifest remain native definitions rather than
