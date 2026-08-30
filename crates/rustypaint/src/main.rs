@@ -15,6 +15,8 @@ mod ui;
 use app::{App, Message};
 use iced::{Element, Renderer, Theme};
 
+const APP_ID: &str = "net.electris.RustyPaint";
+
 fn view(app: &App) -> Element<'_, Message, Theme, Renderer> {
     app.view()
 }
@@ -34,11 +36,26 @@ fn main() -> iced::Result {
             icon: window_icon(),
             decorations: config.decorations,
             transparent: true,
+            platform_specific: platform_specific(),
             ..Default::default()
         })
         .window_size(iced::Size::new(1280.0, 800.0))
         .exit_on_close_request(false)
         .run()
+}
+
+// Compositors match this against the desktop file's basename to find the icon for the window.
+#[cfg(target_os = "linux")]
+fn platform_specific() -> iced::window::settings::PlatformSpecific {
+    iced::window::settings::PlatformSpecific {
+        application_id: APP_ID.to_owned(),
+        ..Default::default()
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn platform_specific() -> iced::window::settings::PlatformSpecific {
+    iced::window::settings::PlatformSpecific::default()
 }
 
 fn window_icon() -> Option<iced::window::Icon> {

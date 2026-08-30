@@ -8,4 +8,4 @@ Icon=rustypaint
 Terminal=false
 Categories=Graphics;2DGraphics;RasterGraphics;
 MimeType=image/png;image/jpeg;image/bmp;image/gif;image/tiff;image/webp;
-StartupWMClass=rustypaint
+StartupWMClass=net.electris.RustyPaint
