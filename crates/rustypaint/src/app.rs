@@ -9,6 +9,7 @@ use crate::paint::{Brush, Stroke, Tool, curve, fill, shapes};
 use crate::select::cutout::Cutout;
 use crate::select::{self, Floating, Lasso, Xform};
 use crate::text::{Align, TextStyle};
+use crate::ui::dialog;
 use crate::ui::icons::{self, icon};
 use crate::ui::menu::{self, Page as MenuPage};
 use crate::ui::picker::{self, Picker};
@@ -418,6 +419,7 @@ pub struct App {
     stickers: Vec<Sticker>,
     last_copy: Option<u64>,
     after_save: Option<Pending>,
+    asking: Option<Pending>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -501,7 +503,6 @@ pub enum Message {
     WindowMinimised,
     WindowMaximiseToggled,
     WindowClosed,
-    CloseConfirmed(Discard),
     ShapeThicknessChanged(f32),
     TextFontPicked(String),
     TextSizePicked(u32),
@@ -535,8 +536,8 @@ pub enum Message {
     NewCanvasWidthEdited(String),
     NewCanvasHeightEdited(String),
     WindowFocused,
-    NewConfirmed(Discard),
-    OpenConfirmed(Discard),
+    DiscardAnswered(Discard),
+    ConfirmDiscardToggled(bool),
     AcrylicToggled(bool),
     DecorationsToggled(bool),
     ModifiersChanged(iced::keyboard::Modifiers),
@@ -643,6 +644,7 @@ impl App {
             stickers: Vec::new(),
             last_copy: None,
             after_save: None,
+            asking: None,
             config,
             config_path,
             dirty: None,
@@ -669,7 +671,9 @@ impl App {
     pub fn subscription(&self) -> iced::Subscription<Message> {
         iced::Subscription::batch([
             iced::window::resize_events().map(|(_, size)| Message::WindowResized(size)),
-            if self.typing() {
+            if self.asking.is_some() {
+                iced::keyboard::listen().filter_map(answering)
+            } else if self.typing() {
                 iced::keyboard::listen().filter_map(typing)
             } else {
                 iced::keyboard::listen().filter_map(shortcut)
@@ -847,6 +851,25 @@ impl App {
         scratch.flattened()
     }
 
+    fn discarding(&mut self, pending: Pending) -> Task<Message> {
+        if self.unsaved() && self.config.confirm_discard {
+            self.asking = Some(pending);
+            return Task::none();
+        }
+        self.carry_on(pending)
+    }
+
+    fn carry_on(&mut self, pending: Pending) -> Task<Message> {
+        match pending {
+            Pending::Blank => {
+                self.blank();
+                Task::none()
+            }
+            Pending::Open => Task::perform(pick_and_load(), Message::Opened),
+            Pending::Close => iced::window::latest().and_then(iced::window::close),
+        }
+    }
+
     fn unsaved(&self) -> bool {
         self.doc.modified() || self.floating.is_some()
     }
@@ -883,21 +906,7 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::OpenRequested => {
-                if !self.unsaved() {
-                    return Task::perform(pick_and_load(), Message::Opened);
-                }
-                let name = self.document_name().to_string();
-                return Task::perform(ask_to_save(name), Message::OpenConfirmed);
-            }
-            Message::OpenConfirmed(answer) => match answer {
-                Discard::Throw => return Task::perform(pick_and_load(), Message::Opened),
-                Discard::Save => {
-                    self.after_save = Some(Pending::Open);
-                    return self.save();
-                }
-                Discard::Keep => {}
-            },
+            Message::OpenRequested => return self.discarding(Pending::Open),
 
             Message::Opened(Ok((path, pixels))) => {
                 self.doc = Document::from_image(pixels, Some(path));
@@ -921,15 +930,8 @@ impl App {
                 self.doc.mark_saved();
                 self.doc.path = Some(path);
                 self.status.clear();
-                match self.after_save.take() {
-                    Some(Pending::Blank) => self.blank(),
-                    Some(Pending::Open) => {
-                        return Task::perform(pick_and_load(), Message::Opened);
-                    }
-                    Some(Pending::Close) => {
-                        return iced::window::latest().and_then(iced::window::close);
-                    }
-                    None => {}
+                if let Some(pending) = self.after_save.take() {
+                    return self.carry_on(pending);
                 }
             }
             Message::Saved(Err(e)) => {
@@ -1126,23 +1128,7 @@ impl App {
             Message::WindowMaximiseToggled => {
                 return iced::window::latest().and_then(iced::window::toggle_maximize);
             }
-            Message::WindowClosed => {
-                if !self.unsaved() {
-                    return iced::window::latest().and_then(iced::window::close);
-                }
-                let name = self.document_name().to_string();
-                return Task::perform(ask_to_save(name), Message::CloseConfirmed);
-            }
-            Message::CloseConfirmed(answer) => match answer {
-                Discard::Throw => {
-                    return iced::window::latest().and_then(iced::window::close);
-                }
-                Discard::Save => {
-                    self.after_save = Some(Pending::Close);
-                    return self.save();
-                }
-                Discard::Keep => {}
-            },
+            Message::WindowClosed => return self.discarding(Pending::Close),
             Message::PickerOpened => {
                 self.picker = Some(Picker::on(self.brush.colour));
                 self.editing_custom_colour = None;
@@ -1414,22 +1400,24 @@ impl App {
             }
             Message::MenuClosed => self.menu = None,
             Message::MenuPagePicked(page) => self.menu = Some(Some(page)),
-            Message::NewRequested => {
-                if !self.unsaved() {
-                    self.blank();
+            Message::NewRequested => return self.discarding(Pending::Blank),
+            Message::DiscardAnswered(answer) => {
+                let Some(pending) = self.asking.take() else {
                     return Task::none();
+                };
+                match answer {
+                    Discard::Throw => return self.carry_on(pending),
+                    Discard::Save => {
+                        self.after_save = Some(pending);
+                        return self.save();
+                    }
+                    Discard::Keep => {}
                 }
-                let name = self.document_name().to_string();
-                return Task::perform(ask_to_save(name), Message::NewConfirmed);
             }
-            Message::NewConfirmed(answer) => match answer {
-                Discard::Throw => self.blank(),
-                Discard::Save => {
-                    self.after_save = Some(Pending::Blank);
-                    return self.save();
-                }
-                Discard::Keep => {}
-            },
+            Message::ConfirmDiscardToggled(on) => {
+                self.config.confirm_discard = on;
+                self.save_config();
+            }
             Message::AcrylicToggled(on) => {
                 self.config.acrylic = on;
                 theme::set_acrylic(on);
@@ -2320,10 +2308,18 @@ impl App {
 
     fn workspace(&self) -> Element<'_, Message> {
         let under = self.pages();
-        match &self.picker {
+        let under = match &self.picker {
             Some(picker) => iced::widget::stack![under, picker::view(picker)].into(),
             None => under,
+        };
+        if self.asking.is_none() {
+            return under;
         }
+        iced::widget::stack![
+            under,
+            dialog::ask_to_save(self.document_name(), self.config.confirm_discard),
+        ]
+        .into()
     }
 
     fn pages(&self) -> Element<'_, Message> {
@@ -2874,6 +2870,19 @@ fn shortcut(event: iced::keyboard::Event) -> Option<Message> {
     }
 }
 
+fn answering(event: iced::keyboard::Event) -> Option<Message> {
+    use iced::keyboard::{Event, Key, key::Named};
+
+    let Event::KeyPressed { key, .. } = event else {
+        return None;
+    };
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::DiscardAnswered(Discard::Keep)),
+        Key::Named(Named::Enter) => Some(Message::DiscardAnswered(Discard::Save)),
+        _ => None,
+    }
+}
+
 fn typing(event: iced::keyboard::Event) -> Option<Message> {
     use iced::keyboard::{Event, Key, key::Named};
 
@@ -2937,26 +2946,6 @@ fn typing(event: iced::keyboard::Event) -> Option<Message> {
             let c = typed.chars().next()?;
             (!c.is_control()).then_some(Message::TextEdited(TextAction::Insert(c)))
         }
-    }
-}
-
-async fn ask_to_save(name: String) -> Discard {
-    let answer = rfd::AsyncMessageDialog::new()
-        .set_title("Do you want to save your work?")
-        .set_description(format!("There are unsaved changes to {name}."))
-        .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
-            "Save".into(),
-            "Don't save".into(),
-            "Cancel".into(),
-        ))
-        .show()
-        .await;
-    match answer {
-        rfd::MessageDialogResult::Custom(label) if label == "Save" => Discard::Save,
-        rfd::MessageDialogResult::Custom(label) if label == "Don't save" => Discard::Throw,
-        rfd::MessageDialogResult::Yes => Discard::Save,
-        rfd::MessageDialogResult::No => Discard::Throw,
-        _ => Discard::Keep,
     }
 }
 
@@ -5600,17 +5589,45 @@ mod tests {
         let size = app.doc.size();
 
         send(&mut app, Message::NewRequested);
+        assert_eq!(app.asking, Some(Pending::Blank), "the dialog is up");
         assert_eq!(app.doc.size(), size, "nothing thrown away yet");
 
-        send(&mut app, Message::NewConfirmed(Discard::Keep));
+        send(&mut app, Message::DiscardAnswered(Discard::Keep));
         assert_eq!(app.doc.size(), size, "cancelling keeps it");
+        assert_eq!(app.asking, None, "and puts the dialog away");
 
-        send(&mut app, Message::NewConfirmed(Discard::Throw));
+        send(&mut app, Message::NewRequested);
+        send(&mut app, Message::DiscardAnswered(Discard::Throw));
         assert_eq!(
             app.doc.size(),
             app.new_canvas_size(),
             "and throwing it away starts over"
         );
+        assert_eq!(app.asking, None);
+    }
+
+    #[test]
+    fn turning_the_warning_off_takes_you_at_your_word() {
+        let mut app = app(64, 48);
+        click(&mut app, 10.0, 10.0);
+        assert!(app.unsaved());
+
+        send(&mut app, Message::ConfirmDiscardToggled(false));
+        send(&mut app, Message::NewRequested);
+        assert_eq!(app.asking, None, "nothing to answer");
+        assert_eq!(
+            app.doc.size(),
+            app.new_canvas_size(),
+            "the canvas went without a word"
+        );
+    }
+
+    #[test]
+    fn the_dialog_checkbox_is_the_setting() {
+        let mut app = app(64, 48);
+        assert!(app.config.confirm_discard);
+        send(&mut app, Message::ConfirmDiscardToggled(false));
+        assert!(!app.config.confirm_discard, "ticking it off is the setting");
     }
 
     fn start_text_box(app: &mut App) {
@@ -5701,10 +5718,11 @@ mod tests {
             "the answer is still coming, nothing has gone"
         );
 
-        send(&mut app, Message::OpenConfirmed(Discard::Keep));
+        send(&mut app, Message::DiscardAnswered(Discard::Keep));
         assert_eq!(app.after_save, None, "cancelling asks for no file at all");
 
-        send(&mut app, Message::OpenConfirmed(Discard::Save));
+        send(&mut app, Message::OpenRequested);
+        send(&mut app, Message::DiscardAnswered(Discard::Save));
         assert_eq!(
             app.after_save,
             Some(Pending::Open),
@@ -5840,11 +5858,12 @@ mod tests {
             "nothing has happened yet, the answer is still coming"
         );
 
-        send(&mut app, Message::CloseConfirmed(Discard::Keep));
+        send(&mut app, Message::DiscardAnswered(Discard::Keep));
         assert!(app.doc.modified(), "cancelling leaves it alone");
         assert_eq!(app.after_save, None, "and nothing is waiting on a save");
 
-        send(&mut app, Message::CloseConfirmed(Discard::Save));
+        send(&mut app, Message::WindowClosed);
+        send(&mut app, Message::DiscardAnswered(Discard::Save));
         assert_eq!(
             app.after_save,
             Some(Pending::Close),
@@ -5907,7 +5926,7 @@ mod tests {
         let mut app = app(64, 48);
         click(&mut app, 10.0, 10.0);
         send(&mut app, Message::NewRequested);
-        send(&mut app, Message::NewConfirmed(Discard::Save));
+        send(&mut app, Message::DiscardAnswered(Discard::Save));
         assert_eq!(app.after_save, Some(Pending::Blank));
 
         send(&mut app, Message::Saved(Ok(PathBuf::from("/tmp/x.png"))));

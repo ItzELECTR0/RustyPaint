@@ -122,6 +122,7 @@ pub mod controls {
     }
 }
 
+pub mod dialog;
 #[allow(dead_code, reason = "reference table, filled in ahead of the widgets")]
 pub mod icons;
 pub mod menu;

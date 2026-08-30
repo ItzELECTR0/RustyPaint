@@ -96,6 +96,7 @@ Settings are written whenever they change in the application.
 | `custom_colours` | Keeps colours added with the picker |
 | `acrylic` | Makes panels translucent for compositor blur |
 | `decorations` | Lets the compositor draw the window frame |
+| `confirm_discard` | Asks before anything that would throw away unsaved work |
 
 ## Where do the assets come from?
 

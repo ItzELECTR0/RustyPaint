@@ -223,6 +223,17 @@ fn pane_settings<'a>(
             .text_size(13)
             .on_toggle(Message::AcrylicToggled),
         divider(),
+        subheading("Unsaved changes"),
+        note(
+            "Ask before anything that would throw away work you have not saved. Turn it off and \
+             New, Open and closing the window take you at your word.",
+        ),
+        toggler(config.confirm_discard)
+            .style(crate::ui::controls::toggler_style)
+            .label(if config.confirm_discard { "On" } else { "Off" })
+            .text_size(13)
+            .on_toggle(Message::ConfirmDiscardToggled),
+        divider(),
         subheading("New canvas"),
         note("What size a new picture starts at."),
         row![

@@ -12,6 +12,10 @@ const fn rgb(hex: u32) -> Color {
     }
 }
 
+const fn rgba(hex: u32, a: f32) -> Color {
+    Color { a, ..rgb(hex) }
+}
+
 #[allow(dead_code, reason = "reference table, filled in ahead of the widgets")]
 pub mod metrics {
     pub const TOP_PANEL_BUTTON_WIDTH: f32 = 68.0;
@@ -112,6 +116,7 @@ struct Surfaces {
     text_on_dark: Color,
     title_bar: Color,
     tab_bar: Color,
+    overlay: Color,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -142,6 +147,7 @@ pub struct Palette {
     pub text_on_dark: Color,
     pub title_bar: Color,
     pub tab_bar: Color,
+    pub overlay: Color,
 
     pub accent: Color,
     pub accent_text: Color,
@@ -170,6 +176,7 @@ const LIGHT: Surfaces = Surfaces {
     text_on_dark: rgb(0xffffff),
     title_bar: rgb(0x454242),
     tab_bar: rgb(0x514f4f),
+    overlay: rgba(0xffffff, 0.62),
 };
 
 const DARK: Surfaces = Surfaces {
@@ -190,6 +197,7 @@ const DARK: Surfaces = Surfaces {
     text_on_dark: rgb(0xffffff),
     title_bar: rgb(0x1a1c20),
     tab_bar: rgb(0x232529),
+    overlay: rgba(0x000000, 0.62),
 };
 
 const CLASSIC_LIGHT: Accent = Accent {
@@ -243,6 +251,7 @@ const fn merge(s: Surfaces, a: Accent) -> Palette {
         text_on_dark: s.text_on_dark,
         title_bar: s.title_bar,
         tab_bar: s.tab_bar,
+        overlay: s.overlay,
         accent: a.fill,
         accent_text: a.label,
         selection_from: a.from,
@@ -384,6 +393,12 @@ mod tests {
         assert_eq!(c.text_dim, rgb(0x6b6b6b));
         assert_eq!(c.border, rgb(0xbebebe));
         assert_eq!(c.shadow, 0.22);
+    }
+
+    #[test]
+    fn the_overlay_washes_towards_the_mode_it_dims() {
+        assert!(palette_for(Mode::Light, Scheme::Rusty).overlay.r > 0.9);
+        assert!(palette_for(Mode::Dark, Scheme::Rusty).overlay.r < 0.1);
     }
 
     #[test]

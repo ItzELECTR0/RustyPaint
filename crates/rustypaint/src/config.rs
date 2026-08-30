@@ -11,6 +11,7 @@ pub struct Config {
     pub new_canvas: NewCanvas,
     pub acrylic: bool,
     pub decorations: bool,
+    pub confirm_discard: bool,
     pub custom_colours: Vec<[u8; 4]>,
 }
 
@@ -22,6 +23,7 @@ impl Default for Config {
             new_canvas: NewCanvas::default(),
             acrylic: true,
             decorations: false,
+            confirm_discard: true,
             custom_colours: Vec::new(),
         }
     }
@@ -116,6 +118,7 @@ mod tests {
             new_canvas: NewCanvas::Fixed(1920, 1080),
             acrylic: false,
             decorations: true,
+            confirm_discard: false,
             custom_colours: vec![[254, 168, 69, 255]],
         };
         let text = toml::to_string_pretty(&config).unwrap();
@@ -128,6 +131,7 @@ mod tests {
         assert_eq!(config.theme, Choice::Dark);
         assert_eq!(config.accent, Scheme::Rusty);
         assert!(config.acrylic);
+        assert!(config.confirm_discard, "asking is the old behaviour");
     }
 
     #[test]

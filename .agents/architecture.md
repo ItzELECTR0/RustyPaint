@@ -25,6 +25,11 @@ what should happen. Between an edit and the commit that files it the canvas is a
 so `touched` covers that gap and a commit clears it. A commit whose region comes out byte for byte
 the same records nothing at all.
 
+Anything that would throw away unsaved work goes through one in-window dialog rather than an OS
+message box, which on Linux costs a portal round trip the editor should not have to wait for. New,
+Open and closing the window all raise the same question and share the answer, and `confirm_discard`
+turns the question off for people who would rather not be asked.
+
 ## Coordinates and input
 
 Keep image, viewport-logical, and physical-pixel coordinates explicit. Painting and selection work
