@@ -411,6 +411,7 @@ pub struct App {
     resize_preview: Option<(u32, u32)>,
     dirty: Option<(Version, Rect)>,
     menu: Option<MenuPage>,
+    save_format: doc::io::SaveFormat,
     config: Config,
     config_path: Option<PathBuf>,
     custom_canvas: (String, String),
@@ -445,6 +446,8 @@ pub enum Message {
     Opened(Result<(PathBuf, Rgba8), String>),
     SaveRequested,
     SaveAsRequested,
+    SaveAsConfirmed,
+    SaveFormatPicked(doc::io::SaveFormat),
     Saved(Result<PathBuf, String>),
     Canvas(gpu::Interaction),
     WindowResized(Size),
@@ -671,6 +674,7 @@ impl App {
             last_point: None,
             resize_preview: None,
             menu: None,
+            save_format: doc::io::SaveFormat::default(),
             custom_canvas: custom_fields(config.new_canvas),
             mods: iced::keyboard::Modifiers::default(),
             cropping: None,
@@ -876,9 +880,25 @@ impl App {
     fn save(&self) -> Task<Message> {
         let pixels = self.for_saving();
         match self.doc.path.clone() {
-            Some(path) => Task::perform(save_to(pixels, path), Message::Saved),
-            None => Task::perform(pick_and_save(pixels), Message::Saved),
+            Some(path) if doc::io::SaveFormat::from_path(&path).is_some() => {
+                Task::perform(save_to(pixels, path), Message::Saved)
+            }
+            _ => self.save_as(),
         }
+    }
+
+    fn save_as(&self) -> Task<Message> {
+        let stem = self
+            .doc
+            .path
+            .as_deref()
+            .and_then(|path| path.file_stem())
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Untitled".into());
+        Task::perform(
+            pick_and_save(self.for_saving(), stem, self.save_format),
+            Message::Saved,
+        )
     }
 
     fn for_saving(&self) -> Rgba8 {
@@ -949,6 +969,7 @@ impl App {
             Message::OpenRequested => return self.discarding(Pending::Open),
 
             Message::Opened(Ok((path, pixels))) => {
+                self.save_format = doc::io::SaveFormat::from_path(&path).unwrap_or_default();
                 self.doc = Document::from_image(pixels, Some(path));
                 self.floating = None;
                 self.live_redo = None;
@@ -963,10 +984,13 @@ impl App {
             Message::Opened(Err(e)) => self.status = e,
 
             Message::SaveRequested => return self.save(),
-            Message::SaveAsRequested => {
-                return Task::perform(pick_and_save(self.for_saving()), Message::Saved);
-            }
+            Message::SaveAsRequested => self.menu = Some(MenuPage::SaveAs),
+            Message::SaveAsConfirmed => return self.save_as(),
+            Message::SaveFormatPicked(format) => self.save_format = format,
             Message::Saved(Ok(path)) => {
+                if let Some(format) = doc::io::SaveFormat::from_path(&path) {
+                    self.save_format = format;
+                }
                 self.doc.mark_saved();
                 self.doc.path = Some(path);
                 self.status.clear();
@@ -2452,6 +2476,7 @@ impl App {
                 &self.config,
                 self.viewport,
                 (&self.custom_canvas.0, &self.custom_canvas.1),
+                self.save_format,
             );
         }
         column![
@@ -3140,17 +3165,21 @@ async fn pick_and_load() -> Result<(PathBuf, Rgba8), String> {
     load(handle.path().to_path_buf()).await
 }
 
-async fn pick_and_save(pixels: Rgba8) -> Result<PathBuf, String> {
+async fn pick_and_save(
+    pixels: Rgba8,
+    stem: String,
+    format: doc::io::SaveFormat,
+) -> Result<PathBuf, String> {
     let handle = rfd::AsyncFileDialog::new()
-        .add_filter("Images", doc::io::WRITABLE)
+        .add_filter(format.label(), format.extensions())
         .set_title("Save as")
-        .set_file_name("Untitled.png")
+        .set_file_name(format!("{stem}.{}", format.extension()))
         .save_file()
         .await
         .ok_or_else(String::new)?;
 
-    let path = doc::io::with_default_extension(handle.path().to_path_buf());
-    save_to(pixels, path).await
+    let path = doc::io::with_extension(handle.path().to_path_buf(), format);
+    doc::io::save_as(&pixels, &path, format).map(|()| path)
 }
 
 async fn save_to(pixels: Rgba8, path: PathBuf) -> Result<PathBuf, String> {
@@ -5450,6 +5479,19 @@ mod tests {
         assert_eq!(app.menu, Some(MenuPage::Settings));
         send(&mut app, Message::MenuClosed);
         assert!(app.menu.is_none());
+    }
+
+    #[test]
+    fn save_as_chooses_the_format_before_the_native_dialog() {
+        let mut app = app(200, 200);
+        send(&mut app, Message::SaveAsRequested);
+        assert_eq!(app.menu, Some(MenuPage::SaveAs));
+
+        send(
+            &mut app,
+            Message::SaveFormatPicked(doc::io::SaveFormat::Jpeg),
+        );
+        assert_eq!(app.save_format, doc::io::SaveFormat::Jpeg);
     }
 
     #[test]

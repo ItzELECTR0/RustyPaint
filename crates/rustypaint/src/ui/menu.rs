@@ -1,10 +1,14 @@
 use crate::app::Message;
 use crate::canvas::{self, NewCanvas, Ratio};
 use crate::config::Config;
+use crate::doc::io::SaveFormat;
+use crate::ui::controls;
 use crate::ui::icons::{self, icon};
 use crate::ui::theme::{self, Choice, Mode, Scheme};
 
-use iced::widget::{Space, button, column, container, row, scrollable, text, text_input, toggler};
+use iced::widget::{
+    Space, button, column, container, pick_list, row, scrollable, text, text_input, toggler,
+};
 use iced::{Element, Length, Size};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +33,7 @@ pub fn view<'a>(
     config: &Config,
     viewport: Size,
     custom: (&'a str, &'a str),
+    save_format: SaveFormat,
 ) -> Element<'a, Message> {
     let name = if modified {
         format!("{title}* - RustyPaint")
@@ -91,7 +96,7 @@ pub fn view<'a>(
     let pane: Element<'_, Message> = match page {
         Page::About => pane_about(),
         Page::Open => pane_open(),
-        Page::SaveAs => pane_save_as(),
+        Page::SaveAs => pane_save_as(save_format),
         Page::Settings => pane_settings(config, viewport, custom),
     };
 
@@ -198,13 +203,17 @@ fn pane_open<'a>() -> Element<'a, Message> {
         .into()
 }
 
-fn pane_save_as<'a>() -> Element<'a, Message> {
+fn pane_save_as<'a>(format: SaveFormat) -> Element<'a, Message> {
     column![
-        title("Save as copy"),
+        title("Save as"),
         text("Choose a file format")
             .size(14)
             .color(theme::colours().text),
-        format_tile(),
+        pick_list(SaveFormat::ALL, Some(format), Message::SaveFormatPicked)
+            .style(controls::pick_list_style)
+            .text_size(13)
+            .width(Length::Fixed(280.0)),
+        format_tile(format),
     ]
     .spacing(12)
     .into()
@@ -549,11 +558,11 @@ fn divider<'a>() -> Element<'a, Message> {
     .into()
 }
 
-fn format_tile<'a>() -> Element<'a, Message> {
+fn format_tile<'a>(format: SaveFormat) -> Element<'a, Message> {
     button(crate::ui::centred(
         column![
             icon(icons::IMAGE, 26.0, theme::colours().text),
-            text("Image").size(12)
+            text(format.extension().to_uppercase()).size(12)
         ]
         .spacing(10)
         .align_x(iced::Alignment::Center),
@@ -572,7 +581,7 @@ fn format_tile<'a>() -> Element<'a, Message> {
         text_color: theme::colours().text,
         ..Default::default()
     })
-    .on_press(Message::SaveAsRequested)
+    .on_press(Message::SaveAsConfirmed)
     .into()
 }
 

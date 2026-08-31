@@ -1,7 +1,8 @@
 use super::Rgba8;
 use image::ImageDecoder;
+use std::fmt;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, BufWriter, Read};
 use std::path::{Path, PathBuf};
 
 pub const READABLE: &[&str] = &[
@@ -10,7 +11,121 @@ pub const READABLE: &[&str] = &[
     "rgb", "rgba", "bw", "wbmp", "xbm", "bm", "xpm",
 ];
 
-pub const WRITABLE: &[&str] = &["png", "jpg", "jpeg", "bmp", "tif", "tiff"];
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SaveFormat {
+    #[default]
+    Png,
+    Jpeg,
+    WebP,
+    Bmp,
+    Gif,
+    Tiff,
+    Tga,
+    Ico,
+    Icns,
+    Qoi,
+    Pnm,
+    Farbfeld,
+}
+
+impl SaveFormat {
+    pub const ALL: &'static [Self] = &[
+        Self::Png,
+        Self::Jpeg,
+        Self::WebP,
+        Self::Bmp,
+        Self::Gif,
+        Self::Tiff,
+        Self::Tga,
+        Self::Ico,
+        Self::Icns,
+        Self::Qoi,
+        Self::Pnm,
+        Self::Farbfeld,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Png => "PNG image",
+            Self::Jpeg => "JPEG image",
+            Self::WebP => "WebP image",
+            Self::Bmp => "Bitmap image",
+            Self::Gif => "GIF image",
+            Self::Tiff => "TIFF image",
+            Self::Tga => "Targa image",
+            Self::Ico => "Windows icon",
+            Self::Icns => "Apple icon",
+            Self::Qoi => "Quite OK Image",
+            Self::Pnm => "Portable anymap",
+            Self::Farbfeld => "Farbfeld image",
+        }
+    }
+
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Png => "png",
+            Self::Jpeg => "jpg",
+            Self::WebP => "webp",
+            Self::Bmp => "bmp",
+            Self::Gif => "gif",
+            Self::Tiff => "tiff",
+            Self::Tga => "tga",
+            Self::Ico => "ico",
+            Self::Icns => "icns",
+            Self::Qoi => "qoi",
+            Self::Pnm => "pam",
+            Self::Farbfeld => "ff",
+        }
+    }
+
+    pub const fn extensions(self) -> &'static [&'static str] {
+        match self {
+            Self::Png => &["png"],
+            Self::Jpeg => &["jpg", "jpeg"],
+            Self::WebP => &["webp"],
+            Self::Bmp => &["bmp"],
+            Self::Gif => &["gif"],
+            Self::Tiff => &["tif", "tiff"],
+            Self::Tga => &["tga"],
+            Self::Ico => &["ico"],
+            Self::Icns => &["icns"],
+            Self::Qoi => &["qoi"],
+            Self::Pnm => &["pam", "pbm", "pgm", "pnm", "ppm"],
+            Self::Farbfeld => &["ff"],
+        }
+    }
+
+    pub fn from_path(path: &Path) -> Option<Self> {
+        let extension = extension(path)?;
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|format| format.extensions().contains(&extension.as_str()))
+    }
+
+    fn image_format(self) -> Option<image::ImageFormat> {
+        Some(match self {
+            Self::Png => image::ImageFormat::Png,
+            Self::Jpeg => image::ImageFormat::Jpeg,
+            Self::WebP => image::ImageFormat::WebP,
+            Self::Bmp => image::ImageFormat::Bmp,
+            Self::Gif => image::ImageFormat::Gif,
+            Self::Tiff => image::ImageFormat::Tiff,
+            Self::Tga => image::ImageFormat::Tga,
+            Self::Ico => image::ImageFormat::Ico,
+            Self::Icns => return None,
+            Self::Qoi => image::ImageFormat::Qoi,
+            Self::Pnm => image::ImageFormat::Pnm,
+            Self::Farbfeld => image::ImageFormat::Farbfeld,
+        })
+    }
+}
+
+impl fmt::Display for SaveFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} (.{})", self.label(), self.extension())
+    }
+}
 
 pub fn load(path: &Path) -> Result<Rgba8, String> {
     image_extras::register();
@@ -40,33 +155,49 @@ pub fn load(path: &Path) -> Result<Rgba8, String> {
 }
 
 pub fn save(pixels: &Rgba8, path: &Path) -> Result<(), String> {
-    let (w, h) = pixels.size();
-    let buffer = image::RgbaImage::from_raw(w, h, pixels.as_bytes().to_vec())
-        .ok_or("image has an impossible size")?;
-
-    if flattens_alpha(path) {
-        let flattened = flatten_onto_white(&buffer);
-        flattened.save(path)
-    } else {
-        buffer.save(path)
-    }
-    .map_err(|e| format!("cannot save {}: {e}", path.display()))
+    let format = SaveFormat::from_path(path)
+        .ok_or_else(|| format!("cannot save {}: unsupported file format", path.display()))?;
+    save_as(pixels, path, format)
 }
 
-pub fn flattens_alpha(path: &Path) -> bool {
-    matches!(extension(path).as_deref(), Some("jpg" | "jpeg"))
+pub fn save_as(pixels: &Rgba8, path: &Path, format: SaveFormat) -> Result<(), String> {
+    if format == SaveFormat::Icns {
+        return save_icns(pixels, path);
+    }
+
+    let (w, h) = pixels.size();
+    if format == SaveFormat::Ico && (w > 256 || h > 256) {
+        return Err(format!(
+            "cannot save {}: ICO dimensions must be at most 256 x 256 pixels",
+            path.display()
+        ));
+    }
+    let buffer = image::RgbaImage::from_raw(w, h, pixels.as_bytes().to_vec())
+        .ok_or("image has an impossible size")?;
+    let image_format = format.image_format().expect("non-ICNS format");
+
+    if format == SaveFormat::Farbfeld {
+        image::DynamicImage::ImageRgba8(buffer)
+            .to_rgba16()
+            .save_with_format(path, image_format)
+    } else if format == SaveFormat::Jpeg {
+        let flattened = flatten_onto_white(&buffer);
+        flattened.save_with_format(path, image_format)
+    } else {
+        buffer.save_with_format(path, image_format)
+    }
+    .map_err(|e| format!("cannot save {}: {e}", path.display()))
 }
 
 pub fn extension(path: &Path) -> Option<String> {
     path.extension().map(|e| e.to_string_lossy().to_lowercase())
 }
 
-pub fn with_default_extension(path: PathBuf) -> PathBuf {
-    if path.extension().is_some() {
-        path
-    } else {
-        path.with_extension("png")
+pub fn with_extension(mut path: PathBuf, format: SaveFormat) -> PathBuf {
+    if SaveFormat::from_path(&path) != Some(format) {
+        path.set_extension(format.extension());
     }
+    path
 }
 
 fn has_header(path: &Path, expected: &[u8]) -> Result<bool, String> {
@@ -96,6 +227,20 @@ fn load_icns(path: &Path) -> Result<Rgba8, String> {
         .ok_or_else(|| "image has an impossible size".into())
 }
 
+fn save_icns(pixels: &Rgba8, path: &Path) -> Result<(), String> {
+    let (w, h) = pixels.size();
+    let image = icns::Image::from_data(icns::PixelFormat::RGBA, w, h, pixels.as_bytes().to_vec())
+        .map_err(|e| format!("cannot save {}: {e}", path.display()))?;
+    let mut family = icns::IconFamily::new();
+    family
+        .add_icon(&image)
+        .map_err(|e| format!("cannot save {}: {e}", path.display()))?;
+    let file = File::create(path).map_err(|e| format!("cannot save {}: {e}", path.display()))?;
+    family
+        .write(BufWriter::new(file))
+        .map_err(|e| format!("cannot save {}: {e}", path.display()))
+}
+
 fn flatten_onto_white(src: &image::RgbaImage) -> image::RgbImage {
     let mut out = image::RgbImage::new(src.width(), src.height());
     for (dst, px) in out.pixels_mut().zip(src.pixels()) {
@@ -116,8 +261,7 @@ mod tests {
         dir.join(name)
     }
 
-    fn sample() -> Rgba8 {
-        let (w, h) = (16u32, 8u32);
+    fn sample_sized(w: u32, h: u32) -> Rgba8 {
         let mut px = Vec::with_capacity((w * h) as usize * 4);
         for y in 0..h {
             for x in 0..w {
@@ -126,6 +270,10 @@ mod tests {
             }
         }
         Rgba8::from_raw(w, h, px).unwrap()
+    }
+
+    fn sample() -> Rgba8 {
+        sample_sized(16, 8)
     }
 
     #[test]
@@ -142,7 +290,6 @@ mod tests {
     #[test]
     fn jpeg_flattens_transparency_onto_white() {
         let path = scratch("flattened.jpg");
-        assert!(flattens_alpha(&path));
         save(&sample(), &path).unwrap();
 
         let reloaded = load(&path).unwrap();
@@ -179,6 +326,33 @@ mod tests {
     }
 
     #[test]
+    fn the_selected_save_format_wins_over_the_old_extension() {
+        let path = scratch("converted.jpg");
+        save_as(&sample(), &path, SaveFormat::Png).unwrap();
+
+        let bytes = std::fs::read(path).unwrap();
+        assert_eq!(
+            image::guess_format(&bytes).unwrap(),
+            image::ImageFormat::Png
+        );
+    }
+
+    #[test]
+    fn icon_formats_are_detected_from_their_headers() {
+        let original = sample_sized(16, 16);
+        for (name, format) in [
+            ("windows-icon.data", SaveFormat::Ico),
+            ("apple-icon.data", SaveFormat::Icns),
+        ] {
+            let path = scratch(name);
+            save_as(&original, &path, format).unwrap();
+            let reloaded = load(&path).unwrap();
+            assert_eq!(reloaded.size(), original.size(), "{format}");
+            assert_eq!(reloaded.as_bytes(), original.as_bytes(), "{format}");
+        }
+    }
+
+    #[test]
     fn extra_formats_use_their_headers_when_available() {
         let path = scratch("xpm-without-extension.data");
         std::fs::write(
@@ -191,6 +365,17 @@ mod tests {
         assert_eq!(loaded.size(), (2, 1));
         assert_eq!(&loaded.as_bytes()[..4], &[255, 0, 0, 255]);
         assert_eq!(&loaded.as_bytes()[4..], &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn every_listed_save_format_can_be_opened_again() {
+        let original = sample_sized(16, 16);
+        for &format in SaveFormat::ALL {
+            let path = scratch(&format!("save-format.{}", format.extension()));
+            save_as(&original, &path, format).unwrap_or_else(|e| panic!("{format}: {e}"));
+            let reloaded = load(&path).unwrap_or_else(|e| panic!("{format}: {e}"));
+            assert_eq!(reloaded.size(), original.size(), "{format}");
+        }
     }
 
     #[test]
@@ -225,14 +410,18 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_extension_becomes_png() {
+    fn the_selected_format_supplies_a_matching_extension() {
         assert_eq!(
-            with_default_extension("shot".into()),
+            with_extension("shot".into(), SaveFormat::Png),
             PathBuf::from("shot.png")
         );
         assert_eq!(
-            with_default_extension("shot.bmp".into()),
-            PathBuf::from("shot.bmp")
+            with_extension("shot.jpeg".into(), SaveFormat::Jpeg),
+            PathBuf::from("shot.jpeg")
+        );
+        assert_eq!(
+            with_extension("shot.jpg".into(), SaveFormat::Png),
+            PathBuf::from("shot.png")
         );
     }
 }

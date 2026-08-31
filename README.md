@@ -20,6 +20,8 @@ It's usable for everyday edits. It includes brushes, erasing, fill, colour picki
 
 It also has some QoL features like dark mode, editable curve and shape points, and a configurable new-canvas size. Things I wished Paint3D would've had. I also gave it a theme of its own, but the old colour scheme is also available.
 
+It detects image types from their contents, opens several icon and obscure bitmap formats, and Save as can convert between the formats it writes.
+
 ## Screenshots
 
 | Classic Light | Rusty Dark |

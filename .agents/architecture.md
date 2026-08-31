@@ -71,6 +71,10 @@ the standard codecs, `image-extras` registers the read-only obscure codecs, and 
 directly so its largest embedded icon can also be decoded when it uses JPEG 2000. Multi-image files
 still enter the single-canvas document as one image.
 
+`doc::io::SaveFormat` is the source of truth for Save As choices, extensions, and encoders. The
+selected format overrides an old filename extension, and the native dialog receives a matching
+default name and filter so Linux and macOS do not need to report which filter was selected.
+
 ## Compatibility
 
 Configuration is a small TOML file with defaults for every field. Older files must continue to load,
