@@ -980,6 +980,7 @@ impl App {
                 self.dirty = None;
                 self.panel.sync(self.doc.size());
                 self.status.clear();
+                self.menu = None;
             }
             Message::Opened(Err(e)) => self.status = e,
 
@@ -6121,6 +6122,25 @@ mod tests {
             "the old document's paste came with it"
         );
         assert!(app.grab.is_none());
+    }
+
+    #[test]
+    fn opening_a_file_from_the_menu_returns_to_the_canvas() {
+        let mut app = app(32, 32);
+        send(&mut app, Message::MenuOpened);
+        send(&mut app, Message::MenuPagePicked(MenuPage::Open));
+        send(&mut app, Message::OpenRequested);
+        assert_eq!(app.menu, Some(MenuPage::Open));
+
+        send(
+            &mut app,
+            Message::Opened(Ok((
+                PathBuf::from("/tmp/opened.png"),
+                Rgba8::new(40, 20, RED),
+            ))),
+        );
+
+        assert!(app.menu.is_none());
     }
 
     #[test]
