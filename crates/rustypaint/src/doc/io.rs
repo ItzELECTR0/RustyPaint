@@ -1,12 +1,23 @@
 use super::Rgba8;
 use image::ImageDecoder;
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
-pub const READABLE: &[&str] = &["png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "webp"];
+pub const READABLE: &[&str] = &[
+    "png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "webp", "dds", "exr", "ff", "hdr", "ico",
+    "pam", "pbm", "pgm", "pnm", "ppm", "qoi", "tga", "icns", "ora", "otb", "pcx", "sgi", "iris",
+    "rgb", "rgba", "bw", "wbmp", "xbm", "bm", "xpm",
+];
 
 pub const WRITABLE: &[&str] = &["png", "jpg", "jpeg", "bmp", "tif", "tiff"];
 
 pub fn load(path: &Path) -> Result<Rgba8, String> {
+    image_extras::register();
+    if has_header(path, b"icns")? {
+        return load_icns(path);
+    }
+
     let reader = image::ImageReader::open(path)
         .map_err(|e| format!("cannot open {}: {e}", path.display()))?
         .with_guessed_format()
@@ -56,6 +67,33 @@ pub fn with_default_extension(path: PathBuf) -> PathBuf {
     } else {
         path.with_extension("png")
     }
+}
+
+fn has_header(path: &Path, expected: &[u8]) -> Result<bool, String> {
+    let mut file = File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    let mut header = vec![0; expected.len()];
+    let read = file
+        .read(&mut header)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    Ok(read == expected.len() && header == expected)
+}
+
+fn load_icns(path: &Path) -> Result<Rgba8, String> {
+    let name = path.file_name().unwrap_or_default().display().to_string();
+    let file = File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    let family = icns::IconFamily::read(BufReader::new(file))
+        .map_err(|e| format!("cannot open {name}: {e}"))?;
+    let icon_type = family
+        .available_icons()
+        .into_iter()
+        .max_by_key(|kind| kind.pixel_width() * kind.pixel_height())
+        .ok_or_else(|| format!("cannot open {name}: icon file contains no images"))?;
+    let image = family
+        .get_icon_with_type(icon_type)
+        .map_err(|e| format!("cannot open {name}: {e}"))?
+        .convert_to(icns::PixelFormat::RGBA);
+    Rgba8::from_raw(image.width(), image.height(), image.into_data().into_vec())
+        .ok_or_else(|| "image has an impossible size".into())
 }
 
 fn flatten_onto_white(src: &image::RgbaImage) -> image::RgbImage {
@@ -138,6 +176,21 @@ mod tests {
 
         let loaded = load(&liar).expect("a mislabelled WebP should still open");
         assert_eq!(loaded.size(), original.size());
+    }
+
+    #[test]
+    fn extra_formats_use_their_headers_when_available() {
+        let path = scratch("xpm-without-extension.data");
+        std::fs::write(
+            &path,
+            b"/* XPM */\nstatic char *icon[] = {\n\"2 1 2 1\",\n\". c #ff0000\",\n\"  c None\",\n\". \"\n};\n",
+        )
+        .unwrap();
+
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.size(), (2, 1));
+        assert_eq!(&loaded.as_bytes()[..4], &[255, 0, 0, 255]);
+        assert_eq!(&loaded.as_bytes()[4..], &[0, 0, 0, 0]);
     }
 
     #[test]

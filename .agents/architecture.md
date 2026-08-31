@@ -64,6 +64,13 @@ drag events out to every one of a client's data devices, wlroots among them, del
 Hyprland instead routes to the client's first data device only, which `iced` claims for
 smithay-clipboard when it opens the window, so drops never arrive there.
 
+## Image files
+
+Opening guesses the format from the file header before falling back to its extension. `image` owns
+the standard codecs, `image-extras` registers the read-only obscure codecs, and ICNS is handled
+directly so its largest embedded icon can also be decoded when it uses JPEG 2000. Multi-image files
+still enter the single-canvas document as one image.
+
 ## Compatibility
 
 Configuration is a small TOML file with defaults for every field. Older files must continue to load,
