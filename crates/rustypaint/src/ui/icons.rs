@@ -42,6 +42,8 @@ pub const BACK: &[u8] = ui_icon!("back");
 pub const NEW: &[u8] = ui_icon!("new");
 pub const INSERT: &[u8] = ui_icon!("insert");
 pub const SETTINGS: &[u8] = ui_icon!("settings");
+pub const ABOUT: &[u8] = ui_icon!("about");
+pub const LINK: &[u8] = ui_icon!("link");
 pub const IMAGE: &[u8] = ui_icon!("image");
 
 pub fn for_tool(tool: crate::paint::Tool) -> &'static [u8] {

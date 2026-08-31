@@ -17,6 +17,9 @@ pub const APP_ICON_PNG: &[u8] = include_bytes!(concat!(
     "/../../res/icons/icon-256.png"
 ));
 
+pub const APP_ICON_SVG: &[u8] =
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../res/icon.svg"));
+
 pub const LASSO_SVG: &[u8] =
     include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../res/lasso.svg"));
 

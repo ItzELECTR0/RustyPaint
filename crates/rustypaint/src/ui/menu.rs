@@ -9,17 +9,21 @@ use iced::{Element, Length, Size};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
+    About,
     Open,
     SaveAs,
     Settings,
 }
+
+const ISSUES_URL: &str = "https://github.com/ItzELECTR0/RustyPaint/issues";
+const REPO_URL: &str = "https://github.com/ItzELECTR0/RustyPaint";
 
 const RAIL: f32 = 250.0;
 const ITEM: f32 = 38.0;
 const MARKER: f32 = 3.0;
 
 pub fn view<'a>(
-    page: Option<Page>,
+    page: Page,
     title: &'a str,
     modified: bool,
     config: &Config,
@@ -74,14 +78,21 @@ pub fn view<'a>(
             page,
             Message::MenuPagePicked(Page::Settings),
         ),
+        item(
+            icons::ABOUT,
+            "About",
+            Some(Page::About),
+            page,
+            Message::MenuPagePicked(Page::About),
+        ),
         Space::new().height(Length::Fixed(12.0)),
     ];
 
     let pane: Element<'_, Message> = match page {
-        None => Space::new().into(),
-        Some(Page::Open) => pane_open(),
-        Some(Page::SaveAs) => pane_save_as(),
-        Some(Page::Settings) => pane_settings(config, viewport, custom),
+        Page::About => pane_about(),
+        Page::Open => pane_open(),
+        Page::SaveAs => pane_save_as(),
+        Page::Settings => pane_settings(config, viewport, custom),
     };
 
     row![
@@ -113,10 +124,10 @@ fn item<'a>(
     drawing: &'static [u8],
     label: &'a str,
     page: Option<Page>,
-    open: Option<Page>,
+    open: Page,
     press: Message,
 ) -> Element<'a, Message> {
-    let active = page.is_some() && page == open;
+    let active = page == Some(open);
     let marker = container(
         Space::new()
             .width(Length::Fixed(MARKER))
@@ -278,23 +289,88 @@ fn pane_settings<'a>(
             .on_toggle(Message::DecorationsToggled),
     ]
     .spacing(8)
-    .width(Length::FillPortion(3));
+    .max_width(760.0);
 
-    let about = column![
-        text("About").size(22).color(theme::colours().text),
-        text("RustyPaint, Paint 3D's 2D editor without the 3D.")
-            .size(12)
+    scrollable(options).height(Length::Fill).into()
+}
+
+fn pane_about<'a>() -> Element<'a, Message> {
+    let credit = column![
+        text("Made by ELECTRO")
+            .size(13)
+            .center()
             .color(theme::colours().text_dim),
-        text(env!("CARGO_PKG_VERSION"))
-            .size(12)
-            .color(theme::colours().text_dim),
+        link("Source on GitHub", REPO_URL),
     ]
-    .spacing(4)
-    .width(Length::FillPortion(2));
+    .spacing(6)
+    .align_x(iced::Alignment::Center);
 
-    row![scrollable(options).height(Length::Fill), about]
-        .spacing(40)
-        .into()
+    crate::ui::centred(
+        column![
+            icons::art(crate::assets::APP_ICON_SVG, 96.0, None),
+            Space::new().height(Length::Fixed(10.0)),
+            text("RustyPaint")
+                .size(28)
+                .center()
+                .color(theme::colours().text),
+            text("Paint 3D's 2D editor without the 3D.")
+                .size(13)
+                .center()
+                .color(theme::colours().text_dim),
+            text(concat!("Version ", env!("CARGO_PKG_VERSION")))
+                .size(12)
+                .center()
+                .color(theme::colours().text_dim),
+            Space::new().height(Length::Fixed(18.0)),
+            text("Something broken, or something missing?")
+                .size(13)
+                .center()
+                .color(theme::colours().text),
+            link("Report a problem or ask for a feature", ISSUES_URL),
+            Space::new().height(Length::Fixed(18.0)),
+            credit,
+        ]
+        .spacing(6)
+        .max_width(420.0)
+        .align_x(iced::Alignment::Center),
+    )
+}
+
+fn link<'a>(label: &'a str, url: &'static str) -> Element<'a, Message> {
+    button(
+        row![
+            icon(icons::LINK, 13.0, theme::colours().text),
+            text(label).size(13),
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center),
+    )
+    .height(Length::Fixed(30.0))
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 14.0,
+        bottom: 0.0,
+        left: 14.0,
+    })
+    .style(|_theme, status| button::Style {
+        background: Some(
+            if matches!(status, button::Status::Hovered) {
+                theme::colours().control_hover
+            } else {
+                theme::colours().control
+            }
+            .into(),
+        ),
+        text_color: theme::colours().text,
+        border: iced::Border {
+            color: theme::colours().border,
+            width: 1.0,
+            radius: 15.0.into(),
+        },
+        ..Default::default()
+    })
+    .on_press(Message::LinkOpened(url))
+    .into()
 }
 
 fn fit_default() -> Message {

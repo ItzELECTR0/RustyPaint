@@ -410,7 +410,7 @@ pub struct App {
     stashed_tool: Tool,
     resize_preview: Option<(u32, u32)>,
     dirty: Option<(Version, Rect)>,
-    menu: Option<Option<MenuPage>>,
+    menu: Option<MenuPage>,
     config: Config,
     config_path: Option<PathBuf>,
     custom_canvas: (String, String),
@@ -539,6 +539,7 @@ pub enum Message {
     MenuOpened,
     MenuClosed,
     MenuPagePicked(MenuPage),
+    LinkOpened(&'static str),
     NewRequested,
     ThemePicked(Choice),
     AccentPicked(Scheme),
@@ -1435,10 +1436,15 @@ impl App {
             }
             Message::MenuOpened => {
                 self.commit_floating();
-                self.menu = Some(None);
+                self.menu = Some(MenuPage::About);
             }
             Message::MenuClosed => self.menu = None,
-            Message::MenuPagePicked(page) => self.menu = Some(Some(page)),
+            Message::MenuPagePicked(page) => self.menu = Some(page),
+            Message::LinkOpened(url) => {
+                if let Err(e) = open_link(url) {
+                    self.status = e;
+                }
+            }
             Message::NewRequested => return self.discarding(Pending::Blank),
             Message::DiscardAnswered(answer) => {
                 let Some(pending) = self.asking.take() else {
@@ -3093,6 +3099,30 @@ fn typing(event: iced::keyboard::Event) -> Option<Message> {
             (!c.is_control()).then_some(Message::TextEdited(TextAction::Insert(c)))
         }
     }
+}
+
+fn open_link(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/c", "start", ""]);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let mut command = std::process::Command::new("xdg-open");
+
+    let child = command
+        .arg(url)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("cannot open {url}: {e}"))?;
+
+    // The opener hands off to the browser and exits, so reap it off the UI thread.
+    std::thread::spawn(move || drop(child.wait_with_output()));
+    Ok(())
 }
 
 async fn load(path: PathBuf) -> Result<(PathBuf, Rgba8), String> {
@@ -5415,9 +5445,9 @@ mod tests {
         let mut app = app(200, 200);
         assert!(app.menu.is_none());
         send(&mut app, Message::MenuOpened);
-        assert_eq!(app.menu, Some(None), "open, on no page in particular");
+        assert_eq!(app.menu, Some(MenuPage::About), "open, on the About page");
         send(&mut app, Message::MenuPagePicked(MenuPage::Settings));
-        assert_eq!(app.menu, Some(Some(MenuPage::Settings)));
+        assert_eq!(app.menu, Some(MenuPage::Settings));
         send(&mut app, Message::MenuClosed);
         assert!(app.menu.is_none());
     }

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- A box with an arrow leaving it. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 17 6 H 5.5 V 26.5 H 26 V 15"/>
+    <path d="M 19 4.5 H 27.5 V 13"/>
+    <path d="M 27.5 4.5 L 15 17"/>
+  </g>
+</svg>
