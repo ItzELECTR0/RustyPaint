@@ -338,12 +338,15 @@ fn pane_about<'a>() -> Element<'a, Message> {
 
 fn link<'a>(label: &'a str, url: &'static str) -> Element<'a, Message> {
     button(
-        row![
-            icon(icons::LINK, 13.0, theme::colours().text),
-            text(label).size(13),
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center),
+        container(
+            row![
+                icon(icons::LINK, 13.0, theme::colours().text),
+                text(label).size(13),
+            ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center),
+        )
+        .center_y(Length::Fill),
     )
     .height(Length::Fixed(30.0))
     .padding(iced::Padding {
