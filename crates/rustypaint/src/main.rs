@@ -15,6 +15,7 @@ mod ui;
 use app::{App, Message};
 use iced::{Element, Renderer, Theme};
 
+#[cfg(target_os = "linux")]
 const APP_ID: &str = "net.electris.RustyPaint";
 
 fn view(app: &App) -> Element<'_, Message, Theme, Renderer> {
