@@ -17,13 +17,20 @@ use super::*;
 
 impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        let task = self.dispatch(message);
+        Task::batch([task, self.snapshot()])
+    }
+
+    fn dispatch(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::SnapshotTick => {
-                self.sweep_parked();
-                return self.snapshot();
+            Message::SnapshotTick => return self.snapshot(),
+            Message::Snapshotted(at, result) => {
+                self.snapshotting = false;
+                match result {
+                    Ok(()) => self.snapshotted = Some(at),
+                    Err(e) => self.status = e,
+                }
             }
-            Message::Snapshotted(at, Ok(())) => self.snapshotted = Some(at),
-            Message::Snapshotted(_, Err(e)) => self.status = e,
             Message::RecoveryAnswered(restore) => {
                 self.offering = false;
                 if self.recovered.is_empty() {
@@ -50,6 +57,20 @@ impl App {
             Message::ParkedSnapshotted(Err(e)) => self.status = e,
             Message::ParkedSnapshotted(Ok(())) => {}
             Message::TabSelected(tab) => return self.switch_to(tab),
+            Message::TabMenuOpened(tab) => self.tab_menu = Some(tab),
+            Message::TabMenuClosed => self.tab_menu = None,
+            Message::TabMenuPicked(action) => {
+                let Some(tab) = self.tab_menu.take() else {
+                    return Task::none();
+                };
+                let switch = self.switch_to(tab);
+                let then = match action {
+                    TabAction::Save => self.save(),
+                    TabAction::Copy => self.dispatch(Message::CopyCanvas),
+                    TabAction::Close => self.dispatch(Message::TabCloseRequested),
+                };
+                return Task::batch([switch, then]);
+            }
             Message::TabCloseRequested => return self.update(Message::TabClosed(self.active)),
             Message::TabStepped(by) => {
                 let count = self.sheets() as i32;
@@ -98,7 +119,7 @@ impl App {
                 self.doc.mark_saved();
                 self.doc.path = Some(path);
                 self.status.clear();
-                self.forget_snapshot();
+                self.record_session();
                 if let Some(pending) = self.after_save.take() {
                     return self.carry_on(pending);
                 }
@@ -145,6 +166,15 @@ impl App {
 
             Message::ModifiersChanged(mods) => self.mods = mods,
 
+            // The whole canvas as it stands, so it can be pasted into another tab. Anything still
+            // floating is deliberately left out: it is not part of the picture yet.
+            Message::CopyCanvas => {
+                let pixels = self.doc.flattened();
+                self.last_copy = Some(fingerprint(&pixels));
+                if let Err(e) = doc::clipboard::copy(&pixels) {
+                    self.status = e;
+                }
+            }
             Message::Cut | Message::Copy => {
                 if self.typing() {
                     self.copy_selected_text(matches!(message, Message::Cut));
@@ -182,6 +212,7 @@ impl App {
                 let (w, h) = self.doc.size();
                 self.begin_float_from(Rect::new(0, 0, w, h), None);
             }
+            Message::Deselect if self.tab_menu.is_some() => self.tab_menu = None,
             Message::Deselect => {
                 if self.cutting_out.take().is_some() || self.cropping.take().is_some() {
                     self.float_version += 1;
@@ -592,7 +623,14 @@ impl App {
                     return Task::none();
                 };
                 match answer {
-                    Discard::Throw => return self.carry_on(pending),
+                    Discard::Throw => {
+                        // Work thrown away on purpose is not work to come back to.
+                        if pending == Pending::Close {
+                            self.forget_session();
+                        }
+                        return self.carry_on(pending);
+                    }
+                    Discard::Session => return self.carry_on(pending),
                     Discard::Save => {
                         self.after_save = Some(pending);
                         return self.save();

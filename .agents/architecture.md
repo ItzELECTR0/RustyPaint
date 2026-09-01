@@ -44,6 +44,77 @@ untouched blank canvas is treated as a slot rather than as work, so the first fi
 over instead of leaving an empty tab behind. Closing a tab switches to it first, which is what lets
 the save prompt act on the right document without a second code path.
 
+Each sheet owns a slot in the session rather than a session of its own. A parked sheet cannot
+change, so it is snapshotted once as it is parked and left alone after that. Closing the window with
+unsaved work in a parked tab leaves the session behind on purpose: the next launch offers it back.
+
+A tab's context menu is anchored by rebuilding the strip's own layout with the card in one slot,
+because a right press reports no position to place it at.
+
+## Unsaved work
+
+There is no stored "modified" flag. Every history entry carries a serial, the current position names
+the state the canvas is in, and a save records that name; the document is modified when the position
+has a different name, so undoing back to what is on disk really is no change. A serial from a
+discarded redo branch or from an entry trimmed off the bottom can never be reached again, which is
+what should happen. Between an edit and the commit that files it the canvas is ahead of its history,
+so `touched` covers that gap and a commit clears it. A commit whose region comes out byte for byte
+the same records nothing at all.
+
+Anything that would throw away unsaved work goes through one in-window dialog rather than an OS
+message box, which on Linux costs a portal round trip the editor should not have to wait for. New,
+Open and closing the window all raise the same question and share the answer, and `confirm_discard`
+turns the question off for people who would rather not be asked.
+
+## Crash recovery
+
+A running editor is a session, and the session is every picture it has open. `recovery/<session>/`
+holds one PNG per unsaved document, plus `session.toml` naming the tab order, which tab was in
+front, and which documents were at risk. Saved pictures are listed but not copied, because their
+pixels are already on disk; they come back off their own path. Restoring reopens the whole
+workspace, tab by tab, in the order it was left in.
+
+The PNGs are the documents rather than the flattened pictures `for_saving` produces, so a restore
+puts back exactly what was on screen, live object committed and all.
+
+A crashed session is told from a running one by a lock, not by a clock. The editor holds an
+exclusive lock on `<session>/lock` for as long as it lives, and the kernel drops that lock however
+the process dies, a kill included. A session whose lock can be taken belongs to an editor that is
+gone, so work is offered back the instant the next launch happens rather than after a timeout. A
+filesystem that cannot lock at all counts as not running, because refusing to offer the work would
+be the worse failure. A session nobody had unsaved work in is cleared rather than offered: that is a
+workspace, not a rescue.
+
+Snapshots ride along with the work rather than waiting for a timer. Every message ends with a check,
+and a write goes out as soon as the document differs from what was last written. `SNAPSHOT_GAP` is
+the shortest gap between two writes, so a long brush stroke cannot keep the encoder busy end to end,
+and one in-flight write at a time means a slow disk applies backpressure instead of queueing. The
+beat still runs to catch whatever the gap held back.
+
+The index is the tab order, so `write_index` deletes the pixels of any slot no longer in it. Saving
+rewrites the index, which is what drops a saved document's copy.
+
+Discarding on the way out clears the whole session and puts recovery down with it, because work
+thrown away on purpose is not work to restore. Keeping the session is the separate answer for
+leaving everything to be picked up next time.
+
+## Several documents
+
+The open document's state stays on `App` itself, so every tool keeps reaching for `self.doc` and
+friends directly. Other open documents are parked as `Sheet` values and swapped in whole. `collapse`
+puts the open document back into the tab order and hands over the full list; `expand` takes one back
+out. Every tab operation is written as collapse, change the list, expand, so the ordering rules live
+in one place instead of being spread through index arithmetic.
+
+`open_in` decides whether a second document joins this window or gets its own. A window is a second
+process rather than a second iced window, which keeps the single-window shell and gives each
+document its own crash-recovery identity for free.
+
+New and Open no longer replace what is open, so neither one can throw work away and neither asks. An
+untouched blank canvas is treated as a slot rather than as work, so the first file opened takes it
+over instead of leaving an empty tab behind. Closing a tab switches to it first, which is what lets
+the save prompt act on the right document without a second code path.
+
 Each sheet carries its own recovery identity and its own lock, so a parked tab is still visibly
 owned by this editor. A parked sheet cannot change, so it is snapshotted once as it is parked and
 afterwards only swept when its work reaches disk. Closing the window with unsaved work in a parked

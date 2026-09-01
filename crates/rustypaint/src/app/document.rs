@@ -107,65 +107,80 @@ impl App {
     }
 
     pub(super) fn snapshot_parked(&self, sheet: &Sheet) -> Task<Message> {
-        let Some(dir) = self.recovery.clone() else {
+        let Some(root) = self.recovery.clone() else {
             return Task::none();
         };
-        let id = sheet.recovery_id.clone();
         if !sheet.unsaved() {
-            doc::recovery::clear(&dir, &id);
             return Task::none();
         }
-
+        let (id, slot) = (self.session.clone(), sheet.slot.clone());
         let pixels = sheet.for_recovery();
-        let path = sheet.doc.path.clone();
-        let transparent = sheet.doc.transparent;
         Task::perform(
-            async move { doc::recovery::write(&dir, &id, &pixels, path.as_deref(), transparent) },
+            async move { doc::recovery::write_document(&root, &id, &slot, &pixels) },
             Message::ParkedSnapshotted,
         )
     }
 
-    // A parked sheet cannot change, so its snapshot is written once as it is parked. All that is
-    // left is dropping the ones whose work has since reached disk.
-    pub(super) fn sweep_parked(&self) {
-        let Some(dir) = &self.recovery else {
+    // The index is the tab order, so it is rewritten whenever that order changes.
+    pub(super) fn record_session(&self) {
+        let Some(root) = &self.recovery else {
             return;
         };
-        for sheet in &self.parked {
-            if !sheet.unsaved() {
-                doc::recovery::clear(dir, &sheet.recovery_id);
-            }
-        }
+        let open: Vec<doc::recovery::Open> = (0..self.sheets())
+            .map(|tab| match self.parked_at(tab) {
+                None => doc::recovery::Open {
+                    slot: self.slot.clone(),
+                    path: self.doc.path.clone(),
+                    transparent: self.doc.transparent,
+                    unsaved: self.unsaved(),
+                },
+                Some(i) => {
+                    let sheet = &self.parked[i];
+                    doc::recovery::Open {
+                        slot: sheet.slot.clone(),
+                        path: sheet.doc.path.clone(),
+                        transparent: sheet.doc.transparent,
+                        unsaved: sheet.unsaved(),
+                    }
+                }
+            })
+            .collect();
+        let _ = doc::recovery::write_index(root, &self.session, &open, self.active);
     }
 
     pub(super) fn snapshot(&mut self) -> Task<Message> {
-        let Some(dir) = self.recovery.clone() else {
+        let Some(root) = self.recovery.clone() else {
             return Task::none();
         };
-        let id = self.recovery_id.clone();
-        if !self.unsaved() {
-            doc::recovery::clear(&dir, &id);
-            self.snapshotted = None;
-            return Task::none();
+        // The index says which pictures were at risk, so it is rewritten the moment that changes.
+        if self.recorded_unsaved != self.unsaved() {
+            self.recorded_unsaved = self.unsaved();
+            self.record_session();
         }
 
         let at = (self.doc.version(), self.float_version);
-        if self.snapshotted == Some(at) {
+        if !self.unsaved() || self.snapshotted == Some(at) || self.snapshotting {
+            return Task::none();
+        }
+        if self.last_snapshot.elapsed() < doc::recovery::SNAPSHOT_GAP {
             return Task::none();
         }
 
+        self.snapshotting = true;
+        self.last_snapshot = Instant::now();
+        let (id, slot) = (self.session.clone(), self.slot.clone());
         let pixels = self.for_recovery();
-        let path = self.doc.path.clone();
-        let transparent = self.doc.transparent;
         Task::perform(
-            async move { doc::recovery::write(&dir, &id, &pixels, path.as_deref(), transparent) },
+            async move { doc::recovery::write_document(&root, &id, &slot, &pixels) },
             move |result| Message::Snapshotted(at, result),
         )
     }
 
-    pub(super) fn forget_snapshot(&mut self) {
-        if let Some(dir) = &self.recovery {
-            doc::recovery::clear(dir, &self.recovery_id);
+    // The whole session goes: work thrown away on purpose is not work to restore. Recovery is put
+    // down with it so nothing on the way out writes the session back.
+    pub(super) fn forget_session(&mut self) {
+        if let Some(root) = self.recovery.take() {
+            doc::recovery::clear(&root, &self.session);
         }
         self.snapshotted = None;
     }
@@ -191,6 +206,7 @@ impl App {
         let at = sheets.len();
         sheets.push(sheet);
         self.expand(sheets, at);
+        self.record_session();
         leaving
     }
 
@@ -215,6 +231,7 @@ impl App {
         let sheets = self.collapse();
         let leaving = self.snapshot_parked(&sheets[self.active.min(sheets.len() - 1)]);
         self.expand(sheets, tab);
+        self.record_session();
         leaving
     }
 
@@ -224,13 +241,10 @@ impl App {
             self.expand(sheets, self.active);
             return Task::none();
         }
-        let gone = sheets.remove(self.active);
-        drop(gone.recovery_lock);
-        if let Some(dir) = &self.recovery {
-            doc::recovery::clear(dir, &gone.recovery_id);
-        }
+        sheets.remove(self.active);
         let next = self.active.min(sheets.len() - 1);
         self.expand(sheets, next);
+        self.record_session();
         Task::none()
     }
 
@@ -253,14 +267,24 @@ impl App {
         }
     }
 
-    pub(super) fn restore(&mut self, found: doc::recovery::Recovered) -> Task<Message> {
-        let format = found
-            .path
-            .as_deref()
-            .and_then(doc::io::SaveFormat::from_path)
-            .unwrap_or_default();
-        let doc = Document::recovered(found.pixels, found.path, found.transparent);
-        self.open_document(doc, format)
+    pub(super) fn restore(&mut self, session: doc::recovery::Session) -> Task<Message> {
+        let mut tasks = Vec::new();
+        let active = session.active;
+        for one in session.documents {
+            let format = one
+                .path
+                .as_deref()
+                .and_then(doc::io::SaveFormat::from_path)
+                .unwrap_or_default();
+            let doc = if one.unsaved {
+                Document::recovered(one.pixels, one.path, one.transparent)
+            } else {
+                Document::from_image(one.pixels, one.path)
+            };
+            tasks.push(self.open_document(doc, format));
+        }
+        tasks.push(self.switch_to(active));
+        Task::batch(tasks)
     }
 
     pub(super) fn for_saving(&self) -> Rgba8 {
@@ -286,7 +310,6 @@ impl App {
     }
 
     pub(super) fn carry_on(&mut self, pending: Pending) -> Task<Message> {
-        self.forget_snapshot();
         match pending {
             Pending::Close => iced::window::latest().and_then(iced::window::close),
             Pending::Tab => self.close_tab(),

@@ -547,7 +547,11 @@ impl App {
         }
         iced::widget::stack![
             under,
-            dialog::ask_to_save(self.document_name(), self.config.confirm_discard),
+            dialog::ask_to_save(
+                self.document_name(),
+                self.config.confirm_discard,
+                self.asking == Some(Pending::Close),
+            ),
         ]
         .into()
     }

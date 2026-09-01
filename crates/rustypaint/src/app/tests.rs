@@ -37,6 +37,15 @@ fn app(width: u32, height: u32) -> App {
     app
 }
 
+fn dead_entry(slot: &str) -> crate::doc::recovery::Open {
+    crate::doc::recovery::Open {
+        slot: slot.into(),
+        path: None,
+        transparent: false,
+        unsaved: true,
+    }
+}
+
 fn recovering(dir: &std::path::Path) -> App {
     let config = Config {
         theme: Choice::Light,
@@ -54,150 +63,6 @@ fn recovery_scratch(name: &str) -> std::path::PathBuf {
     ));
     let _ = std::fs::remove_dir_all(&dir);
     dir
-}
-
-#[test]
-fn work_left_behind_by_a_dead_editor_is_offered_back() {
-    let dir = recovery_scratch("offered");
-    let pixels = Rgba8::new(7, 5, [1, 2, 3, 255]);
-    crate::doc::recovery::write(&dir, "gone", &pixels, None, false).unwrap();
-
-    let mut app = recovering(&dir);
-    assert!(app.offering, "the dialog opens on its own at launch");
-    assert_eq!(app.recovered.len(), 1);
-
-    send(&mut app, Message::RecoveryAnswered(true));
-    assert!(!app.offering);
-    assert_eq!(app.doc.size(), (7, 5));
-    assert_eq!(app.doc.pixels(), &pixels);
-    assert!(app.unsaved(), "recovered work has still never been saved");
-    assert!(
-        crate::doc::recovery::abandoned(&dir).is_empty(),
-        "what came back is no longer waiting"
-    );
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn a_recovered_document_remembers_the_file_it_came_from() {
-    let dir = recovery_scratch("path");
-    let file = std::env::temp_dir().join("portrait.png");
-    let pixels = Rgba8::new(2, 2, [9, 9, 9, 255]);
-    crate::doc::recovery::write(&dir, "gone", &pixels, Some(&file), true).unwrap();
-
-    let mut app = recovering(&dir);
-    send(&mut app, Message::RecoveryAnswered(true));
-    assert_eq!(app.doc.path.as_deref(), Some(file.as_path()));
-    assert!(app.doc.transparent, "the backing came back too");
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn turning_the_offer_down_throws_all_of_it_away() {
-    let dir = recovery_scratch("declined");
-    let pixels = Rgba8::new(3, 3, [4, 4, 4, 255]);
-    crate::doc::recovery::write(&dir, "one", &pixels, None, false).unwrap();
-    crate::doc::recovery::write(&dir, "two", &pixels, None, false).unwrap();
-
-    let mut app = recovering(&dir);
-    assert_eq!(app.recovered.len(), 2);
-    send(&mut app, Message::RecoveryAnswered(false));
-    assert!(!app.offering);
-    assert!(
-        crate::doc::recovery::abandoned(&dir).is_empty(),
-        "declining clears the lot rather than asking again forever"
-    );
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn recovering_brings_every_abandoned_document_back_as_its_own_tab() {
-    let dir = recovery_scratch("queue");
-    crate::doc::recovery::write(&dir, "one", &Rgba8::new(3, 3, [4, 4, 4, 255]), None, false)
-        .unwrap();
-    crate::doc::recovery::write(&dir, "two", &Rgba8::new(5, 5, [6, 6, 6, 255]), None, false)
-        .unwrap();
-
-    let mut app = recovering(&dir);
-    send(&mut app, Message::RecoveryAnswered(true));
-    assert_eq!(app.sheets(), 2, "both came back, neither had to wait");
-    assert!(
-        crate::doc::recovery::abandoned(&dir).is_empty(),
-        "and nothing is still sitting on disk"
-    );
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn a_clean_launch_asks_nothing() {
-    let dir = recovery_scratch("clean");
-    let app = recovering(&dir);
-    assert!(!app.offering);
-    assert!(app.recovered.is_empty());
-}
-
-#[test]
-fn saving_clears_the_snapshot_that_was_covering_the_work() {
-    let dir = recovery_scratch("saved");
-    let mut app = recovering(&dir);
-    let file = std::env::temp_dir().join("done.png");
-    crate::doc::recovery::write(&dir, &app.recovery_id, app.doc.pixels(), None, false).unwrap();
-
-    send(&mut app, Message::Saved(Ok(file)));
-    assert!(
-        crate::doc::recovery::abandoned(&dir).is_empty(),
-        "work that reached disk needs no snapshot"
-    );
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn a_running_editor_never_offers_its_own_work_back_to_itself() {
-    let dir = recovery_scratch("selfheld");
-    let mut app = recovering(&dir);
-    app.doc.edit().pixels_mut()[0] = 7;
-    crate::doc::recovery::write(&dir, &app.recovery_id, app.doc.pixels(), None, false).unwrap();
-
-    assert!(
-        crate::doc::recovery::abandoned(&dir).is_empty(),
-        "the lock this editor holds says the work is still being worked on"
-    );
-
-    let id = app.recovery_id.clone();
-    drop(app);
-    let found = crate::doc::recovery::abandoned(&dir);
-    assert_eq!(found.len(), 1, "and the moment it dies the work is offered");
-    assert_eq!(found[0].id, id);
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn a_parked_tab_keeps_its_own_snapshot_alive() {
-    let dir = recovery_scratch("parked");
-    let mut app = recovering(&dir);
-    app.doc.edit().pixels_mut()[0] = 7;
-    let first = app.recovery_id.clone();
-    send(&mut app, Message::NewRequested);
-
-    assert_eq!(app.sheets(), 2);
-    assert_ne!(app.recovery_id, first, "each sheet has its own identity");
-    crate::doc::recovery::write(&dir, &first, app.doc.pixels(), None, false).unwrap();
-    assert!(
-        crate::doc::recovery::abandoned(&dir).is_empty(),
-        "a parked tab is still held by this editor"
-    );
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn a_document_with_nothing_in_it_writes_no_snapshot() {
-    let dir = recovery_scratch("untouched");
-    let mut app = recovering(&dir);
-    let _ = app.snapshot();
-    assert!(
-        crate::doc::recovery::abandoned(&dir).is_empty(),
-        "an untouched canvas is not work"
-    );
 }
 
 #[test]
@@ -219,18 +84,137 @@ fn a_snapshot_keeps_the_document_rather_than_a_flattened_picture() {
 }
 
 #[test]
-fn unsaved_work_keeps_its_snapshot_where_it_is() {
-    let dir = recovery_scratch("kept");
-    let mut app = recovering(&dir);
-    app.doc.edit().pixels_mut()[0] = 7;
-    crate::doc::recovery::write(&dir, &app.recovery_id, app.doc.pixels(), None, false).unwrap();
+fn a_session_left_by_a_dead_editor_comes_back_whole() {
+    let root = recovery_scratch("session");
+    crate::doc::recovery::write_document(&root, "dead", "0", &Rgba8::new(9, 9, [1, 0, 0, 255]))
+        .unwrap();
+    crate::doc::recovery::write_document(&root, "dead", "1", &Rgba8::new(7, 7, [2, 0, 0, 255]))
+        .unwrap();
+    crate::doc::recovery::write_index(&root, "dead", &[dead_entry("0"), dead_entry("1")], 0)
+        .unwrap();
 
-    let _ = app.snapshot();
+    let mut app = recovering(&root);
+    assert!(app.offering, "the dialog opens on its own at launch");
+
+    send(&mut app, Message::RecoveryAnswered(true));
+    assert_eq!(app.sheets(), 2, "both pictures came back, not just one");
+    assert!(!app.offering);
     assert!(
-        dir.join(format!("{}.png", app.recovery_id)).exists(),
-        "a snapshot is only cleared once the work behind it is safe"
+        crate::doc::recovery::abandoned(&root).is_empty(),
+        "and the session it came from is spent"
     );
-    std::fs::remove_dir_all(&dir).unwrap();
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn recovered_work_is_still_unsaved() {
+    let root = recovery_scratch("stillunsaved");
+    crate::doc::recovery::write_document(&root, "dead", "0", &Rgba8::new(9, 9, [1, 0, 0, 255]))
+        .unwrap();
+    crate::doc::recovery::write_index(&root, "dead", &[dead_entry("0")], 0).unwrap();
+
+    let mut app = recovering(&root);
+    send(&mut app, Message::RecoveryAnswered(true));
+    assert!(
+        app.unsaved(),
+        "it never reached a file, so it is still at risk"
+    );
+}
+
+#[test]
+fn turning_the_offer_down_throws_the_session_away() {
+    let root = recovery_scratch("declined");
+    crate::doc::recovery::write_document(&root, "dead", "0", &Rgba8::new(3, 3, [4, 0, 0, 255]))
+        .unwrap();
+    crate::doc::recovery::write_index(&root, "dead", &[dead_entry("0")], 0).unwrap();
+
+    let mut app = recovering(&root);
+    send(&mut app, Message::RecoveryAnswered(false));
+    assert!(!app.offering);
+    assert!(crate::doc::recovery::abandoned(&root).is_empty());
+}
+
+#[test]
+fn a_clean_launch_asks_nothing() {
+    let root = recovery_scratch("clean");
+    let app = recovering(&root);
+    assert!(!app.offering);
+    assert!(app.recovered.is_empty());
+}
+
+#[test]
+fn every_open_picture_is_written_into_one_session() {
+    let root = recovery_scratch("allopen");
+    let mut app = recovering(&root);
+    click(&mut app, 5.0, 5.0);
+    send(&mut app, Message::NewRequested);
+    click(&mut app, 6.0, 6.0);
+    assert_eq!(app.sheets(), 2);
+
+    let id = app.session.clone();
+    assert_eq!(
+        crate::doc::recovery::open_slots(&root, &id).len(),
+        2,
+        "the session names both tabs, not only the one in front"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn work_is_written_without_waiting_for_the_next_beat() {
+    let root = recovery_scratch("prompt");
+    let mut app = recovering(&root);
+    let id = app.session.clone();
+    click(&mut app, 5.0, 5.0);
+
+    assert!(
+        app.snapshotting,
+        "the write went out with the edit rather than on a timer"
+    );
+    assert!(root.join(&id).exists());
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn discarding_on_close_discards_the_session_too() {
+    let root = recovery_scratch("throw");
+    let mut app = recovering(&root);
+    click(&mut app, 5.0, 5.0);
+    let id = app.session.clone();
+
+    send(&mut app, Message::WindowClosed);
+    assert_eq!(app.asking, Some(Pending::Close));
+    send(&mut app, Message::DiscardAnswered(Discard::Throw));
+    assert!(
+        !root.join(&id).exists(),
+        "work thrown away on purpose is not work to come back to"
+    );
+}
+
+#[test]
+fn keeping_the_session_on_close_leaves_it_to_be_offered() {
+    let root = recovery_scratch("keep");
+    let mut app = recovering(&root);
+    click(&mut app, 5.0, 5.0);
+    let id = app.session.clone();
+
+    send(&mut app, Message::WindowClosed);
+    send(&mut app, Message::DiscardAnswered(Discard::Session));
+    assert!(
+        root.join(&id).join("session.toml").exists(),
+        "it is meant to come back next time"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn copying_the_canvas_leaves_a_floating_object_out_of_it() {
+    let mut app = app(8, 8);
+    app.doc.edit().pixels_mut()[..4].copy_from_slice(&[9, 9, 9, 255]);
+    let plain = app.doc.flattened();
+
+    send(&mut app, Message::CopyCanvas);
+    assert_eq!(app.last_copy, Some(fingerprint(&plain)));
 }
 
 fn send(app: &mut App, message: Message) {

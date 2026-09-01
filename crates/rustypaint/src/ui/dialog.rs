@@ -5,31 +5,42 @@ use iced::widget::{Space, button, checkbox, column, container, mouse_area, row, 
 use iced::{Element, Length};
 
 const CARD: f32 = 396.0;
+const WIDE_CARD: f32 = 520.0;
 const BUTTON: f32 = 116.0;
 
-pub fn ask_to_save<'a>(name: &'a str, confirm: bool) -> Element<'a, Message> {
+pub fn ask_to_save<'a>(name: &'a str, confirm: bool, closing: bool) -> Element<'a, Message> {
+    let mut answers = row![Space::new().width(Length::Fill)].spacing(6);
+    if closing {
+        answers = answers.push(answer("Keep session", Discard::Session));
+    }
+    answers = answers
+        .push(answer("Save", Discard::Save))
+        .push(answer("Don't save", Discard::Throw))
+        .push(answer("Cancel", Discard::Keep));
+
     let card = column![
         text("Do you want to save your work?")
             .size(18)
             .color(theme::colours().text),
-        text(format!("There are unsaved changes to {name}."))
-            .size(13)
-            .color(theme::colours().text),
+        text(if closing {
+            format!(
+                "There are unsaved changes to {name}. Keeping the session brings everything \
+                     back the next time RustyPaint starts."
+            )
+        } else {
+            format!("There are unsaved changes to {name}.")
+        })
+        .size(13)
+        .color(theme::colours().text),
         checkbox(!confirm)
             .style(crate::ui::controls::checkbox_style)
             .label("Don't ask me again")
             .text_size(12)
             .on_toggle(|quiet| Message::ConfirmDiscardToggled(!quiet)),
-        row![
-            Space::new().width(Length::Fill),
-            answer("Save", Discard::Save),
-            answer("Don't save", Discard::Throw),
-            answer("Cancel", Discard::Keep),
-        ]
-        .spacing(6),
+        answers,
     ]
     .spacing(14)
-    .width(Length::Fixed(CARD));
+    .width(Length::Fixed(if closing { WIDE_CARD } else { CARD }));
 
     over(card, Message::DiscardAnswered(Discard::Keep))
 }

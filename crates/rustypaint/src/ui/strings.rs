@@ -45,6 +45,10 @@ pub fn with_key(label: &str, key: &str) -> String {
     format!("{label} ({key})")
 }
 
+pub fn shift_key(key: &str) -> String {
+    command_key(&format!("Shift+{key}"))
+}
+
 pub fn command_key(key: &str) -> String {
     let modifier = if cfg!(target_os = "macos") {
         "Command"

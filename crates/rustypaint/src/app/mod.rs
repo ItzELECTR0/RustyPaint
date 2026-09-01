@@ -147,8 +147,7 @@ pub(super) struct Sheet {
     cropping: Option<Cropping>,
     cutting_out: Option<CuttingOut>,
     nudge: Option<Nudge>,
-    recovery_id: String,
-    recovery_lock: Option<doc::recovery::Guard>,
+    slot: String,
     snapshotted: Option<(Version, u64)>,
 }
 
@@ -197,13 +196,23 @@ pub struct App {
     asking: Option<Pending>,
     nudge: Option<Nudge>,
     recovery: Option<PathBuf>,
-    recovery_id: String,
     snapshotted: Option<(Version, u64)>,
-    recovery_lock: Option<doc::recovery::Guard>,
-    recovered: Vec<doc::recovery::Recovered>,
+    slot: String,
+    next_slot: u64,
+    session: String,
+    #[allow(
+        dead_code,
+        reason = "holding this is what tells the next launch this session is alive"
+    )]
+    session_lock: Option<doc::recovery::Guard>,
+    snapshotting: bool,
+    recorded_unsaved: bool,
+    last_snapshot: Instant,
+    recovered: Vec<doc::recovery::Session>,
     offering: bool,
     parked: Vec<Sheet>,
     active: usize,
+    tab_menu: Option<usize>,
 }
 
 // A held arrow key walking a selection along, slowly at first and then at a rate you can still read.
@@ -229,6 +238,10 @@ pub enum Message {
     TabClosed(usize),
     TabCloseRequested,
     TabStepped(i32),
+    TabMenuOpened(usize),
+    TabMenuClosed,
+    TabMenuPicked(TabAction),
+    CopyCanvas,
     OpenInPicked(crate::config::OpenIn),
     OpenedElsewhere(Result<PathBuf, String>),
     RecoveryAnswered(bool),
@@ -354,7 +367,15 @@ pub enum Message {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabAction {
+    Save,
+    Copy,
+    Close,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Discard {
+    Session,
     Save,
     Throw,
     Keep,
@@ -433,10 +454,10 @@ impl App {
             .as_deref()
             .map(doc::recovery::abandoned)
             .unwrap_or_default();
-        let recovery_id = doc::recovery::id();
-        let recovery_lock = recovery
+        let session = doc::recovery::id();
+        let session_lock = recovery
             .as_deref()
-            .and_then(|dir| doc::recovery::hold(dir, &recovery_id));
+            .and_then(|root| doc::recovery::hold(root, &session));
         theme::set_acrylic(config.acrylic);
         let (start_w, start_h) = crate::canvas::size_for(
             config.new_canvas,
@@ -485,13 +506,22 @@ impl App {
             asking: None,
             nudge: None,
             recovery: recovery.clone(),
-            recovery_id,
-            recovery_lock,
+            session,
+            session_lock,
+            slot: "0".into(),
+            next_slot: 1,
+            snapshotting: false,
+            recorded_unsaved: false,
+            // Behind the gap already, so the first edit of a session is written straight away.
+            last_snapshot: Instant::now()
+                .checked_sub(doc::recovery::SNAPSHOT_GAP)
+                .unwrap_or_else(Instant::now),
             offering: !recovered.is_empty(),
             recovered,
             snapshotted: None,
             parked: Vec::new(),
             active: 0,
+            tab_menu: None,
             config,
             config_path,
             dirty: None,
@@ -515,13 +545,10 @@ impl App {
         (app, task)
     }
 
-    pub(super) fn new_sheet(&self, doc: Document, save_format: doc::io::SaveFormat) -> Sheet {
+    pub(super) fn new_sheet(&mut self, doc: Document, save_format: doc::io::SaveFormat) -> Sheet {
         let size = doc.size();
-        let recovery_id = doc::recovery::id();
-        let recovery_lock = self
-            .recovery
-            .as_deref()
-            .and_then(|dir| doc::recovery::hold(dir, &recovery_id));
+        let slot = self.next_slot.to_string();
+        self.next_slot += 1;
         Sheet {
             doc,
             view: View::fitted(self.viewport, size),
@@ -541,8 +568,7 @@ impl App {
             cropping: None,
             cutting_out: None,
             nudge: None,
-            recovery_id,
-            recovery_lock,
+            slot,
             snapshotted: None,
         }
     }
@@ -605,8 +631,7 @@ impl App {
             cropping: self.cropping.take(),
             cutting_out: self.cutting_out.take(),
             nudge: self.nudge.take(),
-            recovery_id: std::mem::take(&mut self.recovery_id),
-            recovery_lock: self.recovery_lock.take(),
+            slot: std::mem::take(&mut self.slot),
             snapshotted: self.snapshotted.take(),
         }
     }
@@ -630,8 +655,7 @@ impl App {
         self.cropping = sheet.cropping;
         self.cutting_out = sheet.cutting_out;
         self.nudge = sheet.nudge;
-        self.recovery_id = sheet.recovery_id;
-        self.recovery_lock = sheet.recovery_lock;
+        self.slot = sheet.slot;
         self.snapshotted = sheet.snapshotted;
     }
 
