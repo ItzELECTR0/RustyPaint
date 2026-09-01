@@ -1,5 +1,17 @@
 # Architecture
 
+## Application module
+
+`app/` splits the editor by concern rather than by type. `mod.rs` owns `App`, `Message`, and the
+state that has no better home; `update.rs` handles messages; `input.rs` turns pointer, key, and
+shortcut events into them; `live.rs` owns the live object's whole life from creation to commit,
+including crop and Smart cutout; `document.rs` covers saving, history, and whole-canvas pixel work;
+`view.rs` builds the widget tree.
+
+Methods on `App` are spread across those files, so anything used outside the file it lives in needs
+`pub(super)`, which reaches every `app` submodule and no further. The tests are still one module
+because they were written against the whole application and reach freely across it.
+
 ## Document ownership
 
 The document owns one non-premultiplied RGBA8 bitmap in sRGB. White is a backing behind those
