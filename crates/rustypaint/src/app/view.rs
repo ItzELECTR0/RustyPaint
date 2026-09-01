@@ -113,6 +113,7 @@ pub(super) fn hint<'a>(
 }
 
 pub(super) const DOCUMENT_TAB_HEIGHT: f32 = 28.0;
+const DOCUMENT_STRIP_PAD: f32 = 4.0;
 
 // Tabs share the strip and shrink as more open, but never stretch past this on their own.
 pub(super) const DOCUMENT_TAB_WIDTH: f32 = 190.0;
@@ -188,6 +189,34 @@ fn open_marker<'a>(active: bool) -> Element<'a, Message> {
             }),
         Space::new().height(Length::Fill),
     ]
+    .into()
+}
+
+fn tab_menu_item<'a>(label: &'a str, key: &str, action: TabAction) -> Element<'a, Message> {
+    button(
+        row![
+            text(label).size(12).color(theme::colours().text),
+            Space::new().width(Length::Fill),
+            text(key.to_owned())
+                .size(11)
+                .color(theme::colours().text_dim),
+        ]
+        .spacing(12)
+        .align_y(iced::Alignment::Center),
+    )
+    .width(Length::Fill)
+    .padding([5, 9])
+    .style(|_theme, status| button::Style {
+        background: matches!(status, button::Status::Hovered)
+            .then(|| theme::colours().control_hover.into()),
+        text_color: theme::colours().text,
+        border: iced::Border {
+            radius: iced::border::radius(5),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .on_press(Message::TabMenuPicked(action))
     .into()
 }
 
@@ -454,7 +483,10 @@ impl App {
 
         let tabs = (0..self.sheets()).map(|tab| {
             let active = self.parked_at(tab).is_none();
-            let mut face = row![].spacing(6).align_y(iced::Alignment::Center);
+            let mut face = row![]
+                .spacing(6)
+                .height(Length::Fill)
+                .align_y(iced::Alignment::Center);
             if self.tab_unsaved(tab) {
                 face = face.push(unsaved_dot());
             }
@@ -467,7 +499,7 @@ impl App {
 
             // The close button sits over the tab rather than beside it, so the whole tab is one
             // hover target and the label keeps the full width until it actually runs out.
-            iced::widget::stack![
+            let tab_face = iced::widget::stack![
                 button(face)
                     .width(Length::Fill)
                     .height(Length::Fixed(DOCUMENT_TAB_HEIGHT))
@@ -493,8 +525,11 @@ impl App {
                 .height(Length::Fixed(DOCUMENT_TAB_HEIGHT))
                 .align_y(iced::Alignment::Center),
             ]
-            .width(Length::Fill)
-            .into()
+            .width(Length::Fill);
+
+            iced::widget::mouse_area(tab_face)
+                .on_right_press(Message::TabMenuOpened(tab))
+                .into()
         });
 
         let strip = row![
@@ -520,12 +555,84 @@ impl App {
         Some(
             container(strip)
                 .width(Length::Fill)
-                .padding(iced::Padding::default().left(6).right(6).top(4))
+                .padding(
+                    iced::Padding::default()
+                        .left(6)
+                        .right(6)
+                        .top(DOCUMENT_STRIP_PAD),
+                )
                 .style(|_theme| container::Style {
                     background: Some(theme::colours().title_bar.into()),
                     ..Default::default()
                 })
                 .into(),
+        )
+    }
+
+    // Anchored by rebuilding the strip's own layout with the card in one slot, because a right
+    // press reports no position to place it at.
+    pub(super) fn tab_menu(&self) -> Option<Element<'_, Message>> {
+        let open = self.tab_menu.filter(|tab| *tab < self.sheets())?;
+
+        let slots = (0..self.sheets()).map(|tab| {
+            if tab != open {
+                return Element::from(Space::new().width(Length::Fill));
+            }
+            row![
+                container(
+                    column![
+                        tab_menu_item(strings::SAVE, &strings::command_key("S"), TabAction::Save),
+                        tab_menu_item(
+                            "Copy to clipboard",
+                            &strings::shift_key("C"),
+                            TabAction::Copy
+                        ),
+                        tab_menu_item("Close", &strings::command_key("Q"), TabAction::Close),
+                    ]
+                    .spacing(1)
+                )
+                .width(Length::Fixed(DOCUMENT_TAB_WIDTH))
+                .padding(4)
+                .style(|_theme| container::Style {
+                    background: Some(theme::colours().side_panel.into()),
+                    border: iced::Border {
+                        color: theme::colours().border,
+                        width: 1.0,
+                        radius: iced::border::radius(8),
+                    },
+                    shadow: iced::Shadow {
+                        color: iced::Color {
+                            a: theme::colours().shadow,
+                            ..iced::Color::BLACK
+                        },
+                        offset: iced::Vector::new(0.0, 3.0),
+                        blur_radius: 12.0,
+                    },
+                    ..Default::default()
+                }),
+                Space::new().width(Length::Fill),
+            ]
+            .into()
+        });
+
+        Some(
+            iced::widget::stack![
+                iced::widget::mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
+                    .on_press(Message::TabMenuClosed)
+                    .on_right_press(Message::TabMenuClosed),
+                column![
+                    Space::new().height(Length::Fixed(DOCUMENT_TAB_HEIGHT + DOCUMENT_STRIP_PAD)),
+                    row![
+                        container(row(slots).spacing(2))
+                            .width(Length::Fill)
+                            .max_width(self.sheets() as f32 * DOCUMENT_TAB_WIDTH),
+                        Space::new().width(Length::Fill),
+                    ]
+                    .padding(iced::Padding::default().left(6).right(6)),
+                    Space::new().height(Length::Fill),
+                ],
+            ]
+            .into(),
         )
     }
 
@@ -536,6 +643,10 @@ impl App {
         };
         let under = match &self.picker {
             Some(picker) => iced::widget::stack![under, picker::view(picker)].into(),
+            None => under,
+        };
+        let under = match self.tab_menu() {
+            Some(menu) => iced::widget::stack![under, menu].into(),
             None => under,
         };
         if self.offering {
