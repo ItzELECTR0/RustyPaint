@@ -98,6 +98,9 @@ pub(super) fn shortcut(event: iced::keyboard::Event) -> Option<Message> {
 
     match key.as_ref() {
         Key::Character("n") => Some(Message::NewRequested),
+        Key::Character("w") => Some(Message::TabCloseRequested),
+        Key::Named(Named::Tab) if modifiers.shift() => Some(Message::TabStepped(-1)),
+        Key::Named(Named::Tab) => Some(Message::TabStepped(1)),
         Key::Character("o") => Some(Message::OpenRequested),
         Key::Character("s") if modifiers.shift() => Some(Message::SaveAsRequested),
         Key::Character("s") => Some(Message::SaveRequested),

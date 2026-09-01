@@ -1,6 +1,6 @@
 use crate::app::Message;
 use crate::canvas::{self, NewCanvas, Ratio};
-use crate::config::Config;
+use crate::config::{Config, OpenIn};
 use crate::doc::io::SaveFormat;
 use crate::ui::controls;
 use crate::ui::icons::{self, icon};
@@ -253,6 +253,11 @@ fn pane_settings<'a>(
             .label(if config.confirm_discard { "On" } else { "Off" })
             .text_size(13)
             .on_toggle(Message::ConfirmDiscardToggled),
+        divider(),
+        subheading("A second picture"),
+        note("Whether opening another picture joins this window or gets one of its own."),
+        row(OpenIn::ALL.map(|o| pill(o.name(), config.open_in == o, Message::OpenInPicked(o))))
+            .spacing(6),
         divider(),
         subheading("New canvas"),
         note("What size a new picture starts at."),

@@ -3,6 +3,26 @@ use crate::ui::theme::{Choice, Scheme};
 
 use std::path::PathBuf;
 
+// Whether a second document joins this window or gets an editor of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenIn {
+    #[default]
+    Tab,
+    Window,
+}
+
+impl OpenIn {
+    pub const ALL: [OpenIn; 2] = [OpenIn::Tab, OpenIn::Window];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            OpenIn::Tab => "Tabs",
+            OpenIn::Window => "Windows",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -12,6 +32,7 @@ pub struct Config {
     pub acrylic: bool,
     pub decorations: bool,
     pub confirm_discard: bool,
+    pub open_in: OpenIn,
     pub custom_colours: Vec<[u8; 4]>,
 }
 
@@ -24,6 +45,7 @@ impl Default for Config {
             acrylic: true,
             decorations: false,
             confirm_discard: true,
+            open_in: OpenIn::default(),
             custom_colours: Vec::new(),
         }
     }
@@ -123,6 +145,7 @@ mod tests {
             acrylic: false,
             decorations: true,
             confirm_discard: false,
+            open_in: OpenIn::Window,
             custom_colours: vec![[254, 168, 69, 255]],
         };
         let text = toml::to_string_pretty(&config).unwrap();
@@ -136,6 +159,11 @@ mod tests {
         assert_eq!(config.accent, Scheme::Rusty);
         assert!(config.acrylic);
         assert!(config.confirm_discard, "asking is the old behaviour");
+        assert_eq!(
+            config.open_in,
+            OpenIn::Tab,
+            "a build that never had windows opens tabs"
+        );
     }
 
     #[test]
@@ -154,6 +182,7 @@ mod tests {
         let text = toml::to_string_pretty(&Config::default()).unwrap();
         assert!(text.contains("theme = \"auto\""), "{text}");
         assert!(text.contains("accent = \"rusty\""), "{text}");
+        assert!(text.contains("open_in = \"tab\""), "{text}");
     }
 
     #[test]

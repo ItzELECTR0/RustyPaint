@@ -352,8 +352,56 @@ impl App {
         .into()
     }
 
+    // One document needs no strip, and Paint 3D never had one, so it only shows when it earns it.
+    pub(super) fn document_tabs(&self) -> Option<Element<'_, Message>> {
+        if self.sheets() < 2 {
+            return None;
+        }
+        let tabs = (0..self.sheets()).map(|tab| {
+            let active = self.parked_at(tab).is_none();
+            let mark = if self.tab_unsaved(tab) { "*" } else { "" };
+            row![
+                button(
+                    text(format!("{}{mark}", self.tab_name(tab)))
+                        .size(12)
+                        .wrapping(iced::widget::text::Wrapping::None)
+                )
+                .padding([4, 8])
+                .style(move |_theme, _status| tab_style(active))
+                .on_press(Message::TabSelected(tab)),
+                button(text("x").size(11))
+                    .padding([4, 6])
+                    .style(move |_theme, _status| tab_style(active))
+                    .on_press(Message::TabClosed(tab)),
+            ]
+            .into()
+        });
+
+        Some(
+            container(
+                iced::widget::scrollable(row(tabs).spacing(2)).direction(
+                    iced::widget::scrollable::Direction::Horizontal(
+                        iced::widget::scrollable::Scrollbar::new()
+                            .width(4)
+                            .scroller_width(4),
+                    ),
+                ),
+            )
+            .width(Length::Fill)
+            .padding([2, 4])
+            .style(|_theme| container::Style {
+                background: Some(theme::colours().tab_bar.into()),
+                ..Default::default()
+            })
+            .into(),
+        )
+    }
+
     pub(super) fn workspace(&self) -> Element<'_, Message> {
-        let under = self.pages();
+        let under = match self.document_tabs() {
+            Some(strip) => column![strip, self.pages()].into(),
+            None => self.pages(),
+        };
         let under = match &self.picker {
             Some(picker) => iced::widget::stack![under, picker::view(picker)].into(),
             None => under,

@@ -18,7 +18,10 @@ use super::*;
 impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::SnapshotTick => return self.snapshot(),
+            Message::SnapshotTick => {
+                self.touch_parked();
+                return self.snapshot();
+            }
             Message::Snapshotted(at, Ok(())) => self.snapshotted = Some(at),
             Message::Snapshotted(_, Err(e)) => self.status = e,
             Message::RecoveryAnswered(restore) => {
@@ -27,11 +30,15 @@ impl App {
                     return Task::none();
                 }
                 if restore {
-                    let found = self.recovered.remove(0);
-                    if let Some(dir) = &self.recovery {
-                        doc::recovery::clear(dir, &found.id);
+                    let found: Vec<_> = self.recovered.drain(..).rev().collect();
+                    let mut tasks = Vec::new();
+                    for one in found {
+                        if let Some(dir) = &self.recovery {
+                            doc::recovery::clear(dir, &one.id);
+                        }
+                        tasks.push(self.restore(one));
                     }
-                    self.restore(found);
+                    return Task::batch(tasks);
                 } else {
                     for found in self.recovered.drain(..) {
                         if let Some(dir) = &self.recovery {
@@ -40,21 +47,43 @@ impl App {
                     }
                 }
             }
-            Message::OpenRequested => return self.discarding(Pending::Open),
+            Message::ParkedSnapshotted(Err(e)) => self.status = e,
+            Message::ParkedSnapshotted(Ok(())) => {}
+            Message::TabSelected(tab) => return self.switch_to(tab),
+            Message::TabCloseRequested => return self.update(Message::TabClosed(self.active)),
+            Message::TabStepped(by) => {
+                let count = self.sheets() as i32;
+                let next = (self.active as i32 + by).rem_euclid(count);
+                return self.switch_to(next as usize);
+            }
+            Message::TabClosed(tab) => {
+                if self.sheets() == 1 {
+                    return self.discarding(Pending::Close);
+                }
+                let switch = self.switch_to(tab);
+                return Task::batch([switch, self.discarding(Pending::Tab)]);
+            }
+            Message::OpenInPicked(open_in) => {
+                self.config.open_in = open_in;
+                self.save_config();
+            }
+            Message::OpenedElsewhere(Ok(path)) => return self.elsewhere(Some(&path)),
+            Message::OpenedElsewhere(Err(e)) => {
+                if !e.is_empty() {
+                    self.status = e;
+                }
+            }
+            Message::OpenRequested => {
+                if self.config.open_in == crate::config::OpenIn::Window && !self.untouched() {
+                    return Task::perform(pick_path(), Message::OpenedElsewhere);
+                }
+                return Task::perform(pick_and_load(), Message::Opened);
+            }
 
             Message::Opened(Ok((path, pixels))) => {
-                self.save_format = doc::io::SaveFormat::from_path(&path).unwrap_or_default();
-                self.doc = Document::from_image(pixels, Some(path));
-                self.floating = None;
-                self.live_redo = None;
-                self.grab = None;
-                self.grab_from = None;
-                self.float_version += 1;
-                self.view = View::fitted(self.viewport, self.doc.size());
-                self.dirty = None;
-                self.panel.sync(self.doc.size());
-                self.status.clear();
-                self.menu = None;
+                let format = doc::io::SaveFormat::from_path(&path).unwrap_or_default();
+                let doc = Document::from_image(pixels, Some(path));
+                return self.open_document(doc, format);
             }
             Message::Opened(Err(e)) => self.status = e,
 
@@ -545,7 +574,19 @@ impl App {
                     self.status = e;
                 }
             }
-            Message::NewRequested => return self.discarding(Pending::Blank),
+            Message::NewRequested => {
+                self.menu = None;
+                if self.untouched() {
+                    return Task::none();
+                }
+                if self.config.open_in == crate::config::OpenIn::Window {
+                    return self.elsewhere(None);
+                }
+                let (w, h) = self.new_canvas_size();
+                let blank = Document::blank_sized(w, h, false);
+                let sheet = self.new_sheet(blank, doc::io::SaveFormat::default());
+                return self.add_sheet(sheet);
+            }
             Message::DiscardAnswered(answer) => {
                 let Some(pending) = self.asking.take() else {
                     return Task::none();

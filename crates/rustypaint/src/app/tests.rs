@@ -124,20 +124,21 @@ fn turning_the_offer_down_throws_all_of_it_away() {
 }
 
 #[test]
-fn recovering_one_leaves_the_others_for_next_time() {
+fn recovering_brings_every_abandoned_document_back_as_its_own_tab() {
     let dir = recovery_scratch("queue");
-    let pixels = Rgba8::new(3, 3, [4, 4, 4, 255]);
-    crate::doc::recovery::write(&dir, "one", &pixels, None, false).unwrap();
-    crate::doc::recovery::write(&dir, "two", &pixels, None, false).unwrap();
+    crate::doc::recovery::write(&dir, "one", &Rgba8::new(3, 3, [4, 4, 4, 255]), None, false)
+        .unwrap();
+    crate::doc::recovery::write(&dir, "two", &Rgba8::new(5, 5, [6, 6, 6, 255]), None, false)
+        .unwrap();
     abandon(&dir, "one");
     abandon(&dir, "two");
 
     let mut app = recovering(&dir);
     send(&mut app, Message::RecoveryAnswered(true));
-    assert_eq!(
-        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).len(),
-        1,
-        "the one not taken is still there to be offered"
+    assert_eq!(app.sheets(), 2, "both came back, neither had to wait");
+    assert!(
+        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        "and nothing is still sitting on disk"
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -2354,14 +2355,15 @@ fn opening_the_menu_puts_down_what_is_floating() {
 }
 
 #[test]
-fn new_on_an_untouched_document_does_not_ask() {
+fn new_on_an_untouched_canvas_just_closes_the_menu() {
     let mut app = app(64, 48);
+    send(&mut app, Message::MenuOpened);
     assert!(!app.doc.modified());
     send(&mut app, Message::NewRequested);
     assert_eq!(
-        app.doc.size(),
-        app.new_canvas_size(),
-        "back to a fresh canvas"
+        app.sheets(),
+        1,
+        "there was already a blank canvas to work on"
     );
     assert!(app.menu.is_none(), "and the menu closes behind it");
 }
@@ -2423,6 +2425,7 @@ fn new_takes_its_size_from_the_preset() {
         &mut app,
         Message::NewCanvasPicked(NewCanvas::Fixed(1920, 1080)),
     );
+    click(&mut app, 1.0, 1.0);
     send(&mut app, Message::NewRequested);
     assert_eq!(app.doc.size(), (1920, 1080));
 
@@ -2430,11 +2433,13 @@ fn new_takes_its_size_from_the_preset() {
         &mut app,
         Message::NewCanvasPicked(NewCanvas::Fit(crate::canvas::Ratio::Square)),
     );
+    click(&mut app, 1.0, 1.0);
     send(&mut app, Message::NewRequested);
     let (w, h) = app.doc.size();
     assert_eq!(w, h, "a square preset gives a square canvas, got {w} x {h}");
 
     send(&mut app, Message::WindowResized(Size::new(1600.0, 1000.0)));
+    click(&mut app, 1.0, 1.0);
     send(&mut app, Message::NewRequested);
     assert!(
         app.doc.size().0 > w,
@@ -2793,28 +2798,31 @@ fn a_test_can_never_reach_the_real_settings_file() {
 }
 
 #[test]
-fn new_on_a_modified_document_waits_for_an_answer() {
+fn new_leaves_the_open_document_where_it_is_and_adds_a_tab() {
     let mut app = app(64, 48);
     click(&mut app, 10.0, 10.0);
     assert!(app.doc.modified());
     let size = app.doc.size();
 
     send(&mut app, Message::NewRequested);
-    assert_eq!(app.asking, Some(Pending::Blank), "the dialog is up");
-    assert_eq!(app.doc.size(), size, "nothing thrown away yet");
-
-    send(&mut app, Message::DiscardAnswered(Discard::Keep));
-    assert_eq!(app.doc.size(), size, "cancelling keeps it");
-    assert_eq!(app.asking, None, "and puts the dialog away");
-
-    send(&mut app, Message::NewRequested);
-    send(&mut app, Message::DiscardAnswered(Discard::Throw));
+    assert_eq!(app.sheets(), 2, "a second document joined the window");
+    assert_eq!(
+        app.asking, None,
+        "nothing was thrown away, so nothing to ask"
+    );
     assert_eq!(
         app.doc.size(),
         app.new_canvas_size(),
-        "and throwing it away starts over"
+        "the new one is in front"
     );
-    assert_eq!(app.asking, None);
+
+    send(&mut app, Message::TabSelected(0));
+    assert_eq!(
+        app.doc.size(),
+        size,
+        "the first document is exactly as it was"
+    );
+    assert!(app.doc.modified());
 }
 
 #[test]
@@ -2918,30 +2926,40 @@ fn pasted_pixels_still_float_over_the_canvas() {
 }
 
 #[test]
-fn opening_over_changes_asks_before_replacing_the_document() {
+fn opening_a_file_joins_the_window_rather_than_replacing_what_is_open() {
     let mut app = app(64, 48);
     click(&mut app, 10.0, 10.0);
     assert!(app.unsaved());
 
-    send(&mut app, Message::OpenRequested);
+    let opened = Rgba8::new(9, 7, [1, 2, 3, 255]);
+    send(
+        &mut app,
+        Message::Opened(Ok((PathBuf::from("/tmp/x.png"), opened))),
+    );
+    assert_eq!(app.sheets(), 2);
+    assert_eq!(app.doc.size(), (9, 7), "the opened file is in front");
+    assert_eq!(
+        app.asking, None,
+        "nothing was at risk, so nothing was asked"
+    );
+
+    send(&mut app, Message::TabSelected(0));
     assert!(
         app.doc.modified(),
-        "the answer is still coming, nothing has gone"
+        "the work that was already there survived"
     );
+}
 
-    send(&mut app, Message::DiscardAnswered(Discard::Keep));
-    assert_eq!(app.after_save, None, "cancelling asks for no file at all");
-
-    send(&mut app, Message::OpenRequested);
-    send(&mut app, Message::DiscardAnswered(Discard::Save));
-    assert_eq!(
-        app.after_save,
-        Some(Pending::Open),
-        "the open waits for the save"
+#[test]
+fn a_file_opened_over_an_untouched_canvas_takes_its_place() {
+    let mut app = app(64, 48);
+    let opened = Rgba8::new(9, 7, [1, 2, 3, 255]);
+    send(
+        &mut app,
+        Message::Opened(Ok((PathBuf::from("/tmp/x.png"), opened))),
     );
-
-    send(&mut app, Message::Saved(Ok(PathBuf::from("/tmp/x.png"))));
-    assert_eq!(app.after_save, None, "and is asked for once the save lands");
+    assert_eq!(app.sheets(), 1, "an empty canvas is a slot, not work");
+    assert_eq!(app.doc.size(), (9, 7));
 }
 
 #[test]
@@ -3151,20 +3169,82 @@ fn a_save_takes_what_is_floating_with_it_without_putting_it_down() {
 }
 
 #[test]
-fn saving_from_the_new_dialog_then_starts_the_new_canvas() {
+fn saving_from_the_close_dialog_then_lets_the_tab_go() {
     let mut app = app(64, 48);
     click(&mut app, 10.0, 10.0);
     send(&mut app, Message::NewRequested);
+    click(&mut app, 5.0, 5.0);
+    assert_eq!(app.sheets(), 2);
+
+    send(&mut app, Message::TabClosed(1));
+    assert_eq!(app.asking, Some(Pending::Tab), "the dialog is up");
+    assert_eq!(app.sheets(), 2, "nothing thrown away yet");
+
     send(&mut app, Message::DiscardAnswered(Discard::Save));
-    assert_eq!(app.after_save, Some(Pending::Blank));
+    assert_eq!(app.after_save, Some(Pending::Tab));
 
     send(&mut app, Message::Saved(Ok(PathBuf::from("/tmp/x.png"))));
-    assert_eq!(
-        app.doc.size(),
-        app.new_canvas_size(),
-        "the new canvas arrived"
-    );
+    assert_eq!(app.sheets(), 1, "the tab went once its work was safe");
     assert_eq!(app.after_save, None);
+}
+
+#[test]
+fn closing_the_only_tab_closes_the_window_instead() {
+    let mut app = app(64, 48);
+    click(&mut app, 10.0, 10.0);
+    send(&mut app, Message::TabClosed(0));
+    assert_eq!(
+        app.asking,
+        Some(Pending::Close),
+        "that is the window closing"
+    );
+}
+
+#[test]
+fn stepping_wraps_round_the_tabs_in_both_directions() {
+    let mut app = app(64, 48);
+    click(&mut app, 10.0, 10.0);
+    send(&mut app, Message::NewRequested);
+    click(&mut app, 5.0, 5.0);
+    send(&mut app, Message::NewRequested);
+    assert_eq!(app.sheets(), 3);
+    assert_eq!(app.active, 2);
+
+    send(&mut app, Message::TabStepped(1));
+    assert_eq!(app.active, 0, "past the end comes back to the first");
+    send(&mut app, Message::TabStepped(-1));
+    assert_eq!(app.active, 2, "and back the other way");
+}
+
+#[test]
+fn a_closed_tab_leaves_the_order_of_the_rest_alone() {
+    let mut app = app(11, 11);
+    click(&mut app, 5.0, 5.0);
+    send(
+        &mut app,
+        Message::Opened(Ok((
+            PathBuf::from("/tmp/middle.png"),
+            Rgba8::new(22, 22, [0, 0, 0, 255]),
+        ))),
+    );
+    send(
+        &mut app,
+        Message::Opened(Ok((
+            PathBuf::from("/tmp/last.png"),
+            Rgba8::new(33, 33, [0, 0, 0, 255]),
+        ))),
+    );
+    assert_eq!(app.sheets(), 3);
+
+    send(&mut app, Message::TabSelected(1));
+    assert_eq!(app.doc.size(), (22, 22));
+    send(&mut app, Message::TabClosed(1));
+    assert_eq!(app.sheets(), 2);
+
+    send(&mut app, Message::TabSelected(0));
+    assert_eq!(app.doc.size(), (11, 11), "the first is still the first");
+    send(&mut app, Message::TabSelected(1));
+    assert_eq!(app.doc.size(), (33, 33), "and the last is still the last");
 }
 
 #[test]

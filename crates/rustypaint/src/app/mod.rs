@@ -126,6 +126,31 @@ fn snapshot_ticks() -> impl iced::futures::Stream<Item = ()> {
     receive
 }
 
+// The active document's state lives on App itself, so every tool keeps reaching for it directly.
+// Switching tabs swaps that state out with a parked sheet instead of threading an index everywhere.
+pub(super) struct Sheet {
+    doc: Document,
+    view: View,
+    panel: CanvasPanel,
+    stroke: Option<Stroke>,
+    last_point: Option<(f32, f32)>,
+    floating: Option<Floating>,
+    live_redo: Option<LiveRedo>,
+    float_version: u64,
+    grab_from: Option<Grabbed>,
+    grab: Option<gpu::Grab>,
+    selecting: Option<((f32, f32), (f32, f32))>,
+    lasso: Option<Lasso>,
+    resize_preview: Option<(u32, u32)>,
+    dirty: Option<(Version, Rect)>,
+    save_format: doc::io::SaveFormat,
+    cropping: Option<Cropping>,
+    cutting_out: Option<CuttingOut>,
+    nudge: Option<Nudge>,
+    recovery_id: String,
+    snapshotted: Option<(Version, u64)>,
+}
+
 pub struct App {
     doc: Document,
     view: View,
@@ -175,6 +200,8 @@ pub struct App {
     snapshotted: Option<(Version, u64)>,
     recovered: Vec<doc::recovery::Recovered>,
     offering: bool,
+    parked: Vec<Sheet>,
+    active: usize,
 }
 
 // A held arrow key walking a selection along, slowly at first and then at a rate you can still read.
@@ -187,15 +214,21 @@ struct Nudge {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
-    Blank,
-    Open,
     Close,
+    Tab,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     SnapshotTick,
     Snapshotted((Version, u64), Result<(), String>),
+    ParkedSnapshotted(Result<(), String>),
+    TabSelected(usize),
+    TabClosed(usize),
+    TabCloseRequested,
+    TabStepped(i32),
+    OpenInPicked(crate::config::OpenIn),
+    OpenedElsewhere(Result<PathBuf, String>),
     RecoveryAnswered(bool),
     OpenRequested,
     Opened(Result<(PathBuf, Rgba8), String>),
@@ -450,6 +483,8 @@ impl App {
             offering: !recovered.is_empty(),
             recovered,
             snapshotted: None,
+            parked: Vec::new(),
+            active: 0,
             config,
             config_path,
             dirty: None,
@@ -471,6 +506,141 @@ impl App {
             None => start,
         };
         (app, task)
+    }
+
+    pub(super) fn new_sheet(&self, doc: Document, save_format: doc::io::SaveFormat) -> Sheet {
+        let size = doc.size();
+        Sheet {
+            doc,
+            view: View::fitted(self.viewport, size),
+            panel: CanvasPanel::new(size),
+            stroke: None,
+            last_point: None,
+            floating: None,
+            live_redo: None,
+            float_version: 0,
+            grab_from: None,
+            grab: None,
+            selecting: None,
+            lasso: None,
+            resize_preview: None,
+            dirty: None,
+            save_format,
+            cropping: None,
+            cutting_out: None,
+            nudge: None,
+            recovery_id: doc::recovery::id(),
+            snapshotted: None,
+        }
+    }
+
+    // Which parked sheet a tab points at, or None when the tab is the open one.
+    pub(super) fn parked_at(&self, tab: usize) -> Option<usize> {
+        match tab.cmp(&self.active) {
+            std::cmp::Ordering::Equal => None,
+            std::cmp::Ordering::Less => Some(tab),
+            std::cmp::Ordering::Greater => Some(tab - 1),
+        }
+    }
+
+    pub(super) fn any_unsaved(&self) -> bool {
+        self.unsaved() || self.parked.iter().any(Sheet::unsaved)
+    }
+
+    pub(super) fn tab_name(&self, tab: usize) -> String {
+        let named = |path: &Option<PathBuf>| {
+            path.as_deref()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .unwrap_or("Untitled")
+                .to_owned()
+        };
+        match self.parked_at(tab) {
+            None => named(&self.doc.path),
+            Some(i) => self
+                .parked
+                .get(i)
+                .map(|sheet| named(&sheet.doc.path))
+                .unwrap_or_default(),
+        }
+    }
+
+    pub(super) fn tab_unsaved(&self, tab: usize) -> bool {
+        match self.parked_at(tab) {
+            None => self.unsaved(),
+            Some(i) => self.parked.get(i).is_some_and(Sheet::unsaved),
+        }
+    }
+
+    pub(super) fn sheet(&mut self) -> Sheet {
+        Sheet {
+            doc: std::mem::replace(&mut self.doc, Document::blank_sized(1, 1, false)),
+            view: std::mem::take(&mut self.view),
+            panel: std::mem::replace(&mut self.panel, CanvasPanel::new((1, 1))),
+            stroke: self.stroke.take(),
+            last_point: self.last_point.take(),
+            floating: self.floating.take(),
+            live_redo: self.live_redo.take(),
+            float_version: self.float_version,
+            grab_from: self.grab_from.take(),
+            grab: self.grab.take(),
+            selecting: self.selecting.take(),
+            lasso: self.lasso.take(),
+            resize_preview: self.resize_preview.take(),
+            dirty: self.dirty.take(),
+            save_format: self.save_format,
+            cropping: self.cropping.take(),
+            cutting_out: self.cutting_out.take(),
+            nudge: self.nudge.take(),
+            recovery_id: std::mem::take(&mut self.recovery_id),
+            snapshotted: self.snapshotted.take(),
+        }
+    }
+
+    fn adopt(&mut self, sheet: Sheet) {
+        self.doc = sheet.doc;
+        self.view = sheet.view;
+        self.panel = sheet.panel;
+        self.stroke = sheet.stroke;
+        self.last_point = sheet.last_point;
+        self.floating = sheet.floating;
+        self.live_redo = sheet.live_redo;
+        self.float_version = sheet.float_version;
+        self.grab_from = sheet.grab_from;
+        self.grab = sheet.grab;
+        self.selecting = sheet.selecting;
+        self.lasso = sheet.lasso;
+        self.resize_preview = sheet.resize_preview;
+        self.dirty = sheet.dirty;
+        self.save_format = sheet.save_format;
+        self.cropping = sheet.cropping;
+        self.cutting_out = sheet.cutting_out;
+        self.nudge = sheet.nudge;
+        self.recovery_id = sheet.recovery_id;
+        self.snapshotted = sheet.snapshotted;
+    }
+
+    // Parks the open document back into the tab order and hands the whole list over.
+    pub(super) fn collapse(&mut self) -> Vec<Sheet> {
+        let mut sheets = std::mem::take(&mut self.parked);
+        let active = self.active.min(sheets.len());
+        let open = self.sheet();
+        sheets.insert(active, open);
+        sheets
+    }
+
+    pub(super) fn expand(&mut self, mut sheets: Vec<Sheet>, active: usize) {
+        let active = active.min(sheets.len().saturating_sub(1));
+        let open = sheets.remove(active);
+        self.adopt(open);
+        self.parked = sheets;
+        self.active = active;
+        self.menu = None;
+        self.picker = None;
+    }
+
+    pub(super) fn sheets(&self) -> usize {
+        self.parked.len() + 1
     }
 
     pub fn subscription(&self) -> iced::Subscription<Message> {

@@ -19,6 +19,16 @@ pub(super) async fn load(path: PathBuf) -> Result<(PathBuf, Rgba8), String> {
     doc::io::load(&path).map(|pixels| (path, pixels))
 }
 
+pub(super) async fn pick_path() -> Result<PathBuf, String> {
+    rfd::AsyncFileDialog::new()
+        .add_filter("Images", doc::io::READABLE)
+        .set_title("Open")
+        .pick_file()
+        .await
+        .map(|handle| handle.path().to_path_buf())
+        .ok_or_else(String::new)
+}
+
 pub(super) async fn pick_and_load() -> Result<(PathBuf, Rgba8), String> {
     let handle = rfd::AsyncFileDialog::new()
         .add_filter("Images", doc::io::READABLE)
@@ -96,6 +106,39 @@ impl App {
         scratch.pixels().clone()
     }
 
+    pub(super) fn snapshot_parked(&self, sheet: &Sheet) -> Task<Message> {
+        let Some(dir) = self.recovery.clone() else {
+            return Task::none();
+        };
+        let id = sheet.recovery_id.clone();
+        if !sheet.unsaved() {
+            doc::recovery::clear(&dir, &id);
+            return Task::none();
+        }
+
+        let pixels = sheet.for_recovery();
+        let path = sheet.doc.path.clone();
+        let transparent = sheet.doc.transparent;
+        Task::perform(
+            async move { doc::recovery::write(&dir, &id, &pixels, path.as_deref(), transparent) },
+            Message::ParkedSnapshotted,
+        )
+    }
+
+    // A parked sheet cannot change, so its snapshot only needs its stamp kept fresh.
+    pub(super) fn touch_parked(&self) {
+        let Some(dir) = &self.recovery else {
+            return;
+        };
+        for sheet in &self.parked {
+            if sheet.unsaved() {
+                let _ = doc::recovery::touch(dir, &sheet.recovery_id);
+            } else {
+                doc::recovery::clear(dir, &sheet.recovery_id);
+            }
+        }
+    }
+
     pub(super) fn snapshot(&mut self) -> Task<Message> {
         let Some(dir) = self.recovery.clone() else {
             return Task::none();
@@ -129,13 +172,32 @@ impl App {
         self.snapshotted = None;
     }
 
-    pub(super) fn restore(&mut self, found: doc::recovery::Recovered) {
-        self.save_format = found
-            .path
-            .as_deref()
-            .and_then(doc::io::SaveFormat::from_path)
-            .unwrap_or_default();
-        self.doc = Document::recovered(found.pixels, found.path, found.transparent);
+    // A blank document nobody has touched is a slot rather than work, so a file takes it over.
+    pub(super) fn open_document(
+        &mut self,
+        doc: Document,
+        format: doc::io::SaveFormat,
+    ) -> Task<Message> {
+        if self.untouched() {
+            self.save_format = format;
+            self.adopt_document(doc);
+            return Task::none();
+        }
+        let sheet = self.new_sheet(doc, format);
+        self.add_sheet(sheet)
+    }
+
+    pub(super) fn add_sheet(&mut self, sheet: Sheet) -> Task<Message> {
+        let mut sheets = self.collapse();
+        let leaving = self.snapshot_parked(&sheets[self.active.min(sheets.len() - 1)]);
+        let at = sheets.len();
+        sheets.push(sheet);
+        self.expand(sheets, at);
+        leaving
+    }
+
+    pub(super) fn adopt_document(&mut self, doc: Document) {
+        self.doc = doc;
         self.floating = None;
         self.live_redo = None;
         self.grab = None;
@@ -146,6 +208,60 @@ impl App {
         self.panel.sync(self.doc.size());
         self.status.clear();
         self.menu = None;
+    }
+
+    pub(super) fn switch_to(&mut self, tab: usize) -> Task<Message> {
+        if tab == self.active || tab >= self.sheets() {
+            return Task::none();
+        }
+        let sheets = self.collapse();
+        let leaving = self.snapshot_parked(&sheets[self.active.min(sheets.len() - 1)]);
+        self.expand(sheets, tab);
+        leaving
+    }
+
+    pub(super) fn close_tab(&mut self) -> Task<Message> {
+        let mut sheets = self.collapse();
+        if sheets.len() < 2 {
+            self.expand(sheets, self.active);
+            return Task::none();
+        }
+        let gone = sheets.remove(self.active);
+        if let Some(dir) = &self.recovery {
+            doc::recovery::clear(dir, &gone.recovery_id);
+        }
+        let next = self.active.min(sheets.len() - 1);
+        self.expand(sheets, next);
+        Task::none()
+    }
+
+    pub(super) fn elsewhere(&self, path: Option<&std::path::Path>) -> Task<Message> {
+        let Ok(exe) = std::env::current_exe() else {
+            return Task::none();
+        };
+        let mut command = std::process::Command::new(exe);
+        if let Some(path) = path {
+            command.arg(path);
+        }
+        match command.spawn() {
+            Ok(child) => {
+                std::thread::spawn(move || drop(child.wait_with_output()));
+                Task::none()
+            }
+            Err(e) => Task::done(Message::ParkedSnapshotted(Err(format!(
+                "cannot open another window: {e}"
+            )))),
+        }
+    }
+
+    pub(super) fn restore(&mut self, found: doc::recovery::Recovered) -> Task<Message> {
+        let format = found
+            .path
+            .as_deref()
+            .and_then(doc::io::SaveFormat::from_path)
+            .unwrap_or_default();
+        let doc = Document::recovered(found.pixels, found.path, found.transparent);
+        self.open_document(doc, format)
     }
 
     pub(super) fn for_saving(&self) -> Rgba8 {
@@ -159,7 +275,11 @@ impl App {
     }
 
     pub(super) fn discarding(&mut self, pending: Pending) -> Task<Message> {
-        if self.unsaved() && self.config.confirm_discard {
+        let dirty = match pending {
+            Pending::Close => self.any_unsaved(),
+            _ => self.unsaved(),
+        };
+        if dirty && self.config.confirm_discard {
             self.asking = Some(pending);
             return Task::none();
         }
@@ -169,12 +289,8 @@ impl App {
     pub(super) fn carry_on(&mut self, pending: Pending) -> Task<Message> {
         self.forget_snapshot();
         match pending {
-            Pending::Blank => {
-                self.blank();
-                Task::none()
-            }
-            Pending::Open => Task::perform(pick_and_load(), Message::Opened),
             Pending::Close => iced::window::latest().and_then(iced::window::close),
+            Pending::Tab => self.close_tab(),
         }
     }
 
@@ -184,18 +300,6 @@ impl App {
 
     pub(super) fn untouched(&self) -> bool {
         !self.doc.modified() && self.doc.path.is_none() && !self.doc.can_undo()
-    }
-
-    pub(super) fn blank(&mut self) {
-        let (w, h) = self.new_canvas_size();
-        self.doc = Document::blank_sized(w, h, false);
-        self.floating = None;
-        self.live_redo = None;
-        self.view = View::fitted(self.viewport, self.doc.size());
-        self.dirty = None;
-        self.panel.sync(self.doc.size());
-        self.status.clear();
-        self.menu = None;
     }
 
     pub(super) fn selection_rect(&self) -> Option<Rect> {
@@ -310,5 +414,21 @@ impl App {
             None => return,
         };
         self.panel.sync(self.doc.size());
+    }
+}
+
+impl Sheet {
+    pub(super) fn unsaved(&self) -> bool {
+        self.doc.modified() || self.floating.is_some()
+    }
+
+    pub(super) fn for_recovery(&self) -> Rgba8 {
+        let Some(floating) = &self.floating else {
+            return self.doc.pixels().clone();
+        };
+        let mut scratch = Document::from_image(self.doc.pixels().clone(), None);
+        scratch.transparent = self.doc.transparent;
+        floating.commit(&mut scratch);
+        scratch.pixels().clone()
     }
 }

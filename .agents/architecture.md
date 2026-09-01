@@ -27,6 +27,27 @@ Document history stores before-and-after regions for local edits and copy-on-wri
 canvas-wide changes. Live objects sit outside that history. Undo first resolves live state: text uses
 its own edit journal, while another live object is cancelled before committed document history moves.
 
+## Several documents
+
+The open document's state stays on `App` itself, so every tool keeps reaching for `self.doc` and
+friends directly. Other open documents are parked as `Sheet` values and swapped in whole. `collapse`
+puts the open document back into the tab order and hands over the full list; `expand` takes one back
+out. Every tab operation is written as collapse, change the list, expand, so the ordering rules live
+in one place instead of being spread through index arithmetic.
+
+`open_in` decides whether a second document joins this window or gets its own. A window is a second
+process rather than a second iced window, which keeps the single-window shell and gives each
+document its own crash-recovery identity for free.
+
+New and Open no longer replace what is open, so neither one can throw work away and neither asks. An
+untouched blank canvas is treated as a slot rather than as work, so the first file opened takes it
+over instead of leaving an empty tab behind. Closing a tab switches to it first, which is what lets
+the save prompt act on the right document without a second code path.
+
+Each sheet carries its own recovery identity. A parked sheet cannot change, so it is snapshotted once
+as it is parked and only has its stamp touched afterwards. Closing the window with unsaved work in a
+parked tab leaves that snapshot behind on purpose: the next launch offers it back.
+
 ## Unsaved work
 
 There is no stored "modified" flag. Every history entry carries a serial, the current position names
