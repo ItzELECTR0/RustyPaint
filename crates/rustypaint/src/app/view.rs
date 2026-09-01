@@ -358,6 +358,10 @@ impl App {
             Some(picker) => iced::widget::stack![under, picker::view(picker)].into(),
             None => under,
         };
+        if self.offering {
+            return iced::widget::stack![under, dialog::offer_recovery(self.recovered.len())]
+                .into();
+        }
         if self.asking.is_none() {
             return under;
         }

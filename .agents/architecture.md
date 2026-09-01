@@ -42,6 +42,26 @@ message box, which on Linux costs a portal round trip the editor should not have
 Open and closing the window all raise the same question and share the answer, and `confirm_discard`
 turns the question off for people who would rather not be asked.
 
+## Crash recovery
+
+Unsaved work is snapshotted into `recovery/` beside the settings file: the document's own pixels as
+PNG, plus a small TOML file holding the file it came from, whether it has a backing, and a stamp.
+The pixels are the document rather than the flattened picture `for_saving` produces, so a restore
+puts back exactly what was on screen, live object committed and all.
+
+The stamp is what separates a crashed session from a running one. A live editor rewrites it on every
+beat even when nothing changed, so a snapshot older than `STALE_AFTER` belongs to an editor that is
+gone. That is why the beat has to keep running while idle, and why `touch` exists as a cheaper
+alternative to writing the image again. A launch offers the newest abandoned snapshot; declining
+clears them all, recovering takes one and leaves the rest for the next launch. Nothing is deleted
+that has not either been recovered or explicitly thrown away.
+
+Saving, and anything that goes through `carry_on`, clears the running session's snapshot, because
+the work behind it is either on disk or deliberately gone.
+
+The beat runs on its own thread feeding a channel, because iced's `thread-pool` executor has no
+interval helper and `iced::time::every` needs the `tokio` or `smol` backend.
+
 ## Coordinates and input
 
 Keep image, viewport-logical, and physical-pixel coordinates explicit. Painting and selection work

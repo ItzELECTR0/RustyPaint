@@ -2,6 +2,7 @@ pub mod clipboard;
 pub mod history;
 pub mod image;
 pub mod io;
+pub mod recovery;
 pub mod rect;
 pub mod transform;
 
@@ -49,6 +50,14 @@ impl Document {
             saved: 0,
             history: History::default(),
         }
+    }
+
+    // Restored work is unsaved by definition, whatever the file it came from says.
+    pub fn recovered(pixels: Rgba8, path: Option<PathBuf>, transparent: bool) -> Self {
+        let mut doc = Self::from_image(pixels, path);
+        doc.transparent = transparent;
+        doc.touched = true;
+        doc
     }
 
     pub fn pixels(&self) -> &Rgba8 {

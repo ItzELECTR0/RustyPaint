@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::gpu::Handle;
 use crate::select::Xform;
@@ -31,11 +30,183 @@ fn app(width: u32, height: u32) -> App {
         theme: Choice::Light,
         ..Config::default()
     };
-    let (mut app, _boot) = App::boot(config, None, None);
+    let (mut app, _boot) = App::boot(config, None, None, None);
     app.doc = Document::blank_sized(width, height, false);
     app.panel = CanvasPanel::new(app.doc.size());
     app.viewport = Size::new(800.0, 600.0);
     app
+}
+
+fn recovering(dir: &std::path::Path) -> App {
+    let config = Config {
+        theme: Choice::Light,
+        ..Config::default()
+    };
+    let (mut app, _boot) = App::boot(config, None, Some(dir.to_path_buf()), None);
+    app.viewport = Size::new(800.0, 600.0);
+    app
+}
+
+fn abandon(dir: &std::path::Path, id: &str) {
+    crate::doc::recovery::backdate(
+        dir,
+        id,
+        crate::doc::recovery::STALE_AFTER + std::time::Duration::from_secs(10),
+    )
+    .unwrap();
+}
+
+fn recovery_scratch(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "rustypaint-app-recovery-{name}-{}",
+        crate::doc::recovery::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
+}
+
+#[test]
+fn work_left_behind_by_a_dead_editor_is_offered_back() {
+    let dir = recovery_scratch("offered");
+    let pixels = Rgba8::new(7, 5, [1, 2, 3, 255]);
+    crate::doc::recovery::write(&dir, "gone", &pixels, None, false).unwrap();
+    abandon(&dir, "gone");
+
+    let mut app = recovering(&dir);
+    assert!(app.offering, "the dialog opens on its own at launch");
+    assert_eq!(app.recovered.len(), 1);
+
+    send(&mut app, Message::RecoveryAnswered(true));
+    assert!(!app.offering);
+    assert_eq!(app.doc.size(), (7, 5));
+    assert_eq!(app.doc.pixels(), &pixels);
+    assert!(app.unsaved(), "recovered work has still never been saved");
+    assert!(
+        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        "what came back is no longer waiting"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_recovered_document_remembers_the_file_it_came_from() {
+    let dir = recovery_scratch("path");
+    let file = std::env::temp_dir().join("portrait.png");
+    let pixels = Rgba8::new(2, 2, [9, 9, 9, 255]);
+    crate::doc::recovery::write(&dir, "gone", &pixels, Some(&file), true).unwrap();
+    abandon(&dir, "gone");
+
+    let mut app = recovering(&dir);
+    send(&mut app, Message::RecoveryAnswered(true));
+    assert_eq!(app.doc.path.as_deref(), Some(file.as_path()));
+    assert!(app.doc.transparent, "the backing came back too");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn turning_the_offer_down_throws_all_of_it_away() {
+    let dir = recovery_scratch("declined");
+    let pixels = Rgba8::new(3, 3, [4, 4, 4, 255]);
+    crate::doc::recovery::write(&dir, "one", &pixels, None, false).unwrap();
+    crate::doc::recovery::write(&dir, "two", &pixels, None, false).unwrap();
+    abandon(&dir, "one");
+    abandon(&dir, "two");
+
+    let mut app = recovering(&dir);
+    assert_eq!(app.recovered.len(), 2);
+    send(&mut app, Message::RecoveryAnswered(false));
+    assert!(!app.offering);
+    assert!(
+        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        "declining clears the lot rather than asking again forever"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn recovering_one_leaves_the_others_for_next_time() {
+    let dir = recovery_scratch("queue");
+    let pixels = Rgba8::new(3, 3, [4, 4, 4, 255]);
+    crate::doc::recovery::write(&dir, "one", &pixels, None, false).unwrap();
+    crate::doc::recovery::write(&dir, "two", &pixels, None, false).unwrap();
+    abandon(&dir, "one");
+    abandon(&dir, "two");
+
+    let mut app = recovering(&dir);
+    send(&mut app, Message::RecoveryAnswered(true));
+    assert_eq!(
+        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).len(),
+        1,
+        "the one not taken is still there to be offered"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_clean_launch_asks_nothing() {
+    let dir = recovery_scratch("clean");
+    let app = recovering(&dir);
+    assert!(!app.offering);
+    assert!(app.recovered.is_empty());
+}
+
+#[test]
+fn saving_clears_the_snapshot_that_was_covering_the_work() {
+    let dir = recovery_scratch("saved");
+    let mut app = recovering(&dir);
+    let file = std::env::temp_dir().join("done.png");
+    crate::doc::recovery::write(&dir, &app.recovery_id, app.doc.pixels(), None, false).unwrap();
+
+    send(&mut app, Message::Saved(Ok(file)));
+    assert!(
+        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        "work that reached disk needs no snapshot"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_document_with_nothing_in_it_writes_no_snapshot() {
+    let dir = recovery_scratch("untouched");
+    let mut app = recovering(&dir);
+    let _ = app.snapshot();
+    assert!(
+        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        "an untouched canvas is not work"
+    );
+}
+
+#[test]
+fn a_snapshot_keeps_the_document_rather_than_a_flattened_picture() {
+    let mut app = app(2, 1);
+    app.doc = Document::blank_sized(2, 1, false);
+    app.doc.edit().pixels_mut()[..4].copy_from_slice(&[255, 0, 0, 128]);
+
+    assert_eq!(
+        app.for_recovery().as_bytes()[..4],
+        [255, 0, 0, 128],
+        "half-transparent pixels come back exactly as they were"
+    );
+    assert_eq!(
+        app.for_saving().as_bytes()[3],
+        255,
+        "saving composites onto the backing, which is why recovery cannot reuse it"
+    );
+}
+
+#[test]
+fn unsaved_work_keeps_its_snapshot_where_it_is() {
+    let dir = recovery_scratch("kept");
+    let mut app = recovering(&dir);
+    app.doc.edit().pixels_mut()[0] = 7;
+    crate::doc::recovery::write(&dir, &app.recovery_id, app.doc.pixels(), None, false).unwrap();
+
+    let _ = app.snapshot();
+    assert!(
+        dir.join(format!("{}.png", app.recovery_id)).exists(),
+        "a snapshot is only cleared once the work behind it is safe"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 fn send(app: &mut App, message: Message) {
@@ -2202,7 +2373,7 @@ fn the_canvas_you_start_with_takes_its_size_from_the_preset() {
         new_canvas: NewCanvas::Fixed(1920, 1080),
         ..Config::default()
     };
-    let (app, _boot) = App::boot(fixed, None, None);
+    let (app, _boot) = App::boot(fixed, None, None, None);
     assert_eq!(
         app.doc.size(),
         (1920, 1080),
@@ -2214,7 +2385,7 @@ fn the_canvas_you_start_with_takes_its_size_from_the_preset() {
         new_canvas: NewCanvas::Fit(crate::canvas::Ratio::Square),
         ..Config::default()
     };
-    let (mut app, _boot) = App::boot(fitting, None, None);
+    let (mut app, _boot) = App::boot(fitting, None, None, None);
     send(&mut app, Message::WindowResized(Size::new(1280.0, 800.0)));
     let (w, h) = app.doc.size();
     assert_eq!(
@@ -2231,7 +2402,7 @@ fn a_document_that_has_been_touched_survives_the_first_measurement() {
         new_canvas: NewCanvas::Fit(crate::canvas::Ratio::Square),
         ..Config::default()
     };
-    let (mut app, _boot) = App::boot(config, None, None);
+    let (mut app, _boot) = App::boot(config, None, None, None);
     app.doc = Document::blank_sized(300, 200, false);
     app.doc.edit();
 

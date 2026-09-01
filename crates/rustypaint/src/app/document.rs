@@ -85,6 +85,69 @@ impl App {
         )
     }
 
+    // Recovery keeps the document as it stands, backing and all, rather than a flattened picture.
+    pub(super) fn for_recovery(&self) -> Rgba8 {
+        let Some(floating) = &self.floating else {
+            return self.doc.pixels().clone();
+        };
+        let mut scratch = Document::from_image(self.doc.pixels().clone(), None);
+        scratch.transparent = self.doc.transparent;
+        floating.commit(&mut scratch);
+        scratch.pixels().clone()
+    }
+
+    pub(super) fn snapshot(&mut self) -> Task<Message> {
+        let Some(dir) = self.recovery.clone() else {
+            return Task::none();
+        };
+        let id = self.recovery_id.clone();
+        if !self.unsaved() {
+            doc::recovery::clear(&dir, &id);
+            self.snapshotted = None;
+            return Task::none();
+        }
+
+        let at = (self.doc.version(), self.float_version);
+        if self.snapshotted == Some(at) {
+            let _ = doc::recovery::touch(&dir, &id);
+            return Task::none();
+        }
+
+        let pixels = self.for_recovery();
+        let path = self.doc.path.clone();
+        let transparent = self.doc.transparent;
+        Task::perform(
+            async move { doc::recovery::write(&dir, &id, &pixels, path.as_deref(), transparent) },
+            move |result| Message::Snapshotted(at, result),
+        )
+    }
+
+    pub(super) fn forget_snapshot(&mut self) {
+        if let Some(dir) = &self.recovery {
+            doc::recovery::clear(dir, &self.recovery_id);
+        }
+        self.snapshotted = None;
+    }
+
+    pub(super) fn restore(&mut self, found: doc::recovery::Recovered) {
+        self.save_format = found
+            .path
+            .as_deref()
+            .and_then(doc::io::SaveFormat::from_path)
+            .unwrap_or_default();
+        self.doc = Document::recovered(found.pixels, found.path, found.transparent);
+        self.floating = None;
+        self.live_redo = None;
+        self.grab = None;
+        self.grab_from = None;
+        self.float_version += 1;
+        self.view = View::fitted(self.viewport, self.doc.size());
+        self.dirty = None;
+        self.panel.sync(self.doc.size());
+        self.status.clear();
+        self.menu = None;
+    }
+
     pub(super) fn for_saving(&self) -> Rgba8 {
         let Some(floating) = &self.floating else {
             return self.doc.flattened();
@@ -104,6 +167,7 @@ impl App {
     }
 
     pub(super) fn carry_on(&mut self, pending: Pending) -> Task<Message> {
+        self.forget_snapshot();
         match pending {
             Pending::Blank => {
                 self.blank();

@@ -31,6 +31,36 @@ pub fn ask_to_save<'a>(name: &'a str, confirm: bool) -> Element<'a, Message> {
     .spacing(14)
     .width(Length::Fixed(CARD));
 
+    over(card, Message::DiscardAnswered(Discard::Keep))
+}
+
+pub fn offer_recovery<'a>(waiting: usize) -> Element<'a, Message> {
+    let left = if waiting > 1 {
+        format!(
+            "{waiting} documents were left unsaved. The most recent one can come back now, and the rest are offered next time."
+        )
+    } else {
+        "A document was left unsaved. It can come back the way it was.".to_owned()
+    };
+    let card = column![
+        text("Recover unsaved work?")
+            .size(18)
+            .color(theme::colours().text),
+        text(left).size(13).color(theme::colours().text),
+        row![
+            Space::new().width(Length::Fill),
+            action("Recover", Message::RecoveryAnswered(true)),
+            action("Discard", Message::RecoveryAnswered(false)),
+        ]
+        .spacing(6),
+    ]
+    .spacing(14)
+    .width(Length::Fixed(CARD));
+
+    over(card, Message::RecoveryAnswered(true))
+}
+
+fn over<'a>(card: iced::widget::Column<'a, Message>, dismiss: Message) -> Element<'a, Message> {
     mouse_area(
         container(
             container(card)
@@ -51,11 +81,15 @@ pub fn ask_to_save<'a>(name: &'a str, confirm: bool) -> Element<'a, Message> {
             ..Default::default()
         }),
     )
-    .on_press(Message::DiscardAnswered(Discard::Keep))
+    .on_press(dismiss)
     .into()
 }
 
 fn answer<'a>(label: &'a str, discard: Discard) -> Element<'a, Message> {
+    action(label, Message::DiscardAnswered(discard))
+}
+
+fn action<'a>(label: &'a str, message: Message) -> Element<'a, Message> {
     button(crate::ui::centred(text(label).size(13).center()))
         .width(Length::Fixed(BUTTON))
         .height(Length::Fixed(28.0))
@@ -71,6 +105,6 @@ fn answer<'a>(label: &'a str, discard: Discard) -> Element<'a, Message> {
             text_color: theme::colours().text,
             ..Default::default()
         })
-        .on_press(Message::DiscardAnswered(discard))
+        .on_press(message)
         .into()
 }

@@ -73,6 +73,10 @@ pub fn path() -> Option<PathBuf> {
     Some(config_dir()?.join("config.toml"))
 }
 
+pub fn recovery_dir() -> Option<PathBuf> {
+    Some(config_dir()?.join("recovery"))
+}
+
 #[cfg(target_os = "windows")]
 fn config_dir() -> Option<PathBuf> {
     Some(PathBuf::from(std::env::var_os("APPDATA")?).join("RustyPaint"))

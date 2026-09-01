@@ -18,6 +18,28 @@ use super::*;
 impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::SnapshotTick => return self.snapshot(),
+            Message::Snapshotted(at, Ok(())) => self.snapshotted = Some(at),
+            Message::Snapshotted(_, Err(e)) => self.status = e,
+            Message::RecoveryAnswered(restore) => {
+                self.offering = false;
+                if self.recovered.is_empty() {
+                    return Task::none();
+                }
+                if restore {
+                    let found = self.recovered.remove(0);
+                    if let Some(dir) = &self.recovery {
+                        doc::recovery::clear(dir, &found.id);
+                    }
+                    self.restore(found);
+                } else {
+                    for found in self.recovered.drain(..) {
+                        if let Some(dir) = &self.recovery {
+                            doc::recovery::clear(dir, &found.id);
+                        }
+                    }
+                }
+            }
             Message::OpenRequested => return self.discarding(Pending::Open),
 
             Message::Opened(Ok((path, pixels))) => {
@@ -47,6 +69,7 @@ impl App {
                 self.doc.mark_saved();
                 self.doc.path = Some(path);
                 self.status.clear();
+                self.forget_snapshot();
                 if let Some(pending) = self.after_save.take() {
                     return self.carry_on(pending);
                 }

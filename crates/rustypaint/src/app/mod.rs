@@ -114,6 +114,18 @@ pub const UI_SCALE: f32 = 1.15;
 
 use crate::canvas::MAX_CANVAS;
 
+// iced's thread-pool executor carries no interval helper, so the snapshot beat gets its own thread.
+fn snapshot_ticks() -> impl iced::futures::Stream<Item = ()> {
+    let (mut send, receive) = iced::futures::channel::mpsc::channel(1);
+    std::thread::spawn(move || {
+        while !send.is_closed() {
+            std::thread::sleep(doc::recovery::SNAPSHOT_EVERY);
+            let _ = send.try_send(());
+        }
+    });
+    receive
+}
+
 pub struct App {
     doc: Document,
     view: View,
@@ -158,6 +170,11 @@ pub struct App {
     after_save: Option<Pending>,
     asking: Option<Pending>,
     nudge: Option<Nudge>,
+    recovery: Option<PathBuf>,
+    recovery_id: String,
+    snapshotted: Option<(Version, u64)>,
+    recovered: Vec<doc::recovery::Recovered>,
+    offering: bool,
 }
 
 // A held arrow key walking a selection along, slowly at first and then at a rate you can still read.
@@ -177,6 +194,9 @@ enum Pending {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    SnapshotTick,
+    Snapshotted((Version, u64), Result<(), String>),
+    RecoveryAnswered(bool),
     OpenRequested,
     Opened(Result<(PathBuf, Rgba8), String>),
     SaveRequested,
@@ -359,15 +379,25 @@ impl From<gpu::Interaction> for Message {
 impl App {
     pub fn new() -> (Self, Task<Message>) {
         let (config, complaint) = crate::config::boot();
-        Self::boot(config.clone(), crate::config::path(), complaint.clone())
+        Self::boot(
+            config.clone(),
+            crate::config::path(),
+            crate::config::recovery_dir(),
+            complaint.clone(),
+        )
     }
 
     fn boot(
         config: Config,
         config_path: Option<PathBuf>,
+        recovery: Option<PathBuf>,
         complaint: Option<String>,
     ) -> (Self, Task<Message>) {
         theme::set_theme(config.theme.resolve(), config.accent);
+        let recovered = recovery
+            .as_deref()
+            .map(|dir| doc::recovery::abandoned(dir, doc::recovery::STALE_AFTER))
+            .unwrap_or_default();
         theme::set_acrylic(config.acrylic);
         let (start_w, start_h) = crate::canvas::size_for(
             config.new_canvas,
@@ -415,6 +445,11 @@ impl App {
             after_save: None,
             asking: None,
             nudge: None,
+            recovery: recovery.clone(),
+            recovery_id: doc::recovery::id(),
+            offering: !recovered.is_empty(),
+            recovered,
+            snapshotted: None,
             config,
             config_path,
             dirty: None,
@@ -452,6 +487,11 @@ impl App {
                 iced::window::frames().map(|_| Message::SprayTick)
             } else if self.nudge.is_some() {
                 iced::window::frames().map(Message::NudgeTick)
+            } else {
+                iced::Subscription::none()
+            },
+            if self.recovery.is_some() {
+                iced::Subscription::run(snapshot_ticks).map(|()| Message::SnapshotTick)
             } else {
                 iced::Subscription::none()
             },

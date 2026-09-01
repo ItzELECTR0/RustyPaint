@@ -18,7 +18,7 @@ RustyPaint brings back its simple 2D tools that I've personally grown really use
 
 It's usable for everyday edits. It includes brushes, erasing, fill, colour picking, transparency, clipboard, image stickers dragged in or opened, crop, rectangle and freeform selection nudged around or stretched with the arrow keys, Smart cutout, shapes, editable curves, adding text and basically everything that Paint3D was able to do with 2D.
 
-It also has some QoL features like dark mode, editable curve and shape points, and a configurable new-canvas size. Things I wished Paint3D would've had. I also gave it a theme of its own, but the old colour scheme is also available.
+It also has some QoL features like dark mode, editable curve and shape points, and a configurable new-canvas size. If it ever dies on you, it offers the unsaved work back the next time it starts. Things I wished Paint3D would've had. I also gave it a theme of its own, but the old colour scheme is also available.
 
 It detects image types from their contents, opens several icon and obscure bitmap formats, and Save as can convert between the formats it writes.
 
