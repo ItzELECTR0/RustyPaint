@@ -90,15 +90,36 @@ pub fn scale(src: &Rgba8, width: u32, height: u32) -> Rgba8 {
     if (width, height) == src.size() {
         return src.clone();
     }
-    let buffer = image::RgbaImage::from_raw(src.width(), src.height(), src.as_bytes().to_vec())
+    // Resampling non-premultiplied pixels averages the colour of invisible neighbours into visible
+    // edges, so weight every channel by its alpha first and divide it back out afterwards.
+    let mut premultiplied = src.as_bytes().to_vec();
+    for px in premultiplied.as_chunks_mut::<CHANNELS>().0 {
+        let a = px[3] as u32;
+        for c in &mut px[..3] {
+            *c = ((*c as u32 * a + 127) / 255) as u8;
+        }
+    }
+
+    let buffer = image::RgbaImage::from_raw(src.width(), src.height(), premultiplied)
         .expect("buffer size always matches its dimensions");
-    let scaled = image::imageops::resize(
+    let mut scaled = image::imageops::resize(
         &buffer,
         width,
         height,
         image::imageops::FilterType::Triangle,
-    );
-    Rgba8::from_raw(width, height, scaled.into_raw()).expect("resize produces a matching buffer")
+    )
+    .into_raw();
+
+    for px in scaled.as_chunks_mut::<CHANNELS>().0 {
+        let a = px[3] as u32;
+        if a == 0 {
+            continue;
+        }
+        for c in &mut px[..3] {
+            *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
+        }
+    }
+    Rgba8::from_raw(width, height, scaled).expect("resize produces a matching buffer")
 }
 
 pub fn flip_horizontal(src: &Rgba8) -> Rgba8 {
@@ -271,6 +292,26 @@ mod tests {
     fn opposite_rotations_cancel() {
         let src = numbered();
         assert_eq!(ids(&rotate_90(&rotate_90(&src, true), false)), ids(&src));
+    }
+
+    #[test]
+    fn scaling_keeps_transparent_neighbours_out_of_visible_edges() {
+        let mut src = Rgba8::new(2, 1, RED);
+        src.pixels_mut()[CHANNELS..].copy_from_slice(&CLEAR);
+        let out = scale(&src, 101, 1);
+
+        let edges = out.as_bytes().as_chunks::<CHANNELS>().0;
+        let mixed = edges.iter().filter(|px| (128..255).contains(&px[3]));
+        assert!(
+            mixed.clone().count() > 0,
+            "the fade should cross half alpha"
+        );
+        for px in mixed {
+            assert!(
+                px[0] >= 250 && px[1] == 0 && px[2] == 0,
+                "a transparent neighbour must not darken the edge it borders, got {px:?}"
+            );
+        }
     }
 
     #[test]
