@@ -125,15 +125,14 @@ impl App {
         )
     }
 
-    // A parked sheet cannot change, so its snapshot only needs its stamp kept fresh.
-    pub(super) fn touch_parked(&self) {
+    // A parked sheet cannot change, so its snapshot is written once as it is parked. All that is
+    // left is dropping the ones whose work has since reached disk.
+    pub(super) fn sweep_parked(&self) {
         let Some(dir) = &self.recovery else {
             return;
         };
         for sheet in &self.parked {
-            if sheet.unsaved() {
-                let _ = doc::recovery::touch(dir, &sheet.recovery_id);
-            } else {
+            if !sheet.unsaved() {
                 doc::recovery::clear(dir, &sheet.recovery_id);
             }
         }
@@ -152,7 +151,6 @@ impl App {
 
         let at = (self.doc.version(), self.float_version);
         if self.snapshotted == Some(at) {
-            let _ = doc::recovery::touch(&dir, &id);
             return Task::none();
         }
 
@@ -227,6 +225,7 @@ impl App {
             return Task::none();
         }
         let gone = sheets.remove(self.active);
+        drop(gone.recovery_lock);
         if let Some(dir) = &self.recovery {
             doc::recovery::clear(dir, &gone.recovery_id);
         }

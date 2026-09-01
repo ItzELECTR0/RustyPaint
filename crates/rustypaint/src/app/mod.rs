@@ -148,6 +148,7 @@ pub(super) struct Sheet {
     cutting_out: Option<CuttingOut>,
     nudge: Option<Nudge>,
     recovery_id: String,
+    recovery_lock: Option<doc::recovery::Guard>,
     snapshotted: Option<(Version, u64)>,
 }
 
@@ -198,6 +199,7 @@ pub struct App {
     recovery: Option<PathBuf>,
     recovery_id: String,
     snapshotted: Option<(Version, u64)>,
+    recovery_lock: Option<doc::recovery::Guard>,
     recovered: Vec<doc::recovery::Recovered>,
     offering: bool,
     parked: Vec<Sheet>,
@@ -429,8 +431,12 @@ impl App {
         theme::set_theme(config.theme.resolve(), config.accent);
         let recovered = recovery
             .as_deref()
-            .map(|dir| doc::recovery::abandoned(dir, doc::recovery::STALE_AFTER))
+            .map(doc::recovery::abandoned)
             .unwrap_or_default();
+        let recovery_id = doc::recovery::id();
+        let recovery_lock = recovery
+            .as_deref()
+            .and_then(|dir| doc::recovery::hold(dir, &recovery_id));
         theme::set_acrylic(config.acrylic);
         let (start_w, start_h) = crate::canvas::size_for(
             config.new_canvas,
@@ -479,7 +485,8 @@ impl App {
             asking: None,
             nudge: None,
             recovery: recovery.clone(),
-            recovery_id: doc::recovery::id(),
+            recovery_id,
+            recovery_lock,
             offering: !recovered.is_empty(),
             recovered,
             snapshotted: None,
@@ -510,6 +517,11 @@ impl App {
 
     pub(super) fn new_sheet(&self, doc: Document, save_format: doc::io::SaveFormat) -> Sheet {
         let size = doc.size();
+        let recovery_id = doc::recovery::id();
+        let recovery_lock = self
+            .recovery
+            .as_deref()
+            .and_then(|dir| doc::recovery::hold(dir, &recovery_id));
         Sheet {
             doc,
             view: View::fitted(self.viewport, size),
@@ -529,7 +541,8 @@ impl App {
             cropping: None,
             cutting_out: None,
             nudge: None,
-            recovery_id: doc::recovery::id(),
+            recovery_id,
+            recovery_lock,
             snapshotted: None,
         }
     }
@@ -593,6 +606,7 @@ impl App {
             cutting_out: self.cutting_out.take(),
             nudge: self.nudge.take(),
             recovery_id: std::mem::take(&mut self.recovery_id),
+            recovery_lock: self.recovery_lock.take(),
             snapshotted: self.snapshotted.take(),
         }
     }
@@ -617,6 +631,7 @@ impl App {
         self.cutting_out = sheet.cutting_out;
         self.nudge = sheet.nudge;
         self.recovery_id = sheet.recovery_id;
+        self.recovery_lock = sheet.recovery_lock;
         self.snapshotted = sheet.snapshotted;
     }
 

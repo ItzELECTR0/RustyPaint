@@ -47,15 +47,6 @@ fn recovering(dir: &std::path::Path) -> App {
     app
 }
 
-fn abandon(dir: &std::path::Path, id: &str) {
-    crate::doc::recovery::backdate(
-        dir,
-        id,
-        crate::doc::recovery::STALE_AFTER + std::time::Duration::from_secs(10),
-    )
-    .unwrap();
-}
-
 fn recovery_scratch(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "rustypaint-app-recovery-{name}-{}",
@@ -70,7 +61,6 @@ fn work_left_behind_by_a_dead_editor_is_offered_back() {
     let dir = recovery_scratch("offered");
     let pixels = Rgba8::new(7, 5, [1, 2, 3, 255]);
     crate::doc::recovery::write(&dir, "gone", &pixels, None, false).unwrap();
-    abandon(&dir, "gone");
 
     let mut app = recovering(&dir);
     assert!(app.offering, "the dialog opens on its own at launch");
@@ -82,7 +72,7 @@ fn work_left_behind_by_a_dead_editor_is_offered_back() {
     assert_eq!(app.doc.pixels(), &pixels);
     assert!(app.unsaved(), "recovered work has still never been saved");
     assert!(
-        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        crate::doc::recovery::abandoned(&dir).is_empty(),
         "what came back is no longer waiting"
     );
     std::fs::remove_dir_all(&dir).unwrap();
@@ -94,7 +84,6 @@ fn a_recovered_document_remembers_the_file_it_came_from() {
     let file = std::env::temp_dir().join("portrait.png");
     let pixels = Rgba8::new(2, 2, [9, 9, 9, 255]);
     crate::doc::recovery::write(&dir, "gone", &pixels, Some(&file), true).unwrap();
-    abandon(&dir, "gone");
 
     let mut app = recovering(&dir);
     send(&mut app, Message::RecoveryAnswered(true));
@@ -109,15 +98,13 @@ fn turning_the_offer_down_throws_all_of_it_away() {
     let pixels = Rgba8::new(3, 3, [4, 4, 4, 255]);
     crate::doc::recovery::write(&dir, "one", &pixels, None, false).unwrap();
     crate::doc::recovery::write(&dir, "two", &pixels, None, false).unwrap();
-    abandon(&dir, "one");
-    abandon(&dir, "two");
 
     let mut app = recovering(&dir);
     assert_eq!(app.recovered.len(), 2);
     send(&mut app, Message::RecoveryAnswered(false));
     assert!(!app.offering);
     assert!(
-        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        crate::doc::recovery::abandoned(&dir).is_empty(),
         "declining clears the lot rather than asking again forever"
     );
     std::fs::remove_dir_all(&dir).unwrap();
@@ -130,14 +117,12 @@ fn recovering_brings_every_abandoned_document_back_as_its_own_tab() {
         .unwrap();
     crate::doc::recovery::write(&dir, "two", &Rgba8::new(5, 5, [6, 6, 6, 255]), None, false)
         .unwrap();
-    abandon(&dir, "one");
-    abandon(&dir, "two");
 
     let mut app = recovering(&dir);
     send(&mut app, Message::RecoveryAnswered(true));
     assert_eq!(app.sheets(), 2, "both came back, neither had to wait");
     assert!(
-        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        crate::doc::recovery::abandoned(&dir).is_empty(),
         "and nothing is still sitting on disk"
     );
     std::fs::remove_dir_all(&dir).unwrap();
@@ -160,8 +145,46 @@ fn saving_clears_the_snapshot_that_was_covering_the_work() {
 
     send(&mut app, Message::Saved(Ok(file)));
     assert!(
-        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        crate::doc::recovery::abandoned(&dir).is_empty(),
         "work that reached disk needs no snapshot"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_running_editor_never_offers_its_own_work_back_to_itself() {
+    let dir = recovery_scratch("selfheld");
+    let mut app = recovering(&dir);
+    app.doc.edit().pixels_mut()[0] = 7;
+    crate::doc::recovery::write(&dir, &app.recovery_id, app.doc.pixels(), None, false).unwrap();
+
+    assert!(
+        crate::doc::recovery::abandoned(&dir).is_empty(),
+        "the lock this editor holds says the work is still being worked on"
+    );
+
+    let id = app.recovery_id.clone();
+    drop(app);
+    let found = crate::doc::recovery::abandoned(&dir);
+    assert_eq!(found.len(), 1, "and the moment it dies the work is offered");
+    assert_eq!(found[0].id, id);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_parked_tab_keeps_its_own_snapshot_alive() {
+    let dir = recovery_scratch("parked");
+    let mut app = recovering(&dir);
+    app.doc.edit().pixels_mut()[0] = 7;
+    let first = app.recovery_id.clone();
+    send(&mut app, Message::NewRequested);
+
+    assert_eq!(app.sheets(), 2);
+    assert_ne!(app.recovery_id, first, "each sheet has its own identity");
+    crate::doc::recovery::write(&dir, &first, app.doc.pixels(), None, false).unwrap();
+    assert!(
+        crate::doc::recovery::abandoned(&dir).is_empty(),
+        "a parked tab is still held by this editor"
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -172,7 +195,7 @@ fn a_document_with_nothing_in_it_writes_no_snapshot() {
     let mut app = recovering(&dir);
     let _ = app.snapshot();
     assert!(
-        crate::doc::recovery::abandoned(&dir, std::time::Duration::ZERO).is_empty(),
+        crate::doc::recovery::abandoned(&dir).is_empty(),
         "an untouched canvas is not work"
     );
 }

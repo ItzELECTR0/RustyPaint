@@ -44,9 +44,10 @@ untouched blank canvas is treated as a slot rather than as work, so the first fi
 over instead of leaving an empty tab behind. Closing a tab switches to it first, which is what lets
 the save prompt act on the right document without a second code path.
 
-Each sheet carries its own recovery identity. A parked sheet cannot change, so it is snapshotted once
-as it is parked and only has its stamp touched afterwards. Closing the window with unsaved work in a
-parked tab leaves that snapshot behind on purpose: the next launch offers it back.
+Each sheet carries its own recovery identity and its own lock, so a parked tab is still visibly
+owned by this editor. A parked sheet cannot change, so it is snapshotted once as it is parked and
+afterwards only swept when its work reaches disk. Closing the window with unsaved work in a parked
+tab leaves that snapshot behind on purpose: the next launch offers it back.
 
 ## Unsaved work
 
@@ -70,15 +71,20 @@ PNG, plus a small TOML file holding the file it came from, whether it has a back
 The pixels are the document rather than the flattened picture `for_saving` produces, so a restore
 puts back exactly what was on screen, live object committed and all.
 
-The stamp is what separates a crashed session from a running one. A live editor rewrites it on every
-beat even when nothing changed, so a snapshot older than `STALE_AFTER` belongs to an editor that is
-gone. That is why the beat has to keep running while idle, and why `touch` exists as a cheaper
-alternative to writing the image again. A launch offers the newest abandoned snapshot; declining
-clears them all, recovering takes one and leaves the rest for the next launch. Nothing is deleted
-that has not either been recovered or explicitly thrown away.
+A crashed session is told from a running one by a lock, not by a clock. Each sheet holds an
+exclusive lock on its own `.lock` file for as long as its editor lives, and the kernel drops that
+lock however the process dies, a kill included. A snapshot whose lock can be taken therefore belongs
+to an editor that is gone, and the work is offered back the instant the next launch happens rather
+than after a timeout. A filesystem that cannot lock at all is treated as not running, because
+refusing to offer the work would be the worse failure. Recovering brings every abandoned document
+back, each in its own tab; declining clears the lot. Nothing is deleted that has not either been
+recovered or explicitly thrown away.
 
 Saving, and anything that goes through `carry_on`, clears the running session's snapshot, because
 the work behind it is either on disk or deliberately gone.
+
+Recovery identities carry a per-process counter as well as the clock, because two documents opened
+in the same second would otherwise share one snapshot.
 
 The beat runs on its own thread feeding a channel, because iced's `thread-pool` executor has no
 interval helper and `iced::time::every` needs the `tokio` or `smol` backend.

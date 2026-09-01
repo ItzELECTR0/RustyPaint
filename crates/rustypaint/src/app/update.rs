@@ -19,7 +19,7 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::SnapshotTick => {
-                self.touch_parked();
+                self.sweep_parked();
                 return self.snapshot();
             }
             Message::Snapshotted(at, Ok(())) => self.snapshotted = Some(at),
