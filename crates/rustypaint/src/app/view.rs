@@ -112,6 +112,100 @@ pub(super) fn hint<'a>(
     .into()
 }
 
+pub(super) const DOCUMENT_TAB_HEIGHT: f32 = 28.0;
+
+// Tabs share the strip and shrink as more open, but never stretch past this on their own.
+pub(super) const DOCUMENT_TAB_WIDTH: f32 = 190.0;
+
+// Chrome bars are dark in both schemes, so the ink is the same and only its weight changes.
+fn on_chrome(active: bool) -> iced::Color {
+    iced::Color {
+        a: if active { 1.0 } else { 0.62 },
+        ..theme::colours().text_on_dark
+    }
+}
+
+// The open tab is painted the colour of the strip it sits on top of, so it reads as joined to it.
+fn document_tab_style(active: bool, status: button::Status) -> button::Style {
+    let background = if active {
+        Some(theme::colours().tab_bar.into())
+    } else if matches!(status, button::Status::Hovered) {
+        Some(
+            iced::Color {
+                a: 0.5,
+                ..theme::colours().tab_bar
+            }
+            .into(),
+        )
+    } else {
+        None
+    };
+    button::Style {
+        background,
+        text_color: on_chrome(active),
+        border: iced::Border {
+            radius: iced::border::radius(10).bottom(0),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn document_close_style(status: button::Status) -> button::Style {
+    button::Style {
+        background: matches!(status, button::Status::Hovered).then(|| {
+            iced::Color {
+                a: 0.22,
+                ..theme::colours().text_on_dark
+            }
+            .into()
+        }),
+        border: iced::Border {
+            radius: iced::border::radius(6),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+// The two chrome greys are a shade apart, so the open tab is named by a line in the accent colour
+// rather than by its background alone.
+fn open_marker<'a>(active: bool) -> Element<'a, Message> {
+    if !active {
+        return Space::new().into();
+    }
+    column![
+        container(Space::new())
+            .width(Length::Fill)
+            .height(Length::Fixed(2.0))
+            .style(|_theme| container::Style {
+                background: Some(theme::colours().accent.into()),
+                border: iced::Border {
+                    radius: iced::border::radius(0).top(2),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+        Space::new().height(Length::Fill),
+    ]
+    .into()
+}
+
+fn unsaved_dot<'a>() -> Element<'a, Message> {
+    container(Space::new())
+        .width(Length::Fixed(6.0))
+        .height(Length::Fixed(6.0))
+        .style(|_theme| container::Style {
+            background: Some(theme::colours().accent.into()),
+            border: iced::Border {
+                radius: iced::border::radius(3),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
 pub(super) fn tab_style(active: bool) -> button::Style {
     button::Style {
         background: Some(if active {
@@ -357,43 +451,81 @@ impl App {
         if self.sheets() < 2 {
             return None;
         }
+
         let tabs = (0..self.sheets()).map(|tab| {
             let active = self.parked_at(tab).is_none();
-            let mark = if self.tab_unsaved(tab) { "*" } else { "" };
-            row![
-                button(
-                    text(format!("{}{mark}", self.tab_name(tab)))
-                        .size(12)
-                        .wrapping(iced::widget::text::Wrapping::None)
-                )
-                .padding([4, 8])
-                .style(move |_theme, _status| tab_style(active))
-                .on_press(Message::TabSelected(tab)),
-                button(text("x").size(11))
-                    .padding([4, 6])
-                    .style(move |_theme, _status| tab_style(active))
+            let mut face = row![].spacing(6).align_y(iced::Alignment::Center);
+            if self.tab_unsaved(tab) {
+                face = face.push(unsaved_dot());
+            }
+            face = face.push(
+                text(self.tab_name(tab))
+                    .size(12)
+                    .color(on_chrome(active))
+                    .wrapping(iced::widget::text::Wrapping::None),
+            );
+
+            // The close button sits over the tab rather than beside it, so the whole tab is one
+            // hover target and the label keeps the full width until it actually runs out.
+            iced::widget::stack![
+                button(face)
+                    .width(Length::Fill)
+                    .height(Length::Fixed(DOCUMENT_TAB_HEIGHT))
+                    .padding(iced::Padding::default().left(10).right(DOCUMENT_TAB_HEIGHT))
+                    .clip(true)
+                    .style(move |_theme, status| document_tab_style(active, status))
+                    .on_press(Message::TabSelected(tab)),
+                open_marker(active),
+                row![
+                    Space::new().width(Length::Fill),
+                    button(crate::ui::centred(icons::art(
+                        crate::assets::WINDOW_CLOSE_SVG,
+                        8.0,
+                        Some(on_chrome(active)),
+                    )))
+                    .width(Length::Fixed(DOCUMENT_TAB_HEIGHT - 8.0))
+                    .height(Length::Fixed(DOCUMENT_TAB_HEIGHT - 8.0))
+                    .padding(0)
+                    .style(|_theme, status| document_close_style(status))
                     .on_press(Message::TabClosed(tab)),
+                    Space::new().width(Length::Fixed(4.0)),
+                ]
+                .height(Length::Fixed(DOCUMENT_TAB_HEIGHT))
+                .align_y(iced::Alignment::Center),
             ]
+            .width(Length::Fill)
             .into()
         });
 
+        let strip = row![
+            container(row(tabs).spacing(2))
+                .width(Length::Fill)
+                .max_width(self.sheets() as f32 * DOCUMENT_TAB_WIDTH),
+            hint(
+                button(crate::ui::centred(
+                    text("+").size(17).color(on_chrome(false))
+                ))
+                .width(Length::Fixed(DOCUMENT_TAB_HEIGHT))
+                .height(Length::Fixed(DOCUMENT_TAB_HEIGHT))
+                .padding(0)
+                .style(|_theme, status| document_close_style(status))
+                .on_press(Message::NewRequested),
+                strings::with_key("New picture", &strings::command_key("N")),
+            ),
+            Space::new().width(Length::Fill),
+        ]
+        .spacing(4)
+        .align_y(iced::Alignment::Center);
+
         Some(
-            container(
-                iced::widget::scrollable(row(tabs).spacing(2)).direction(
-                    iced::widget::scrollable::Direction::Horizontal(
-                        iced::widget::scrollable::Scrollbar::new()
-                            .width(4)
-                            .scroller_width(4),
-                    ),
-                ),
-            )
-            .width(Length::Fill)
-            .padding([2, 4])
-            .style(|_theme| container::Style {
-                background: Some(theme::colours().tab_bar.into()),
-                ..Default::default()
-            })
-            .into(),
+            container(strip)
+                .width(Length::Fill)
+                .padding(iced::Padding::default().left(6).right(6).top(4))
+                .style(|_theme| container::Style {
+                    background: Some(theme::colours().title_bar.into()),
+                    ..Default::default()
+                })
+                .into(),
         )
     }
 
