@@ -1,0 +1,52 @@
+name: Publish to WinGet
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to submit, such as v0.2.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  IDENTIFIER: ItzELECTR0.RustyPaint
+
+jobs:
+  submit:
+    name: Submit ${{ inputs.tag }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Look for the package in winget-pkgs
+        id: package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          initial=$(printf '%s' "${IDENTIFIER::1}" | tr '[:upper:]' '[:lower:]')
+          path="manifests/$initial/${IDENTIFIER//./\/}"
+          version="${TAG#v}"
+          if ! gh api "repos/microsoft/winget-pkgs/contents/$path" --silent 2>/dev/null; then
+            echo "submit=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$IDENTIFIER is not in winget-pkgs yet, so $version was not submitted. Run this workflow by hand once the first manifest is merged."
+          elif gh api "repos/microsoft/winget-pkgs/contents/$path/$version" --silent 2>/dev/null; then
+            echo "submit=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$IDENTIFIER $version is already in winget-pkgs, so nothing was submitted."
+          else
+            echo "submit=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Submit the installer
+        if: steps.package.outputs.submit == 'true'
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: ${{ env.IDENTIFIER }}
+          release-tag: ${{ inputs.tag }}
+          installers-regex: '\.msi$'
+          token: ${{ secrets.WINGET_TOKEN }}

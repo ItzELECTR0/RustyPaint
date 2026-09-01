@@ -40,3 +40,12 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
           fi
+
+  winget:
+    name: Publish to WinGet
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish
+    uses: ./.github/workflows/winget.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
