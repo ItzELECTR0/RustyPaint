@@ -16,6 +16,9 @@ concurrency:
 jobs:
   build:
     name: Packages
+    # A release commit is built from its own tag, so building it here repeats the same work and
+    # leaves the rolling pre-release sitting on the release rather than ahead of it.
+    if: "${{ !startsWith(github.event.head_commit.message, 'build: release') }}"
     uses: ./.github/workflows/build-packages.yml
 
   publish:
