@@ -64,6 +64,12 @@ holds, and `vercmp` is the way to confirm it rather than reading the strings:
 so later out-of-cycle syncs stay upgrades. Those syncs are `build(aur): sync recipes` here, and carry
 the hashed `pkgver` because by then the release commit exists to name.
 
+A sync commit's own `pkgver` names the commit before it, for the same reason: the value is written
+into the recipe by the commit that carries it, so it can only name a commit that already exists. The
+`rustypaint-git` recipe is therefore permanently one commit behind the sync that updates it, and that
+is fine. `pkgver()` recomputes the truth against whatever HEAD the AUR clone lands on, and the stale
+`.SRCINFO` value only has to stay lower than that so helpers still offer the update.
+
 Pushing is the maintainer's, always, and `main` goes before the tag or `release.yml` fails its
 `--verify-tag`. The AUR repositories are pushed separately:
 
