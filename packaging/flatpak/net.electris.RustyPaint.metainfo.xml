@@ -66,6 +66,18 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.2.2" date="2026-09-02">
+      <url type="details">https://github.com/ItzELECTR0/RustyPaint/releases/tag/v0.2.2</url>
+      <description>
+        <ul>
+          <li>Several pictures can be open at once, in tabs or in separate windows</li>
+          <li>Unsaved work is offered back the next time RustyPaint starts after a crash</li>
+          <li>Tabs have a right-click menu for saving, copying and closing</li>
+          <li>The whole canvas can be copied with Ctrl+Shift+C</li>
+          <li>Scaling a picture with transparency no longer darkens its edges</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-08-25">
       <url type="details">https://github.com/ItzELECTR0/RustyPaint/releases/tag/v0.2.1</url>
       <description>
