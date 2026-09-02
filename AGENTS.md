@@ -16,5 +16,5 @@ Read `.agents/assets.md` when changing bundled art, fonts, or visual reference e
 
 Read `.agents/cutout.md` when changing Smart cutout, colour models, graph cuts, or refinement.
 
-Read `.agents/packaging.md` when changing Cargo profiles, versions, desktop integration, or the Arch
-package.
+Read `.agents/packaging.md` when cutting a release or changing Cargo profiles, versions, desktop
+integration, or any of the distribution packages.

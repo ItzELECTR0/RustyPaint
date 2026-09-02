@@ -9,11 +9,25 @@ placing it at the repository root would collide with project source. `prepare()`
 of build inputs into `$srcdir`; it must not mutate the checkout or copy makepkg scratch directories
 back into themselves.
 
-The AUR recipes live in `packaging/aur/rustypaint/` and `packaging/aur/rustypaint-git/`, ready to be
-copied into their separate AUR repositories. They clone `https://github.com/ItzELECTR0/RustyPaint`
-rather than borrowing the local checkout. The stable recipe pins the latest release tag manually;
-the Git recipe follows HEAD and derives `pkgver` from `git describe`, matched against `v*` tags so
-the rolling `experimental` tag cannot become a version.
+`packaging/aur/rustypaint/` and `packaging/aur/rustypaint-git/` are the AUR repositories themselves,
+each a git checkout of `ssh://aur@aur.archlinux.org/<name>` nested inside this one and also tracked
+by it. Editing a recipe therefore needs two commits: one here and one in the nested repository, whose
+own convention is `chore: update to <version>`. They clone
+`https://github.com/ItzELECTR0/RustyPaint` rather than borrowing the local checkout. The stable
+recipe pins the latest release tag through `#tag=v${pkgver}`; the Git recipe follows HEAD and derives
+`pkgver` from `git describe`, matched against `v*` tags so the rolling `experimental` tag cannot
+become a version.
+
+`.SRCINFO` is what the AUR actually reads, so it is regenerated rather than hand-edited:
+
+```sh
+makepkg -D packaging/aur/<name> --printsrcinfo > packaging/aur/<name>/.SRCINFO
+```
+
+A recipe whose `.SRCINFO` still names the old version shows the old version on the AUR no matter what
+its `PKGBUILD` says. That matters most for `rustypaint-git`: `pkgver()` recomputes the truth at build
+time, but helpers compare `.SRCINFO` unless the user runs them in devel mode, so leaving it behind
+means `-Syu` never offers the update.
 
 Everyday development uses optimized dependencies and lightly optimized project code. Release builds
 use thin LTO for reasonable iteration time. The `dist` profile is the package build: fat LTO and one
@@ -22,17 +36,57 @@ on older CPUs. Both AUR recipes deliberately enable it because AUR packages are 
 installing machine.
 
 The workspace version is the source of truth for both crates and must not change without maintainer
-direction. Keep `packaging/PKGBUILD` synchronized when a release version is chosen; version changes
-are not incidental cleanup.
+direction. Version changes are not incidental cleanup, and the maintainer tests the work before the
+bump is made rather than after.
+
+## Cutting a release
+
+One commit, `build: release <version>`, carrying every place the version is written:
+
+- `Cargo.toml` workspace version, and `Cargo.lock` refreshed by any cargo command
+- `packaging/PKGBUILD`
+- `packaging/aur/rustypaint/` `PKGBUILD` and `.SRCINFO`
+- `packaging/aur/rustypaint-git/` `PKGBUILD` and `.SRCINFO`
+- a `releases` entry in `packaging/flatpak/net.electris.RustyPaint.metainfo.xml`, then
+  `appstreamcli validate`
+
+Then an annotated tag, `git tag -a v<version> -m "RustyPaint <version>"`, matching the existing ones.
+
+In the release commit `rustypaint-git` takes the bare version, with no `.rN.gHASH` suffix. The suffix
+names the release commit, and no commit can contain its own hash, so a hashed value is only
+expressible from a later commit. `pkgver()` derives the real one at build time anyway. Ordering still
+holds, and `vercmp` is the way to confirm it rather than reading the strings:
+
+```
+0.2.1.r8.gc8e5959  <  0.2.2  <  0.2.2.r0.g<release commit>
+```
+
+so later out-of-cycle syncs stay upgrades. Those syncs are `build(aur): sync recipes` here, and carry
+the hashed `pkgver` because by then the release commit exists to name.
+
+Pushing is the maintainer's, always, and `main` goes before the tag or `release.yml` fails its
+`--verify-tag`. The AUR repositories are pushed separately:
+
+```sh
+git push origin main && git push origin v<version>
+git -C packaging/aur/rustypaint push
+git -C packaging/aur/rustypaint-git push
+```
 
 `.github/workflows/build-packages.yml` builds AppImage, Debian, RPM, Arch, Flatpak, Windows MSI, and
 macOS DMG artifacts. It is reusable and has no triggers of its own, so the build steps have a single
 owner. `release.yml` calls it for a tag beginning with `v`, creates or updates that tag's GitHub
 release, and then submits the MSI to WinGet; a manual run only stores workflow artifacts.
-`experimental.yml` calls it for every push to `main` and replaces the rolling `experimental`
+`experimental.yml` calls it for a push to `main` and replaces the rolling `experimental`
 pre-release, deleting and recreating it so GitHub lists it above the tagged releases. That build
 carries the version in `packaging/PKGBUILD`, which is the last release rather than anything derived
-from the commit. Windows and macOS packages remain unsigned until signing credentials are
+from the commit.
+
+It skips whatever cannot change a package. A push confined to `**.md`, `.agents/` or
+`.github/assets/` never starts, and one whose tip message begins `docs` or `build: release` stops at
+the `build` job, so a release is built once from its own tag instead of twice. The message test reads
+only the tip of the push, so a batch ending on a documentation commit is skipped whatever came before
+it and the rolling pre-release stays where it was until the next push. Windows and macOS packages remain unsigned until signing credentials are
 configured.
 
 The WinGet package identifier is `ItzELECTR0.RustyPaint` and cannot be renamed without a separate
