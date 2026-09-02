@@ -211,6 +211,7 @@ fn pane_save_as<'a>(format: SaveFormat) -> Element<'a, Message> {
             .color(theme::colours().text),
         pick_list(SaveFormat::ALL, Some(format), Message::SaveFormatPicked)
             .style(controls::pick_list_style)
+            .menu_style(controls::menu_style)
             .text_size(13)
             .width(Length::Fixed(280.0)),
         format_tile(format),

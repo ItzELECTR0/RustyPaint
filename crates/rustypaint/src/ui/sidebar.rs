@@ -283,6 +283,7 @@ fn paint_row<'a>(
         swatch,
         iced::widget::pick_list(shapes::Paint::ALL, Some(shapes::Paint::of(colour)), picked)
             .style(controls::pick_list_style)
+            .menu_style(controls::menu_style)
             .text_size(13)
             .width(Length::Fill),
     ]
@@ -302,6 +303,7 @@ fn text_panel<'a>(
         Message::TextFontPicked,
     )
     .style(controls::pick_list_style)
+    .menu_style(controls::menu_style)
     .text_size(13)
     .width(Length::Fill);
 
@@ -311,6 +313,7 @@ fn text_panel<'a>(
         Message::TextSizePicked,
     )
     .style(controls::pick_list_style)
+    .menu_style(controls::menu_style)
     .text_size(13)
     .width(Length::Fixed(90.0));
 
@@ -810,10 +813,16 @@ fn canvas_panel<'a>(
             .text_size(13)
             .on_toggle(Message::ResizeImageToggled),
         row![
-            button(text("Pixels").size(12)).on_press(Message::CanvasUnitPicked(false)),
-            button(text("Percent").size(12)).on_press(Message::CanvasUnitPicked(true)),
+            button(text("Pixels").size(12))
+                .style(|_theme, status| action_style(status))
+                .on_press(Message::CanvasUnitPicked(false)),
+            button(text("Percent").size(12))
+                .style(|_theme, status| action_style(status))
+                .on_press(Message::CanvasUnitPicked(true)),
             Space::new().width(Length::Fill),
-            button(text("Apply").size(12)).on_press(Message::CanvasResizeSubmitted),
+            button(text("Apply").size(12))
+                .style(|_theme, status| action_style(status))
+                .on_press(Message::CanvasResizeSubmitted),
         ]
         .spacing(4),
         divider(),
@@ -842,6 +851,24 @@ fn canvas_panel<'a>(
     ]
     .spacing(10)
     .into()
+}
+
+// The only accent-filled buttons in the panel, so they carry the wash the tabs use when lit.
+fn action_style(status: button::Status) -> button::Style {
+    let c = theme::colours();
+    button::Style {
+        background: Some(if matches!(status, button::Status::Hovered) {
+            theme::selection_wash()
+        } else {
+            c.accent.into()
+        }),
+        text_color: c.selection_text,
+        border: iced::Border {
+            radius: 2.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
 }
 
 fn tool_button<'a>(

@@ -7,6 +7,7 @@ pub fn centred<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> Ele
 
 pub mod controls {
     use super::theme;
+    use iced::widget::overlay::menu;
     use iced::widget::{checkbox, pick_list, slider, text_input, toggler};
     use iced::{Background, Border};
 
@@ -95,6 +96,23 @@ pub mod controls {
             placeholder: c.text_dim,
             value: c.text,
             selection: c.accent,
+        }
+    }
+
+    // pick_list styles only the closed control; the list it drops down is its own catalog.
+    pub fn menu_style(_theme: &iced::Theme) -> menu::Style {
+        let c = theme::colours();
+        menu::Style {
+            background: c.control.into(),
+            border: Border {
+                color: c.border,
+                width: 1.0,
+                radius: 2.0.into(),
+            },
+            text_color: c.text,
+            selected_text_color: c.selection_text,
+            selected_background: c.accent.into(),
+            shadow: iced::Shadow::default(),
         }
     }
 
