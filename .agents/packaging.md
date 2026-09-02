@@ -153,9 +153,17 @@ cargo-packager 0.11.8 cannot do the Windows half itself. Its WiX template render
 the MSI silently ships with no associations at all. `packaging/windows/file-associations.wxs` does
 the registration instead, wired in through `wix.fragment-paths`. That table is a sibling of
 `windows` rather than a child of it, and the config refuses unknown fields, so putting it under
-`windows` fails every format's build at config load rather than only the Windows one. The path is
-resolved against the directory `cargo packager` runs in, which is the repository root, not the
-crate. The fragment offers every format through `OpenWithProgids` and a `RegisteredApplications`
+`windows` fails every format's build at config load rather than only the Windows one.
+
+Every path in that table is relative to `crates/rustypaint/Cargo.toml`, not to the repository root:
+cargo-packager chdirs to the directory of the config it is reading before it resolves anything, so
+`icons`, `license-file`, `desktop-template`, the `files` maps and `wix.fragment-paths` all start
+`../../`. `[package.metadata.generate-rpm]` is the exception, because cargo-generate-rpm is a
+different tool and reads its `assets` from the repository root.
+`every_path_the_packager_is_given_resolves_from_this_manifest` in `doc/io.rs` checks the lot, since
+a path that is wrong here only surfaces on the runner that builds that one format.
+
+The fragment offers every format through `OpenWithProgids` and a `RegisteredApplications`
 capabilities key rather than claiming extensions outright, so installing RustyPaint never takes a
 file type away from whatever already owns it. Its component GUID is fixed and must stay that way
 across versions.

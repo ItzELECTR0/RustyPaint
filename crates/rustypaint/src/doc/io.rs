@@ -450,6 +450,43 @@ mod tests {
             .collect()
     }
 
+    // cargo-packager chdirs to the manifest before it reads anything, so a path in that
+    // table is relative to this crate and not to the repository root.
+    #[test]
+    fn every_path_the_packager_is_given_resolves_from_this_manifest() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let manifest: toml::Table = toml::from_str(MANIFEST).expect("the manifest parses");
+        let packager = &manifest["package"]["metadata"]["packager"];
+
+        let mut checked = 0;
+        let mut check = |value: &toml::Value| {
+            let path = value.as_str().expect("a path is a string");
+            assert!(
+                root.join(path).exists(),
+                "{path} is not there from the crate"
+            );
+            checked += 1;
+        };
+
+        for icon in packager["icons"].as_array().expect("icons") {
+            check(icon);
+        }
+        check(&packager["license-file"]);
+        check(&packager["deb"]["desktop-template"]);
+        for table in ["deb", "appimage"] {
+            for key in packager[table]["files"].as_table().expect("files").keys() {
+                check(&toml::Value::String(key.clone()));
+            }
+        }
+        for fragment in packager["wix"]["fragment-paths"]
+            .as_array()
+            .expect("fragments")
+        {
+            check(fragment);
+        }
+        assert!(checked > 10, "the table stopped being walked properly");
+    }
+
     #[test]
     fn every_readable_format_is_offered_to_the_desktop() {
         let mut claimed: Vec<String> = associations()
