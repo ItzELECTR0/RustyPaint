@@ -5,6 +5,11 @@ on:
   push:
     branches:
       - main
+    # Nothing here reaches a package, so a change confined to these is not worth a build.
+    paths-ignore:
+      - '**.md'
+      - '.agents/**'
+      - '.github/assets/**'
 
 permissions:
   contents: read
@@ -17,8 +22,10 @@ jobs:
   build:
     name: Packages
     # A release commit is built from its own tag, so building it here repeats the same work and
-    # leaves the rolling pre-release sitting on the release rather than ahead of it.
-    if: "${{ !startsWith(github.event.head_commit.message, 'build: release') }}"
+    # leaves the rolling pre-release sitting on the release rather than ahead of it. A push whose
+    # tip only writes documentation is not worth a build either. `paths-ignore` above catches the
+    # push that touches nothing else; this catches the one that ends on a documentation commit.
+    if: "${{ !startsWith(github.event.head_commit.message, 'build: release') && !startsWith(github.event.head_commit.message, 'docs') }}"
     uses: ./.github/workflows/build-packages.yml
 
   publish:
