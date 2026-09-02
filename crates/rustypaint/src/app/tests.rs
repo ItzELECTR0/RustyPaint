@@ -37,6 +37,27 @@ fn app(width: u32, height: u32) -> App {
     app
 }
 
+#[test]
+fn picking_a_language_changes_what_the_interface_says() {
+    let mut app = app(64, 64);
+    let restore = app.config.language;
+
+    send(
+        &mut app,
+        Message::LanguagePicked(crate::i18n::Language::EnUs),
+    );
+    assert_eq!(app.config.language, crate::i18n::Language::EnUs);
+    assert_eq!(crate::i18n::colour(), "Color", "the American spelling");
+
+    send(
+        &mut app,
+        Message::LanguagePicked(crate::i18n::Language::EnGb),
+    );
+    assert_eq!(crate::i18n::colour(), "Colour", "and back again");
+
+    crate::i18n::init(restore);
+}
+
 fn dead_entry(slot: &str) -> crate::doc::recovery::Open {
     crate::doc::recovery::Open {
         slot: slot.into(),
@@ -3289,7 +3310,9 @@ fn every_tab_in_the_strip_either_opens_a_panel_or_is_inert() {
         "every tab in the strip has a panel"
     );
     assert!(
-        !tabs.iter().any(|(label, _, _)| label.contains("3D")),
+        !tabs
+            .iter()
+            .any(|(key, _, _)| crate::i18n::lookup(key).contains("3D")),
         "nothing 3D belongs in the strip"
     );
 }

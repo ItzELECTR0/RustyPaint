@@ -1,4 +1,6 @@
 use crate::canvas::NewCanvas;
+use crate::i18n;
+use crate::i18n::Language;
 use crate::ui::theme::{Choice, Scheme};
 
 use std::path::PathBuf;
@@ -17,8 +19,8 @@ impl OpenIn {
 
     pub fn name(self) -> &'static str {
         match self {
-            OpenIn::Tab => "Tabs",
-            OpenIn::Window => "Windows",
+            OpenIn::Tab => i18n::open_in_tab(),
+            OpenIn::Window => i18n::open_in_window(),
         }
     }
 }
@@ -28,6 +30,7 @@ impl OpenIn {
 pub struct Config {
     pub theme: Choice,
     pub accent: Scheme,
+    pub language: Language,
     pub new_canvas: NewCanvas,
     pub acrylic: bool,
     pub decorations: bool,
@@ -41,6 +44,7 @@ impl Default for Config {
         Self {
             theme: Choice::default(),
             accent: Scheme::default(),
+            language: Language::default(),
             new_canvas: NewCanvas::default(),
             acrylic: true,
             decorations: false,
@@ -62,17 +66,17 @@ impl Config {
                 return (Self::default(), None);
             }
             Err(e) => {
-                return (Self::default(), Some(format!("Cannot read settings: {e}")));
+                return (
+                    Self::default(),
+                    Some(i18n::error_settings_unreadable(&e.to_string())),
+                );
             }
         };
         match toml::from_str(&contents) {
             Ok(config) => (config, None),
             Err(e) => (
                 Self::default(),
-                Some(format!(
-                    "Settings file is not readable, using defaults: {}",
-                    first_line(&e)
-                )),
+                Some(i18n::error_settings_malformed(&first_line(&e))),
             ),
         }
     }
@@ -141,6 +145,7 @@ mod tests {
         let config = Config {
             theme: Choice::Dark,
             accent: Scheme::Classic,
+            language: Language::EnUs,
             new_canvas: NewCanvas::Fixed(1920, 1080),
             acrylic: false,
             decorations: true,

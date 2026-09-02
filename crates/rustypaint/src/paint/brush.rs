@@ -1,3 +1,4 @@
+use crate::i18n;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,20 +76,20 @@ impl Profile {
 impl Tool {
     pub fn name(self) -> &'static str {
         match self {
-            Tool::Marker => "Marker",
-            Tool::Calligraphy => "Calligraphy pen",
-            Tool::OilBrush => "Oil brush",
-            Tool::Watercolour => "Watercolour",
-            Tool::PixelPen => "Pixel pen",
-            Tool::Pencil => "Pencil",
-            Tool::Eraser => "Eraser",
-            Tool::Crayon => "Crayon",
-            Tool::SprayCan => "Spray can",
-            Tool::Fill => "Fill",
-            Tool::Pipette => "Pipette",
-            Tool::Select => "Select",
-            Tool::Text => "Text",
-            Tool::Shape => "Shape",
+            Tool::Marker => i18n::tool_marker(),
+            Tool::Calligraphy => i18n::tool_calligraphy(),
+            Tool::OilBrush => i18n::tool_oil_brush(),
+            Tool::Watercolour => i18n::tool_watercolour(),
+            Tool::PixelPen => i18n::tool_pixel_pen(),
+            Tool::Pencil => i18n::tool_pencil(),
+            Tool::Eraser => i18n::tool_eraser(),
+            Tool::Crayon => i18n::tool_crayon(),
+            Tool::SprayCan => i18n::tool_spray_can(),
+            Tool::Fill => i18n::tool_fill(),
+            Tool::Pipette => i18n::tool_pipette(),
+            Tool::Select => i18n::tool_select(),
+            Tool::Text => i18n::tool_text(),
+            Tool::Shape => i18n::tool_shape(),
         }
     }
 

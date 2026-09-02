@@ -3,7 +3,7 @@ use crate::doc::Rgba8;
 const OUTLINE_BOX: f32 = 1000.0;
 
 macro_rules! shapes {
-    ($($variant:ident => $file:literal, $label:literal;)*) => {
+    ($($variant:ident => $file:literal, $label:ident;)*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         #[repr(usize)]
         pub enum ShapeKind {
@@ -15,7 +15,7 @@ macro_rules! shapes {
         impl ShapeKind {
             pub fn name(self) -> &'static str {
                 match self {
-                    $(ShapeKind::$variant => $label,)*
+                    $(ShapeKind::$variant => crate::i18n::$label(),)*
                 }
             }
 
@@ -33,30 +33,30 @@ macro_rules! shapes {
 }
 
 shapes! {
-    Circle => "Circle", "Circle";
-    Capsule => "Capsule", "Capsule";
-    Rectangle => "Rectangle", "Rectangle";
-    RoundedRectangle => "RoundedRectangle", "Rounded rectangle";
-    Triangle => "Triangle", "Triangle";
-    Pentagon => "Pentagon", "Pentagon";
-    Hexagon => "Hexagon", "Hexagon";
-    Diamond => "Diamond", "Diamond";
-    RightTriangle => "RightTriangle", "Right triangle";
-    Arrow => "Arrow", "Arrow";
-    PointedArrow => "PointedArrow", "Pointed arrow";
-    HalfArc => "HalfArc", "Half arc";
-    FivePointStar => "FivePointStar", "Five-point star";
-    SixPointStar => "SixPointStar", "Six-point star";
-    FourPointStar => "FourPointStar", "Four-point star";
-    MultipointStar => "MultipointStar", "Multipoint star";
-    SpeechBubble => "SpeechBubble", "Speech bubble";
-    ThoughtBubble => "ThoughtBubble", "Thought bubble";
-    Cross => "Cross", "Cross";
-    CheckMark => "CheckMark", "Check mark";
-    Moon => "Moon", "Moon";
-    Banner => "Banner", "Banner";
-    Lightning => "Lightning", "Lightning";
-    Heart => "Heart", "Heart";
+    Circle => "Circle", shape_circle;
+    Capsule => "Capsule", shape_capsule;
+    Rectangle => "Rectangle", shape_rectangle;
+    RoundedRectangle => "RoundedRectangle", shape_rounded_rectangle;
+    Triangle => "Triangle", shape_triangle;
+    Pentagon => "Pentagon", shape_pentagon;
+    Hexagon => "Hexagon", shape_hexagon;
+    Diamond => "Diamond", shape_diamond;
+    RightTriangle => "RightTriangle", shape_right_triangle;
+    Arrow => "Arrow", shape_arrow;
+    PointedArrow => "PointedArrow", shape_pointed_arrow;
+    HalfArc => "HalfArc", shape_half_arc;
+    FivePointStar => "FivePointStar", shape_five_point_star;
+    SixPointStar => "SixPointStar", shape_six_point_star;
+    FourPointStar => "FourPointStar", shape_four_point_star;
+    MultipointStar => "MultipointStar", shape_multipoint_star;
+    SpeechBubble => "SpeechBubble", shape_speech_bubble;
+    ThoughtBubble => "ThoughtBubble", shape_thought_bubble;
+    Cross => "Cross", shape_cross;
+    CheckMark => "CheckMark", shape_check_mark;
+    Moon => "Moon", shape_moon;
+    Banner => "Banner", shape_banner;
+    Lightning => "Lightning", shape_lightning;
+    Heart => "Heart", shape_heart;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -97,8 +97,8 @@ impl Paint {
 impl std::fmt::Display for Paint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Paint::None => "None",
-            Paint::Solid => "Solid",
+            Paint::None => crate::i18n::paint_none(),
+            Paint::Solid => crate::i18n::paint_solid(),
         })
     }
 }

@@ -2,6 +2,8 @@ use crate::app::Message;
 use crate::canvas::{self, NewCanvas, Ratio};
 use crate::config::{Config, OpenIn};
 use crate::doc::io::SaveFormat;
+use crate::i18n;
+use crate::i18n::Language;
 use crate::ui::controls;
 use crate::ui::icons::{self, icon};
 use crate::ui::theme::{self, Choice, Mode, Scheme};
@@ -35,11 +37,7 @@ pub fn view<'a>(
     custom: (&'a str, &'a str),
     save_format: SaveFormat,
 ) -> Element<'a, Message> {
-    let name = if modified {
-        format!("{title}* - RustyPaint")
-    } else {
-        format!("{title} - RustyPaint")
-    };
+    let name = i18n::window_title(title, modified);
     let heading =
         container(text(name).size(13).color(theme::colours().text)).padding(iced::Padding {
             top: 10.0,
@@ -50,27 +48,45 @@ pub fn view<'a>(
 
     let rail = column![
         heading,
-        item(icons::BACK, "Back", None, page, Message::MenuClosed),
+        item(
+            icons::BACK,
+            i18n::menu_back(),
+            None,
+            page,
+            Message::MenuClosed
+        ),
         rule(),
-        item(icons::NEW, "New", None, page, Message::NewRequested),
+        item(
+            icons::NEW,
+            i18n::menu_new(),
+            None,
+            page,
+            Message::NewRequested
+        ),
         item(
             icons::OPEN,
-            "Open",
+            i18n::menu_open(),
             Some(Page::Open),
             page,
             Message::MenuPagePicked(Page::Open)
         ),
         item(
             icons::INSERT,
-            "Insert",
+            i18n::menu_insert(),
             None,
             page,
             Message::StickerRequested
         ),
-        item(icons::SAVE, "Save", None, page, Message::SaveRequested),
+        item(
+            icons::SAVE,
+            i18n::menu_save(),
+            None,
+            page,
+            Message::SaveRequested
+        ),
         item(
             icons::SAVE_AS,
-            "Save as",
+            i18n::menu_save_as(),
             Some(Page::SaveAs),
             page,
             Message::MenuPagePicked(Page::SaveAs),
@@ -78,14 +94,14 @@ pub fn view<'a>(
         Space::new().height(Length::Fill),
         item(
             icons::SETTINGS,
-            "Settings",
+            i18n::menu_settings(),
             Some(Page::Settings),
             page,
             Message::MenuPagePicked(Page::Settings),
         ),
         item(
             icons::ABOUT,
-            "About",
+            i18n::menu_about(),
             Some(Page::About),
             page,
             Message::MenuPagePicked(Page::About),
@@ -198,15 +214,18 @@ fn rule<'a>() -> Element<'a, Message> {
 }
 
 fn pane_open<'a>() -> Element<'a, Message> {
-    column![title("Open"), flat("Browse files", Message::OpenRequested)]
-        .spacing(20)
-        .into()
+    column![
+        title(i18n::open_title()),
+        flat(i18n::open_browse(), Message::OpenRequested)
+    ]
+    .spacing(20)
+    .into()
 }
 
 fn pane_save_as<'a>(format: SaveFormat) -> Element<'a, Message> {
     column![
-        title("Save as"),
-        text("Choose a file format")
+        title(i18n::save_as_title()),
+        text(i18n::save_as_choose())
             .size(14)
             .color(theme::colours().text),
         pick_list(SaveFormat::ALL, Some(format), Message::SaveFormatPicked)
@@ -226,50 +245,58 @@ fn pane_settings<'a>(
     custom: (&'a str, &'a str),
 ) -> Element<'a, Message> {
     let options = column![
-        title("Settings"),
-        subheading("Appearance"),
-        note("Paint 3D only ever had the light one."),
+        title(i18n::settings_title()),
+        subheading(i18n::settings_language()),
+        note(i18n::settings_language_note()),
+        pick_list(
+            Language::ALL,
+            Some(config.language),
+            Message::LanguagePicked
+        )
+        .style(controls::pick_list_style)
+        .menu_style(controls::menu_style)
+        .text_size(13)
+        .width(Length::Fixed(280.0)),
+        divider(),
+        subheading(i18n::settings_appearance()),
         row(Choice::ALL.map(|c| pill(c.name(), config.theme == c, Message::ThemePicked(c))))
             .spacing(6),
         resolved(config.theme),
         Space::new().height(Length::Fixed(6.0)),
-        note("Accent"),
+        note(i18n::settings_accent()),
         row(Scheme::ALL.map(|s| accent_tile(s, config.accent))).spacing(8),
         divider(),
-        subheading("Acrylic panels"),
-        note("Let your compositor blur what is behind RustyPaint."),
+        subheading(i18n::settings_acrylic()),
+        note(i18n::settings_acrylic_note()),
         toggler(config.acrylic)
             .style(crate::ui::controls::toggler_style)
-            .label(if config.acrylic { "On" } else { "Off" })
+            .label(on_off(config.acrylic))
             .text_size(13)
             .on_toggle(Message::AcrylicToggled),
         divider(),
-        subheading("Unsaved changes"),
-        note(
-            "Ask before anything that would throw away work you have not saved. Turn it off and \
-             New, Open and closing the window take you at your word.",
-        ),
+        subheading(i18n::settings_unsaved()),
+        note(i18n::settings_unsaved_note()),
         toggler(config.confirm_discard)
             .style(crate::ui::controls::toggler_style)
-            .label(if config.confirm_discard { "On" } else { "Off" })
+            .label(on_off(config.confirm_discard))
             .text_size(13)
             .on_toggle(Message::ConfirmDiscardToggled),
         divider(),
-        subheading("A second picture"),
-        note("Whether opening another picture joins this window or gets one of its own."),
+        subheading(i18n::settings_second_picture()),
+        note(i18n::settings_second_picture_note()),
         row(OpenIn::ALL.map(|o| pill(o.name(), config.open_in == o, Message::OpenInPicked(o))))
             .spacing(6),
         divider(),
-        subheading("New canvas"),
-        note("What size a new picture starts at."),
+        subheading(i18n::settings_new_canvas()),
+        note(i18n::settings_new_canvas_note()),
         row![
             pill(
-                "Fit the window",
+                i18n::new_canvas_fit(),
                 matches!(config.new_canvas, NewCanvas::Fit(_)),
                 fit_default()
             ),
             pill(
-                "Resolution",
+                i18n::new_canvas_resolution(),
                 matches!(config.new_canvas, NewCanvas::Fixed(..)),
                 Message::NewCanvasPicked(NewCanvas::Fixed(
                     canvas::RESOLUTIONS[1].1,
@@ -277,7 +304,7 @@ fn pane_settings<'a>(
                 ))
             ),
             pill(
-                "Custom",
+                i18n::new_canvas_custom(),
                 matches!(config.new_canvas, NewCanvas::Custom(..)),
                 Message::NewCanvasPicked(NewCanvas::Custom(1152, 648))
             ),
@@ -292,14 +319,11 @@ fn pane_settings<'a>(
         .size(12)
         .color(theme::colours().accent_text),
         divider(),
-        subheading("Title bar"),
-        note(
-            "Ours has the window buttons in the tab strip. Native is whatever the rest of your \
-             windows have, which on some compositors is nothing at all.",
-        ),
+        subheading(i18n::settings_title_bar()),
+        note(i18n::settings_title_bar_note()),
         iced::widget::checkbox(config.decorations)
             .style(crate::ui::controls::checkbox_style)
-            .label("Use native decorations")
+            .label(i18n::settings_native_decorations())
             .text_size(13)
             .on_toggle(Message::DecorationsToggled),
     ]
@@ -311,11 +335,11 @@ fn pane_settings<'a>(
 
 fn pane_about<'a>() -> Element<'a, Message> {
     let credit = column![
-        text("Made by ELECTRO")
+        text(i18n::about_credit())
             .size(13)
             .center()
             .color(theme::colours().text_dim),
-        link("Source on GitHub", REPO_URL),
+        link(i18n::about_source(), REPO_URL),
     ]
     .spacing(6)
     .align_x(iced::Alignment::Center);
@@ -328,20 +352,20 @@ fn pane_about<'a>() -> Element<'a, Message> {
                 .size(28)
                 .center()
                 .color(theme::colours().text),
-            text("Paint 3D's 2D editor without the 3D.")
+            text(i18n::about_tagline())
                 .size(13)
                 .center()
                 .color(theme::colours().text_dim),
-            text(concat!("Version ", env!("CARGO_PKG_VERSION")))
+            text(i18n::about_version(env!("CARGO_PKG_VERSION")))
                 .size(12)
                 .center()
                 .color(theme::colours().text_dim),
             Space::new().height(Length::Fixed(18.0)),
-            text("Something broken, or something missing?")
+            text(i18n::about_broken())
                 .size(13)
                 .center()
                 .color(theme::colours().text),
-            link("Report a problem or ask for a feature", ISSUES_URL),
+            link(i18n::about_report(), ISSUES_URL),
             Space::new().height(Length::Fixed(18.0)),
             credit,
         ]
@@ -391,6 +415,10 @@ fn link<'a>(label: &'a str, url: &'static str) -> Element<'a, Message> {
     .into()
 }
 
+fn on_off(on: bool) -> &'static str {
+    if on { i18n::on() } else { i18n::off() }
+}
+
 fn fit_default() -> Message {
     Message::NewCanvasPicked(NewCanvas::Fit(Ratio::Widescreen))
 }
@@ -400,9 +428,9 @@ fn resolved<'a>(choice: Choice) -> Element<'a, Message> {
         return Space::new().into();
     }
     let line = match theme::detect::system() {
-        Some(Mode::Dark) => "Your desktop is set to dark.",
-        Some(Mode::Light) => "Your desktop is set to light.",
-        None => "No system preference found, using light.",
+        Some(Mode::Dark) => i18n::theme_system_dark(),
+        Some(Mode::Light) => i18n::theme_system_light(),
+        None => i18n::theme_system_unknown(),
     };
     text(line).size(12).color(theme::colours().text_dim).into()
 }
@@ -421,7 +449,7 @@ fn new_canvas_choice<'a>(preset: NewCanvas, custom: (&'a str, &'a str)) -> Eleme
         NewCanvas::Fixed(w, h) => column(canvas::RESOLUTIONS.chunks(3).map(|chunk| {
             row(chunk.iter().map(|(name, rw, rh)| {
                 pill(
-                    name,
+                    crate::i18n::lookup(name),
                     (*rw, *rh) == (w, h),
                     Message::NewCanvasPicked(NewCanvas::Fixed(*rw, *rh)),
                 )
@@ -432,8 +460,8 @@ fn new_canvas_choice<'a>(preset: NewCanvas, custom: (&'a str, &'a str)) -> Eleme
         .spacing(6)
         .into(),
         NewCanvas::Custom(..) => row![
-            field("Width", custom.0, Message::NewCanvasWidthEdited),
-            field("Height", custom.1, Message::NewCanvasHeightEdited),
+            field(i18n::width(), custom.0, Message::NewCanvasWidthEdited),
+            field(i18n::height(), custom.1, Message::NewCanvasHeightEdited),
         ]
         .spacing(10)
         .into(),
@@ -452,7 +480,9 @@ fn field<'a>(
             .on_input(on_change)
             .size(13)
             .width(Length::Fixed(78.0)),
-        text("px").size(13).color(theme::colours().text_dim),
+        text(i18n::unit_px())
+            .size(13)
+            .color(theme::colours().text_dim),
     ]
     .spacing(6)
     .align_y(iced::Alignment::Center)

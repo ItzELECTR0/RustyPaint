@@ -704,6 +704,11 @@ impl App {
                 self.apply_theme();
                 self.save_config();
             }
+            Message::LanguagePicked(language) => {
+                self.config.language = language;
+                crate::i18n::init(language);
+                self.save_config();
+            }
             Message::NewCanvasPicked(preset) => {
                 self.config.new_canvas = preset;
                 self.custom_canvas = custom_fields(preset);

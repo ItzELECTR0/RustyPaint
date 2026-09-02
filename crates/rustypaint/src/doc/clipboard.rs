@@ -9,21 +9,23 @@ pub enum Clip {
 
 pub fn copy(pixels: &Rgba8) -> Result<(), String> {
     let (width, height) = pixels.size();
-    let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("no clipboard: {e}"))?;
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| crate::i18n::error_no_clipboard(&e.to_string()))?;
     clipboard
         .set_image(arboard::ImageData {
             width: width as usize,
             height: height as usize,
             bytes: pixels.as_bytes().into(),
         })
-        .map_err(|e| format!("cannot copy: {e}"))
+        .map_err(|e| crate::i18n::error_cannot_copy(&e.to_string()))
 }
 
 pub fn copy_text(text: &str) -> Result<(), String> {
-    let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("no clipboard: {e}"))?;
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| crate::i18n::error_no_clipboard(&e.to_string()))?;
     clipboard
         .set_text(text)
-        .map_err(|e| format!("cannot copy: {e}"))
+        .map_err(|e| crate::i18n::error_cannot_copy(&e.to_string()))
 }
 
 pub fn paste() -> Option<Clip> {

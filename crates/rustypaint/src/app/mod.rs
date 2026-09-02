@@ -3,6 +3,7 @@ use crate::config::Config;
 use crate::doc::clipboard::Clip;
 use crate::doc::{self, Document, Rect, Rgba8, Version};
 use crate::gpu::{self, View};
+use crate::i18n::Language;
 use crate::paint::{Brush, Stroke, Tool, curve, shapes};
 use crate::select::{self, Floating, Lasso};
 use crate::text::{Align, TextStyle};
@@ -349,6 +350,7 @@ pub enum Message {
     NewRequested,
     ThemePicked(Choice),
     AccentPicked(Scheme),
+    LanguagePicked(Language),
     NewCanvasPicked(NewCanvas),
     NewCanvasWidthEdited(String),
     NewCanvasHeightEdited(String),

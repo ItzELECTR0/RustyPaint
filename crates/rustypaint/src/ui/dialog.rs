@@ -1,4 +1,5 @@
 use crate::app::{Discard, Message};
+use crate::i18n;
 use crate::ui::theme;
 
 use iced::widget::{Space, button, checkbox, column, container, mouse_area, row, text};
@@ -11,30 +12,23 @@ const BUTTON: f32 = 116.0;
 pub fn ask_to_save<'a>(name: &'a str, confirm: bool, closing: bool) -> Element<'a, Message> {
     let mut answers = row![Space::new().width(Length::Fill)].spacing(6);
     if closing {
-        answers = answers.push(answer("Keep session", Discard::Session));
+        answers = answers.push(answer(i18n::save_work_keep_session(), Discard::Session));
     }
     answers = answers
-        .push(answer("Save", Discard::Save))
-        .push(answer("Don't save", Discard::Throw))
-        .push(answer("Cancel", Discard::Keep));
+        .push(answer(i18n::menu_save(), Discard::Save))
+        .push(answer(i18n::save_work_dont_save(), Discard::Throw))
+        .push(answer(i18n::cancel(), Discard::Keep));
 
     let card = column![
-        text("Do you want to save your work?")
+        text(i18n::save_work_title())
             .size(18)
             .color(theme::colours().text),
-        text(if closing {
-            format!(
-                "There are unsaved changes to {name}. Keeping the session brings everything \
-                     back the next time RustyPaint starts."
-            )
-        } else {
-            format!("There are unsaved changes to {name}.")
-        })
-        .size(13)
-        .color(theme::colours().text),
+        text(i18n::save_work_body(name, closing))
+            .size(13)
+            .color(theme::colours().text),
         checkbox(!confirm)
             .style(crate::ui::controls::checkbox_style)
-            .label("Don't ask me again")
+            .label(i18n::dont_ask_again())
             .text_size(12)
             .on_toggle(|quiet| Message::ConfirmDiscardToggled(!quiet)),
         answers,
@@ -46,22 +40,17 @@ pub fn ask_to_save<'a>(name: &'a str, confirm: bool, closing: bool) -> Element<'
 }
 
 pub fn offer_recovery<'a>(waiting: usize) -> Element<'a, Message> {
-    let left = if waiting > 1 {
-        format!(
-            "{waiting} documents were left unsaved. The most recent one can come back now, and the rest are offered next time."
-        )
-    } else {
-        "A document was left unsaved. It can come back the way it was.".to_owned()
-    };
     let card = column![
-        text("Recover unsaved work?")
+        text(i18n::recovery_title())
             .size(18)
             .color(theme::colours().text),
-        text(left).size(13).color(theme::colours().text),
+        text(i18n::recovery_body(waiting))
+            .size(13)
+            .color(theme::colours().text),
         row![
             Space::new().width(Length::Fill),
-            action("Recover", Message::RecoveryAnswered(true)),
-            action("Discard", Message::RecoveryAnswered(false)),
+            action(i18n::recovery_recover(), Message::RecoveryAnswered(true)),
+            action(i18n::recovery_discard(), Message::RecoveryAnswered(false)),
         ]
         .spacing(6),
     ]

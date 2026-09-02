@@ -62,13 +62,14 @@ impl Ratio {
     }
 }
 
+// The label is a catalogue key rather than the text, so a locale can rename a paper size.
 pub const RESOLUTIONS: &[(&str, u32, u32)] = &[
-    ("1280 x 720", 1280, 720),
-    ("1920 x 1080", 1920, 1080),
-    ("3840 x 2160", 3840, 2160),
-    ("1080 x 1080", 1080, 1080),
-    ("A4 at 300 dpi", 2480, 3508),
-    ("Letter at 300 dpi", 2550, 3300),
+    ("resolution-720p", 1280, 720),
+    ("resolution-1080p", 1920, 1080),
+    ("resolution-2160p", 3840, 2160),
+    ("resolution-square", 1080, 1080),
+    ("resolution-a4", 2480, 3508),
+    ("resolution-letter", 2550, 3300),
 ];
 
 pub fn size_for(preset: NewCanvas, viewport: Size, fallback: (u32, u32)) -> (u32, u32) {
@@ -114,10 +115,8 @@ fn clamp(v: f32) -> u32 {
 pub fn describe(preset: NewCanvas, viewport: Size, fallback: (u32, u32)) -> String {
     let (w, h) = size_for(preset, viewport, fallback);
     match preset {
-        NewCanvas::Fit(ratio) => {
-            format!("{} px, {} fitted to the window", size(w, h), ratio.name())
-        }
-        _ => format!("{} px", size(w, h)),
+        NewCanvas::Fit(ratio) => crate::i18n::new_canvas_fitted(&size(w, h), ratio.name()),
+        _ => crate::i18n::new_canvas_fixed(&size(w, h)),
     }
 }
 
@@ -133,6 +132,16 @@ mod tests {
 
     fn viewport(w: f32, h: f32) -> Size {
         Size::new(w, h)
+    }
+
+    #[test]
+    fn a_resolution_named_after_its_numbers_still_matches_them() {
+        for (key, w, h) in RESOLUTIONS {
+            let name = crate::i18n::lookup(key);
+            if name.starts_with(|c: char| c.is_ascii_digit()) {
+                assert_eq!(name, format!("{w} x {h}"), "{key}");
+            }
+        }
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use crate::app::Message;
+use crate::i18n;
 use crate::ui::theme;
 
 use iced::widget::{Space, button, column, container, image, mouse_area, row, text, text_input};
@@ -137,11 +138,13 @@ pub fn view(picker: &Picker) -> Element<'_, Message> {
 
     let values = column![
         preview,
-        channel_field(picker, "Red", 0),
-        channel_field(picker, "Green", 1),
-        channel_field(picker, "Blue", 2),
+        channel_field(picker, i18n::picker_red(), 0),
+        channel_field(picker, i18n::picker_green(), 1),
+        channel_field(picker, i18n::picker_blue(), 2),
         column![
-            text("Hex").size(12).color(theme::colours().text),
+            text(i18n::picker_hex())
+                .size(12)
+                .color(theme::colours().text),
             text_input("#000000", &picker.hex())
                 .style(crate::ui::controls::text_input_style)
                 .on_input(Message::PickerHexEdited)
@@ -155,15 +158,15 @@ pub fn view(picker: &Picker) -> Element<'_, Message> {
     .width(Length::Fixed(90.0));
 
     let card = column![
-        text("Choose a new colour")
+        text(i18n::picker_title())
             .size(20)
             .color(theme::colours().accent_text),
         row![column![field, strip].spacing(12), values]
             .spacing(24)
             .align_y(iced::Alignment::Start),
         row![
-            flat("OK", Message::PickerConfirmed),
-            flat("Cancel", Message::PickerClosed),
+            flat(i18n::ok(), Message::PickerConfirmed),
+            flat(i18n::cancel(), Message::PickerClosed),
         ]
         .spacing(12),
     ]

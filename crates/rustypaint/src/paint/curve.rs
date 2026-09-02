@@ -22,10 +22,10 @@ pub const ALL: &[CurveKind] = &[
 impl CurveKind {
     pub fn name(self) -> &'static str {
         match self {
-            CurveKind::Line => "Line",
-            CurveKind::Curve3 => "3-point curve",
-            CurveKind::Curve4 => "4-point curve",
-            CurveKind::Curve5 => "5-point curve",
+            CurveKind::Line => crate::i18n::curve_line(),
+            CurveKind::Curve3 => crate::i18n::curve_3(),
+            CurveKind::Curve4 => crate::i18n::curve_4(),
+            CurveKind::Curve5 => crate::i18n::curve_5(),
         }
     }
 

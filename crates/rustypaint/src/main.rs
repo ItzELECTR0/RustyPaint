@@ -7,6 +7,7 @@ mod config;
 mod dnd;
 mod doc;
 mod gpu;
+mod i18n;
 mod open_with;
 mod paint;
 mod select;
@@ -25,6 +26,7 @@ fn view(app: &App) -> Element<'_, Message, Theme, Renderer> {
 
 fn main() -> iced::Result {
     let (config, _) = config::boot();
+    i18n::init(config.language);
 
     iced::application(App::new, App::update, view)
         .subscription(App::subscription)

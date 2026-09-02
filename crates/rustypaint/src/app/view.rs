@@ -1,6 +1,7 @@
 use crate::canvas::NewCanvas;
 use crate::doc::{Document, Rect};
 use crate::gpu::{self};
+use crate::i18n;
 use crate::paint::Tool;
 use crate::select::{Lasso, Xform};
 use crate::ui::dialog;
@@ -383,8 +384,14 @@ impl Outline<'_> {
         use iced::widget::canvas::{Path, Stroke, Text};
 
         let lines = [
-            ("W:", format!("{} px", region.width())),
-            ("H:", format!("{} px", region.height())),
+            (
+                i18n::selection_width(),
+                i18n::size_in_pixels(region.width()),
+            ),
+            (
+                i18n::selection_height(),
+                i18n::size_in_pixels(region.height()),
+            ),
         ];
         let widest = lines.iter().map(|(_, v)| v.len()).max().unwrap_or(0) as f32;
         let size = iced::Size::new(
@@ -438,11 +445,11 @@ impl App {
         row![
             hint(
                 strip(icons::FIT, Message::ZoomFit),
-                strings::with_key(strings::FIT_TO_WINDOW, &strings::command_key("0")),
+                strings::with_key(i18n::fit_to_window(), &strings::command_key("0")),
             ),
             hint(
                 strip(icons::ZOOM_OUT, Message::ZoomOut),
-                strings::with_key(strings::ZOOM_OUT, &strings::command_key("-")),
+                strings::with_key(i18n::zoom_out(), &strings::command_key("-")),
             ),
             iced::widget::slider(range, steps, Message::ZoomPicked)
                 .step(0.01_f32)
@@ -450,13 +457,13 @@ impl App {
                 .width(Length::Fixed(140.0)),
             hint(
                 strip(icons::ZOOM_IN, Message::ZoomIn),
-                strings::with_key(strings::ZOOM_IN, &strings::command_key("+")),
+                strings::with_key(i18n::zoom_in(), &strings::command_key("+")),
             ),
             hint(
-                button(text(format!("{:.0}%", self.view.zoom * 100.0)).size(12))
+                button(text(i18n::percent_value(self.view.zoom)).size(12))
                     .style(|_t, _s| tool_style(false))
                     .on_press(Message::ZoomActual),
-                strings::with_key(strings::ACTUAL_SIZE, &strings::command_key("1")),
+                strings::with_key(i18n::actual_size(), &strings::command_key("1")),
             ),
         ]
         .spacing(4)
@@ -545,7 +552,7 @@ impl App {
                 .padding(0)
                 .style(|_theme, status| document_close_style(status))
                 .on_press(Message::NewRequested),
-                strings::with_key("New picture", &strings::command_key("N")),
+                strings::with_key(i18n::new_picture(), &strings::command_key("N")),
             ),
             Space::new().width(Length::Fill),
         ]
@@ -581,13 +588,17 @@ impl App {
             row![
                 container(
                     column![
-                        tab_menu_item(strings::SAVE, &strings::command_key("S"), TabAction::Save),
                         tab_menu_item(
-                            "Copy to clipboard",
+                            i18n::menu_save(),
+                            &strings::command_key("S"),
+                            TabAction::Save
+                        ),
+                        tab_menu_item(
+                            i18n::copy_to_clipboard(),
                             &strings::shift_key("C"),
                             TabAction::Copy
                         ),
-                        tab_menu_item("Close", &strings::command_key("Q"), TabAction::Close),
+                        tab_menu_item(i18n::close(), &strings::command_key("Q"), TabAction::Close),
                     ]
                     .spacing(1)
                 )
@@ -748,8 +759,9 @@ impl App {
     pub(super) fn tab_strip(&self) -> Element<'_, Message> {
         let wide = self.tabs_fit();
         let mut tabs = row![];
-        for (label, glyph, tab) in sidebar::TABS {
+        for (key, glyph, tab) in sidebar::TABS {
             let active = tab == Some(self.tab);
+            let label = crate::i18n::lookup(key);
             let button = tab_button(label, glyph, wide, active)
                 .style(move |_theme, _status| tab_style(active));
             tabs = tabs.push(hint(
@@ -758,7 +770,7 @@ impl App {
             ));
         }
 
-        let menu_button = tab_button(strings::MENU, icons::MENU, wide, false)
+        let menu_button = tab_button(i18n::menu(), icons::MENU, wide, false)
             .style(|_theme, _status| tab_style(false))
             .on_press(Message::MenuOpened);
 
@@ -777,7 +789,7 @@ impl App {
                     .style(|_t, _s| tab_style(false)),
                     self.can_undo().then_some(Message::Undo),
                 ),
-                strings::with_key(strings::UNDO, &strings::command_key("Z")),
+                strings::with_key(i18n::undo(), &strings::command_key("Z")),
             ),
             hint(
                 sidebar::pressable(
@@ -789,7 +801,7 @@ impl App {
                     .style(|_t, _s| tab_style(false)),
                     self.can_redo().then_some(Message::Redo),
                 ),
-                strings::with_key(strings::REDO, &strings::command_key("Y")),
+                strings::with_key(i18n::redo(), &strings::command_key("Y")),
             ),
         ]
         .padding(iced::Padding {
@@ -821,7 +833,7 @@ impl App {
                 )))
                 .style(move |_t, _s| tool_style(boxed))
                 .on_press(Message::FreeformToggled(false)),
-                strings::SELECT_BOX,
+                i18n::select_box(),
             ),
             hint(
                 bar_button(crate::ui::centred(icons::art(
@@ -831,7 +843,7 @@ impl App {
                 )))
                 .style(move |_t, _s| tool_style(looped))
                 .on_press(Message::FreeformToggled(true)),
-                strings::SELECT_FREEFORM,
+                i18n::select_freeform(),
             ),
             hint(
                 bar_button(crate::ui::centred(icon(
@@ -841,7 +853,7 @@ impl App {
                 )))
                 .style(move |_t, _s| tool_style(writing))
                 .on_press(Message::TextToolPicked),
-                strings::TEXT,
+                i18n::text(),
             ),
             hint(
                 bar_button(crate::ui::centred(icon(
@@ -851,7 +863,7 @@ impl App {
                 )))
                 .style(move |_t, _s| tool_style(cropping))
                 .on_press(Message::CropOpened),
-                strings::CROP,
+                i18n::crop(),
             ),
             hint(
                 bar_button(crate::ui::centred(icon(
@@ -861,7 +873,7 @@ impl App {
                 )))
                 .style(move |_t, _s| tool_style(cutting_out))
                 .on_press(Message::CutoutOpened),
-                strings::SMART_CUTOUT,
+                i18n::smart_cutout(),
             ),
             Space::new().width(Length::Fill),
             self.zoom_controls(),
@@ -989,9 +1001,9 @@ impl App {
     }
 
     pub(super) fn bottom_bar(&self) -> Element<'_, Message> {
-        let zoom = format!("{:.0}%", self.view.zoom * 100.0);
+        let zoom = i18n::percent_value(self.view.zoom);
         let message = if self.status.is_empty() {
-            format!("{} x {}", self.doc.size().0, self.doc.size().1)
+            i18n::document_size(self.doc.size().0, self.doc.size().1)
         } else {
             self.status.clone()
         };

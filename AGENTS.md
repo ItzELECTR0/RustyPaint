@@ -12,6 +12,9 @@ coordinates, input handling, dropped files, or the clipboard.
 Read `.agents/rendering.md` when changing the viewport, GPU resources, shaders, redraws, or visual
 tests.
 
+Read `.agents/translations.md` when changing anything the user reads, the Fluent catalogues, or the
+locale a build starts in.
+
 Read `.agents/assets.md` when changing bundled art, fonts, or visual reference examples.
 
 Read `.agents/cutout.md` when changing Smart cutout, colour models, graph cuts, or refinement.

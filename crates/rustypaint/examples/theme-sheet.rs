@@ -6,6 +6,8 @@
 
 #[path = "../src/doc/mod.rs"]
 mod doc;
+#[path = "../src/i18n/mod.rs"]
+mod i18n;
 #[path = "../src/text/mod.rs"]
 mod text;
 #[path = "../src/ui/theme/mod.rs"]

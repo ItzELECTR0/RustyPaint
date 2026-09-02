@@ -1,5 +1,6 @@
 use crate::doc::{self, Document, Rect, Rgba8};
 use crate::gpu::View;
+use crate::i18n;
 use crate::paint::fill;
 
 use iced::Task;
@@ -21,8 +22,8 @@ pub(super) async fn load(path: PathBuf) -> Result<(PathBuf, Rgba8), String> {
 
 pub(super) async fn pick_path() -> Result<PathBuf, String> {
     rfd::AsyncFileDialog::new()
-        .add_filter("Images", doc::io::READABLE)
-        .set_title("Open")
+        .add_filter(i18n::dialog_images(), doc::io::READABLE)
+        .set_title(i18n::open_title())
         .pick_file()
         .await
         .map(|handle| handle.path().to_path_buf())
@@ -31,8 +32,8 @@ pub(super) async fn pick_path() -> Result<PathBuf, String> {
 
 pub(super) async fn pick_and_load() -> Result<(PathBuf, Rgba8), String> {
     let handle = rfd::AsyncFileDialog::new()
-        .add_filter("Images", doc::io::READABLE)
-        .set_title("Open")
+        .add_filter(i18n::dialog_images(), doc::io::READABLE)
+        .set_title(i18n::open_title())
         .pick_file()
         .await
         .ok_or_else(String::new)?;
@@ -47,7 +48,7 @@ pub(super) async fn pick_and_save(
 ) -> Result<PathBuf, String> {
     let handle = rfd::AsyncFileDialog::new()
         .add_filter(format.label(), format.extensions())
-        .set_title("Save as")
+        .set_title(i18n::save_as_title())
         .set_file_name(format!("{stem}.{}", format.extension()))
         .save_file()
         .await
@@ -68,7 +69,7 @@ impl App {
             .as_deref()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
-            .unwrap_or("Untitled")
+            .unwrap_or(i18n::untitled())
     }
 
     pub(super) fn save(&self) -> Task<Message> {
@@ -88,7 +89,7 @@ impl App {
             .as_deref()
             .and_then(|path| path.file_stem())
             .map(|stem| stem.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "Untitled".into());
+            .unwrap_or_else(|| i18n::untitled().into());
         Task::perform(
             pick_and_save(self.for_saving(), stem, self.save_format),
             Message::Saved,
@@ -261,9 +262,9 @@ impl App {
                 std::thread::spawn(move || drop(child.wait_with_output()));
                 Task::none()
             }
-            Err(e) => Task::done(Message::ParkedSnapshotted(Err(format!(
-                "cannot open another window: {e}"
-            )))),
+            Err(e) => Task::done(Message::ParkedSnapshotted(Err(
+                i18n::error_cannot_open_window(&e.to_string()),
+            ))),
         }
     }
 

@@ -94,6 +94,7 @@ Settings are written whenever they change in the application.
 |---|---|
 | `theme` | Uses `auto`, `light`, or `dark` |
 | `accent` | Uses the `rusty` or `classic` palette |
+| `language` | Uses `auto`, `en-GB`, `en-US`, or `ro-RO` |
 | `new_canvas` | Selects the starting canvas dimensions |
 | `custom_colours` | Keeps colours added with the picker |
 | `acrylic` | Makes panels translucent for compositor blur |

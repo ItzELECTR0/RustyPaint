@@ -61,9 +61,9 @@ impl Choice {
 
     pub fn name(self) -> &'static str {
         match self {
-            Choice::Auto => "Auto",
-            Choice::Light => "Light",
-            Choice::Dark => "Dark",
+            Choice::Auto => crate::i18n::theme_auto(),
+            Choice::Light => crate::i18n::theme_light(),
+            Choice::Dark => crate::i18n::theme_dark(),
         }
     }
 
@@ -91,8 +91,8 @@ impl Scheme {
 
     pub fn name(self) -> &'static str {
         match self {
-            Scheme::Classic => "Classic",
-            Scheme::Rusty => "Rusty",
+            Scheme::Classic => crate::i18n::accent_classic(),
+            Scheme::Rusty => crate::i18n::accent_rusty(),
         }
     }
 }

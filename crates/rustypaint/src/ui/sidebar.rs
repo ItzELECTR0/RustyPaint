@@ -1,4 +1,5 @@
 use crate::app::{CanvasPanel, Drawing, Message, Tab};
+use crate::i18n;
 use crate::paint::curve::{self, CurveKind};
 use crate::paint::shapes::{self, ShapeKind, ShapeStyle};
 use crate::paint::{Brush, Tool, brush};
@@ -12,12 +13,13 @@ use iced::widget::{
 };
 use iced::{Color, Element, Length};
 
+// The label is a catalogue key, resolved where the strip is drawn.
 pub const TABS: [(&str, &[u8], Option<Tab>); 5] = [
-    ("Brushes", icons::BRUSHES, Some(Tab::Brushes)),
-    ("2D shapes", icons::SHAPES_2D, Some(Tab::Shapes)),
-    ("Stickers", icons::STICKERS, Some(Tab::Stickers)),
-    ("Text", icons::TEXT, Some(Tab::Text)),
-    ("Canvas", icons::CANVAS, Some(Tab::Canvas)),
+    ("tab-brushes", icons::BRUSHES, Some(Tab::Brushes)),
+    ("tab-shapes", icons::SHAPES_2D, Some(Tab::Shapes)),
+    ("tab-stickers", icons::STICKERS, Some(Tab::Stickers)),
+    ("tab-text", icons::TEXT, Some(Tab::Text)),
+    ("tab-canvas", icons::CANVAS, Some(Tab::Canvas)),
 ];
 
 #[allow(
@@ -119,15 +121,15 @@ fn shape_grid<'a>(chosen: Drawing) -> Element<'a, Message> {
     }
 
     let hint = match chosen {
-        Drawing::Shape(_) => "Drag on the canvas to draw.",
-        Drawing::Curve(_) => "Drag to draw, then pull the points to bend it.",
+        Drawing::Shape(_) => i18n::shapes_hint(),
+        Drawing::Curve(_) => i18n::curves_hint(),
     };
 
     column![
-        heading("2D shapes"),
-        section("Line and curve"),
+        heading(i18n::shapes_heading()),
+        section(i18n::shapes_line_and_curve()),
         curves,
-        section("2D shapes"),
+        section(i18n::shapes_heading()),
         grid,
         text(hint).size(12).color(theme::colours().text_dim),
     ]
@@ -145,14 +147,14 @@ fn shape_style_panel<'a>(
     let mut panel = column![heading(live.name)].spacing(10);
 
     if !live.curve {
-        panel = panel.push(section("Fill")).push(paint_row(
+        panel = panel.push(section(i18n::fill())).push(paint_row(
             style.fill,
             target,
             true,
             Message::ShapeFillTypePicked,
         ));
     }
-    panel = panel.push(section("Line type")).push(paint_row(
+    panel = panel.push(section(i18n::line_type())).push(paint_row(
         style.outline,
         target,
         false,
@@ -161,7 +163,10 @@ fn shape_style_panel<'a>(
 
     if style.outline.is_some() || live.curve {
         panel = panel
-            .push(labelled("Thickness", format!("{:.0}px", style.thickness)))
+            .push(labelled(
+                i18n::thickness(),
+                i18n::pixels_value(style.thickness),
+            ))
             .push(
                 slider(
                     shapes::MIN_THICKNESS..=shapes::MAX_THICKNESS,
@@ -174,31 +179,35 @@ fn shape_style_panel<'a>(
 
     panel = panel
         .push(labelled(
-            "Sticker opacity",
-            format!("{:.0}%", live.opacity * 100.0),
+            i18n::sticker_opacity(),
+            i18n::percent_value(live.opacity),
         ))
         .push(
             slider(0.0..=1.0, live.opacity, Message::FloatOpacityChanged)
                 .step(0.01_f32)
                 .style(controls::slider_style),
         )
-        .push(section("Rotate and flip"))
+        .push(section(i18n::rotate_and_flip()))
         .push(
             row![
                 tool_button(
                     icons::ROTATE_ANTICLOCKWISE,
-                    "Rotate left",
+                    i18n::rotate_left(),
                     Message::FloatTurned(false)
                 ),
-                tool_button(icons::ROTATE, "Rotate right", Message::FloatTurned(true)),
+                tool_button(
+                    icons::ROTATE,
+                    i18n::rotate_right(),
+                    Message::FloatTurned(true)
+                ),
                 tool_button(
                     icons::FLIP_HORIZONTAL,
-                    "Flip horizontally",
+                    i18n::flip_horizontally(),
                     Message::FloatMirrored(true)
                 ),
                 tool_button(
                     icons::FLIP_VERTICAL,
-                    "Flip vertically",
+                    i18n::flip_vertically(),
                     Message::FloatMirrored(false)
                 ),
             ]
@@ -212,14 +221,14 @@ fn shape_style_panel<'a>(
 
     if live.bones {
         panel = panel
-            .push(section("Bones"))
-            .push(wide_button("Add bones", Message::BonesRequested));
+            .push(section(i18n::bones()))
+            .push(wide_button(i18n::add_bones(), Message::BonesRequested));
     }
 
     let note = if live.boned || live.curve {
-        "Double click the line to add a bone, or a bone to take it away."
+        i18n::bones_hint()
     } else {
-        "Click away from the shape to put it down."
+        i18n::put_down_hint()
     };
     panel = panel.push(text(note).size(12).color(theme::colours().text_dim));
 
@@ -335,9 +344,17 @@ fn text_panel<'a>(
     .on_press(Message::PickerOpened);
 
     let weight = row![
-        letter("B", style.bold, Message::TextBoldToggled),
-        letter("I", style.italic, Message::TextItalicToggled),
-        letter("U", style.underline, Message::TextUnderlineToggled),
+        letter(i18n::text_bold(), style.bold, Message::TextBoldToggled),
+        letter(
+            i18n::text_italic(),
+            style.italic,
+            Message::TextItalicToggled
+        ),
+        letter(
+            i18n::text_underline(),
+            style.underline,
+            Message::TextUnderlineToggled
+        ),
     ]
     .spacing(4);
 
@@ -349,19 +366,19 @@ fn text_panel<'a>(
     .spacing(4);
 
     column![
-        heading("2D text"),
+        heading(i18n::text_heading()),
         family,
         row![size, well].spacing(6).align_y(iced::Alignment::Center),
         weight,
         aligns,
         checkbox(style.background)
             .style(controls::checkbox_style)
-            .label("Background fill")
+            .label(i18n::text_background_fill())
             .text_size(13)
             .on_toggle(Message::TextBackgroundToggled),
-        section("Colour"),
+        section(i18n::colour()),
         swatches(style.colour, custom, custom_menu),
-        text("Drag on the canvas to make a text box.")
+        text(i18n::text_hint())
             .size(12)
             .color(theme::colours().text_dim),
     ]
@@ -510,7 +527,10 @@ fn brushes<'a>(
 
     if brush.tool.profile().is_some() {
         panel = panel
-            .push(labelled("Thickness", format!("{:.0}px", brush.thickness)))
+            .push(labelled(
+                i18n::thickness(),
+                i18n::pixels_value(brush.thickness),
+            ))
             .push(
                 slider(
                     brush::MIN_THICKNESS..=brush::MAX_THICKNESS,
@@ -523,8 +543,8 @@ fn brushes<'a>(
     if brush.tool == Tool::Fill {
         panel = panel
             .push(labelled(
-                "Tolerance",
-                format!("{:.0}%", brush.tolerance * 100.0),
+                i18n::tolerance(),
+                i18n::percent_value(brush.tolerance),
             ))
             .push(
                 slider(0.0..=1.0_f32, brush.tolerance, Message::ToleranceChanged)
@@ -535,8 +555,8 @@ fn brushes<'a>(
     if brush.tool != Tool::Pipette {
         panel = panel
             .push(labelled(
-                "Opacity",
-                format!("{:.0}%", brush.opacity * 100.0),
+                i18n::opacity(),
+                i18n::percent_value(brush.opacity),
             ))
             .push(
                 slider(0.0..=1.0_f32, brush.opacity, Message::OpacityChanged)
@@ -655,7 +675,7 @@ fn swatches<'a>(
         );
     }
 
-    column![grid, wide_button("+  Add colour", Message::PickerOpened)]
+    column![grid, wide_button(i18n::add_colour(), Message::PickerOpened)]
         .spacing(6)
         .into()
 }
@@ -663,8 +683,8 @@ fn swatches<'a>(
 fn custom_menu_view<'a>(index: usize) -> Element<'a, Message> {
     container(
         column![
-            context_button("Edit", Message::CustomColourEditRequested(index)),
-            context_button("Remove", Message::CustomColourRemoved(index)),
+            context_button(i18n::edit(), Message::CustomColourEditRequested(index)),
+            context_button(i18n::remove(), Message::CustomColourRemoved(index)),
         ]
         .spacing(2),
     )
@@ -710,7 +730,7 @@ fn stickers<'a>(history: &'a [crate::app::Sticker]) -> Element<'a, Message> {
     let recent: Element<'a, Message> = if history.is_empty() {
         Space::new().into()
     } else {
-        let mut grid = column![section("Added")].spacing(6);
+        let mut grid = column![section(i18n::stickers_added())].spacing(6);
         for chunk in history
             .iter()
             .enumerate()
@@ -735,13 +755,10 @@ fn stickers<'a>(history: &'a [crate::app::Sticker]) -> Element<'a, Message> {
     };
 
     column![
-        heading("Stickers"),
-        text(
-            "Drop an image on the window, paste one, or pick one here. It floats above the \
-              canvas until you click away."
-        )
-        .size(12)
-        .color(theme::colours().text_dim),
+        heading(i18n::stickers_heading()),
+        text(i18n::stickers_hint())
+            .size(12)
+            .color(theme::colours().text_dim),
         button(
             column![
                 icons::art(
@@ -749,7 +766,7 @@ fn stickers<'a>(history: &'a [crate::app::Sticker]) -> Element<'a, Message> {
                     48.0,
                     Some(theme::colours().text)
                 ),
-                text("Add sticker").size(12),
+                text(i18n::add_sticker()).size(12),
             ]
             .spacing(6)
             .align_x(iced::Alignment::Center)
@@ -769,7 +786,11 @@ fn canvas_panel<'a>(
     size: (u32, u32),
     transparent: bool,
 ) -> Element<'a, Message> {
-    let unit = if state.percent { "%" } else { "px" };
+    let unit = if state.percent {
+        i18n::unit_percent_sign()
+    } else {
+        i18n::unit_px()
+    };
 
     let field = |label: &'a str, value: &str, on_change: fn(String) -> Message| {
         row![
@@ -787,63 +808,63 @@ fn canvas_panel<'a>(
     };
 
     column![
-        heading("Canvas"),
+        heading(i18n::canvas_heading()),
         checkbox(transparent)
             .style(controls::checkbox_style)
-            .label("Transparent canvas")
+            .label(i18n::transparent_canvas())
             .text_size(13)
             .on_toggle(Message::TransparencyToggled),
         checkbox(state.show_canvas)
             .style(controls::checkbox_style)
-            .label("Show canvas")
+            .label(i18n::show_canvas())
             .text_size(13)
             .on_toggle(Message::ShowCanvasToggled),
         divider(),
-        text("Resize canvas").size(13),
+        text(i18n::resize_canvas()).size(13),
         checkbox(state.lock_aspect)
             .style(controls::checkbox_style)
-            .label("Lock aspect ratio")
+            .label(i18n::lock_aspect_ratio())
             .text_size(13)
             .on_toggle(Message::LockAspectToggled),
-        field("Width", &state.width, Message::CanvasWidthEdited),
-        field("Height", &state.height, Message::CanvasHeightEdited),
+        field(i18n::width(), &state.width, Message::CanvasWidthEdited),
+        field(i18n::height(), &state.height, Message::CanvasHeightEdited),
         checkbox(state.resize_image)
             .style(controls::checkbox_style)
-            .label("Resize image with canvas")
+            .label(i18n::resize_image_with_canvas())
             .text_size(13)
             .on_toggle(Message::ResizeImageToggled),
         row![
-            button(text("Pixels").size(12))
+            button(text(i18n::unit_pixels()).size(12))
                 .style(|_theme, status| action_style(status))
                 .on_press(Message::CanvasUnitPicked(false)),
-            button(text("Percent").size(12))
+            button(text(i18n::unit_percent()).size(12))
                 .style(|_theme, status| action_style(status))
                 .on_press(Message::CanvasUnitPicked(true)),
             Space::new().width(Length::Fill),
-            button(text("Apply").size(12))
+            button(text(i18n::apply()).size(12))
                 .style(|_theme, status| action_style(status))
                 .on_press(Message::CanvasResizeSubmitted),
         ]
         .spacing(4),
         divider(),
-        text(format!("{} x {} px", size.0, size.1))
+        text(i18n::canvas_size(size.0, size.1))
             .size(12)
             .color(theme::colours().text_dim),
         row![
             tool_button(
                 icons::ROTATE_ANTICLOCKWISE,
-                "Rotate left",
+                i18n::rotate_left(),
                 Message::Rotate(false)
             ),
-            tool_button(icons::ROTATE, "Rotate right", Message::Rotate(true)),
+            tool_button(icons::ROTATE, i18n::rotate_right(), Message::Rotate(true)),
             tool_button(
                 icons::FLIP_HORIZONTAL,
-                "Flip horizontally",
+                i18n::flip_horizontally(),
                 Message::Flip(true)
             ),
             tool_button(
                 icons::FLIP_VERTICAL,
-                "Flip vertically",
+                i18n::flip_vertically(),
                 Message::Flip(false)
             ),
         ]
@@ -1061,23 +1082,23 @@ pub fn crop_panel<'a>(
     }
 
     column![
-        heading(crate::ui::strings::CROP),
-        section("Choose your framing"),
+        heading(i18n::crop()),
+        section(i18n::crop_framing()),
         grid,
         framing_tile(None, framing),
         row![
-            size_field("Width", fields.0, Message::CropWidthEdited),
-            size_field("Height", fields.1, Message::CropHeightEdited),
+            size_field(i18n::width(), fields.0, Message::CropWidthEdited),
+            size_field(i18n::height(), fields.1, Message::CropHeightEdited),
         ]
         .spacing(8),
         checkbox(lock)
             .style(controls::checkbox_style)
-            .label("Lock aspect ratio")
+            .label(i18n::lock_aspect_ratio())
             .text_size(13)
             .on_toggle(Message::CropLockToggled),
         row![
-            wide_button("Cancel", Message::CropCancelled),
-            wide_button("Done", Message::CropApplied),
+            wide_button(i18n::cancel(), Message::CropCancelled),
+            wide_button(i18n::done(), Message::CropApplied),
         ]
         .spacing(8),
     ]
@@ -1109,7 +1130,7 @@ fn framing_tile<'a>(kind: Option<Framing>, chosen: Option<Framing>) -> Element<'
         ..Default::default()
     });
 
-    let label = kind.map_or("Custom", Framing::name);
+    let label = kind.map_or_else(i18n::crop_custom, Framing::name);
     button(
         column![
             crate::ui::centred(glyph),
@@ -1144,17 +1165,17 @@ fn size_field<'a>(
 }
 
 pub fn cutout_panel<'a>(refining: bool, adding: bool, autofill: bool) -> Element<'a, Message> {
-    let title = heading(crate::ui::strings::SMART_CUTOUT);
+    let title = heading(i18n::smart_cutout());
     if !refining {
         return column![
             title,
-            section("Choose an area to cut out"),
-            text("Drag the corners or sides of the box to say what to focus on.")
+            section(i18n::cutout_choose()),
+            text(i18n::cutout_choose_hint())
                 .size(12)
                 .color(theme::colours().text_dim),
             row![
-                wide_button("Cancel", Message::CutoutCancelled),
-                wide_button("Next", Message::CutoutNext),
+                wide_button(i18n::cancel(), Message::CutoutCancelled),
+                wide_button(i18n::cutout_next(), Message::CutoutNext),
             ]
             .spacing(8),
         ]
@@ -1163,28 +1184,28 @@ pub fn cutout_panel<'a>(refining: bool, adding: bool, autofill: bool) -> Element
     }
 
     let hint = if adding {
-        "Missing something? Paint over what it left out to add it."
+        i18n::cutout_add_hint()
     } else {
-        "Too much? Paint over what it took to leave it behind."
+        i18n::cutout_remove_hint()
     };
 
     column![
         title,
-        section("Refine your cutout"),
+        section(i18n::cutout_refine()),
         row![
-            brush_tile("Add", true, adding),
-            brush_tile("Remove", false, adding),
+            brush_tile(i18n::cutout_add(), true, adding),
+            brush_tile(i18n::cutout_remove(), false, adding),
         ]
         .spacing(8),
         text(hint).size(12).color(theme::colours().text_dim),
         checkbox(autofill)
             .style(controls::checkbox_style)
-            .label("Autofill background")
+            .label(i18n::cutout_autofill())
             .text_size(13)
             .on_toggle(Message::CutoutAutofillToggled),
         row![
-            wide_button("Go back", Message::CutoutBack),
-            wide_button("Done", Message::CutoutDone),
+            wide_button(i18n::cutout_back(), Message::CutoutBack),
+            wide_button(i18n::done(), Message::CutoutDone),
         ]
         .spacing(8),
     ]

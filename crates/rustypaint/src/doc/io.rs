@@ -1,4 +1,5 @@
 use super::Rgba8;
+use crate::i18n;
 use image::ImageDecoder;
 use std::fmt;
 use std::fs::File;
@@ -44,20 +45,20 @@ impl SaveFormat {
         Self::Farbfeld,
     ];
 
-    pub const fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::Png => "PNG image",
-            Self::Jpeg => "JPEG image",
-            Self::WebP => "WebP image",
-            Self::Bmp => "Bitmap image",
-            Self::Gif => "GIF image",
-            Self::Tiff => "TIFF image",
-            Self::Tga => "Targa image",
-            Self::Ico => "Windows icon",
-            Self::Icns => "Apple icon",
-            Self::Qoi => "Quite OK Image",
-            Self::Pnm => "Portable anymap",
-            Self::Farbfeld => "Farbfeld image",
+            Self::Png => i18n::format_png(),
+            Self::Jpeg => i18n::format_jpeg(),
+            Self::WebP => i18n::format_webp(),
+            Self::Bmp => i18n::format_bmp(),
+            Self::Gif => i18n::format_gif(),
+            Self::Tiff => i18n::format_tiff(),
+            Self::Tga => i18n::format_tga(),
+            Self::Ico => i18n::format_ico(),
+            Self::Icns => i18n::format_icns(),
+            Self::Qoi => i18n::format_qoi(),
+            Self::Pnm => i18n::format_pnm(),
+            Self::Farbfeld => i18n::format_farbfeld(),
         }
     }
 
@@ -123,7 +124,7 @@ impl SaveFormat {
 
 impl fmt::Display for SaveFormat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} (.{})", self.label(), self.extension())
+        f.write_str(&i18n::format_with_extension(self.label(), self.extension()))
     }
 }
 
@@ -134,29 +135,29 @@ pub fn load(path: &Path) -> Result<Rgba8, String> {
     }
 
     let reader = image::ImageReader::open(path)
-        .map_err(|e| format!("cannot open {}: {e}", path.display()))?
+        .map_err(|e| i18n::error_cannot_open(&path.display().to_string(), &e.to_string()))?
         .with_guessed_format()
-        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        .map_err(|e| i18n::error_cannot_read(&path.display().to_string(), &e.to_string()))?;
 
     let name = path.file_name().unwrap_or_default().display().to_string();
     let mut decoder = reader
         .into_decoder()
-        .map_err(|e| format!("cannot open {name}: {e}"))?;
+        .map_err(|e| i18n::error_cannot_open(&name, &e.to_string()))?;
     let orientation = decoder
         .orientation()
         .unwrap_or(image::metadata::Orientation::NoTransforms);
     let mut img = image::DynamicImage::from_decoder(decoder)
-        .map_err(|e| format!("cannot open {name}: {e}"))?;
+        .map_err(|e| i18n::error_cannot_open(&name, &e.to_string()))?;
     img.apply_orientation(orientation);
 
     let rgba = img.to_rgba8();
     let (w, h) = rgba.dimensions();
-    Rgba8::from_raw(w, h, rgba.into_raw()).ok_or_else(|| "image has an impossible size".into())
+    Rgba8::from_raw(w, h, rgba.into_raw()).ok_or_else(|| i18n::error_impossible_size().to_owned())
 }
 
 pub fn save(pixels: &Rgba8, path: &Path) -> Result<(), String> {
     let format = SaveFormat::from_path(path)
-        .ok_or_else(|| format!("cannot save {}: unsupported file format", path.display()))?;
+        .ok_or_else(|| i18n::error_unsupported_format(&path.display().to_string()))?;
     save_as(pixels, path, format)
 }
 
@@ -167,13 +168,10 @@ pub fn save_as(pixels: &Rgba8, path: &Path, format: SaveFormat) -> Result<(), St
 
     let (w, h) = pixels.size();
     if format == SaveFormat::Ico && (w > 256 || h > 256) {
-        return Err(format!(
-            "cannot save {}: ICO dimensions must be at most 256 x 256 pixels",
-            path.display()
-        ));
+        return Err(i18n::error_ico_too_big(&path.display().to_string()));
     }
     let buffer = image::RgbaImage::from_raw(w, h, pixels.as_bytes().to_vec())
-        .ok_or("image has an impossible size")?;
+        .ok_or_else(|| i18n::error_impossible_size().to_owned())?;
     let image_format = format.image_format().expect("non-ICNS format");
 
     if format == SaveFormat::Farbfeld {
@@ -186,7 +184,7 @@ pub fn save_as(pixels: &Rgba8, path: &Path, format: SaveFormat) -> Result<(), St
     } else {
         buffer.save_with_format(path, image_format)
     }
-    .map_err(|e| format!("cannot save {}: {e}", path.display()))
+    .map_err(|e| i18n::error_cannot_save(&path.display().to_string(), &e.to_string()))
 }
 
 pub fn extension(path: &Path) -> Option<String> {
@@ -201,44 +199,48 @@ pub fn with_extension(mut path: PathBuf, format: SaveFormat) -> PathBuf {
 }
 
 fn has_header(path: &Path, expected: &[u8]) -> Result<bool, String> {
-    let mut file = File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    let mut file = File::open(path)
+        .map_err(|e| i18n::error_cannot_open(&path.display().to_string(), &e.to_string()))?;
     let mut header = vec![0; expected.len()];
     let read = file
         .read(&mut header)
-        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        .map_err(|e| i18n::error_cannot_read(&path.display().to_string(), &e.to_string()))?;
     Ok(read == expected.len() && header == expected)
 }
 
 fn load_icns(path: &Path) -> Result<Rgba8, String> {
     let name = path.file_name().unwrap_or_default().display().to_string();
-    let file = File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    let file = File::open(path)
+        .map_err(|e| i18n::error_cannot_open(&path.display().to_string(), &e.to_string()))?;
     let family = icns::IconFamily::read(BufReader::new(file))
-        .map_err(|e| format!("cannot open {name}: {e}"))?;
+        .map_err(|e| i18n::error_cannot_open(&name, &e.to_string()))?;
     let icon_type = family
         .available_icons()
         .into_iter()
         .max_by_key(|kind| kind.pixel_width() * kind.pixel_height())
-        .ok_or_else(|| format!("cannot open {name}: icon file contains no images"))?;
+        .ok_or_else(|| i18n::error_no_images_in_icon(&name))?;
     let image = family
         .get_icon_with_type(icon_type)
-        .map_err(|e| format!("cannot open {name}: {e}"))?
+        .map_err(|e| i18n::error_cannot_open(&name, &e.to_string()))?
         .convert_to(icns::PixelFormat::RGBA);
     Rgba8::from_raw(image.width(), image.height(), image.into_data().into_vec())
-        .ok_or_else(|| "image has an impossible size".into())
+        .ok_or_else(|| i18n::error_impossible_size().to_owned())
 }
 
 fn save_icns(pixels: &Rgba8, path: &Path) -> Result<(), String> {
     let (w, h) = pixels.size();
-    let image = icns::Image::from_data(icns::PixelFormat::RGBA, w, h, pixels.as_bytes().to_vec())
-        .map_err(|e| format!("cannot save {}: {e}", path.display()))?;
+    let image =
+        icns::Image::from_data(icns::PixelFormat::RGBA, w, h, pixels.as_bytes().to_vec())
+            .map_err(|e| i18n::error_cannot_save(&path.display().to_string(), &e.to_string()))?;
     let mut family = icns::IconFamily::new();
     family
         .add_icon(&image)
-        .map_err(|e| format!("cannot save {}: {e}", path.display()))?;
-    let file = File::create(path).map_err(|e| format!("cannot save {}: {e}", path.display()))?;
+        .map_err(|e| i18n::error_cannot_save(&path.display().to_string(), &e.to_string()))?;
+    let file = File::create(path)
+        .map_err(|e| i18n::error_cannot_save(&path.display().to_string(), &e.to_string()))?;
     family
         .write(BufWriter::new(file))
-        .map_err(|e| format!("cannot save {}: {e}", path.display()))
+        .map_err(|e| i18n::error_cannot_save(&path.display().to_string(), &e.to_string()))
 }
 
 fn flatten_onto_white(src: &image::RgbaImage) -> image::RgbImage {
