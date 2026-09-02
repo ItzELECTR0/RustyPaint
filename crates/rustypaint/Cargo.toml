@@ -61,7 +61,7 @@ license-file = "../../LICENSE"
 # cargo-packager 0.11.8 cannot expand these into WiX itself, so the fragment does
 # the Windows half. Paths here are resolved against the directory cargo-packager
 # runs in, which is the repository root.
-[package.metadata.packager.windows.wix]
+[package.metadata.packager.wix]
 fragment-paths = ["packaging/windows/file-associations.wxs"]
 component-group-refs = ["FileAssociations"]
 

@@ -151,11 +151,14 @@ it currently pins predates the file, so the install line would fail. It joins
 cargo-packager 0.11.8 cannot do the Windows half itself. Its WiX template renders
 `association.ext` while a `FileAssociation` serialises as `extensions`, so `#each` finds nothing and
 the MSI silently ships with no associations at all. `packaging/windows/file-associations.wxs` does
-the registration instead, wired in through `windows.wix.fragment-paths`; that path is resolved
-against the directory `cargo packager` runs in, which is the repository root, not the crate. The
-fragment offers every format through `OpenWithProgids` and a `RegisteredApplications` capabilities
-key rather than claiming extensions outright, so installing RustyPaint never takes a file type away
-from whatever already owns it. Its component GUID is fixed and must stay that way across versions.
+the registration instead, wired in through `wix.fragment-paths`. That table is a sibling of
+`windows` rather than a child of it, and the config refuses unknown fields, so putting it under
+`windows` fails every format's build at config load rather than only the Windows one. The path is
+resolved against the directory `cargo packager` runs in, which is the repository root, not the
+crate. The fragment offers every format through `OpenWithProgids` and a `RegisteredApplications`
+capabilities key rather than claiming extensions outright, so installing RustyPaint never takes a
+file type away from whatever already owns it. Its component GUID is fixed and must stay that way
+across versions.
 
 macOS needs code as well as metadata. `CFBundleDocumentTypes` lands in the plist from the packager
 table, but Finder then delivers the file as an `application:openURLs:` Apple Event rather than on
