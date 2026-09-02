@@ -119,6 +119,45 @@ The first version has to be submitted by hand, since there is nothing for Komac 
 komac submit <directory containing manifests/i/ItzELECTR0/RustyPaint/<version>/> --token <token>
 ```
 
+## File associations
+
+`doc::io::READABLE` decides what the app can open, and three separate files have to agree with it:
+`packaging/net.electris.RustyPaint.desktop`, the `file-associations` table in
+`crates/rustypaint/Cargo.toml`, and `packaging/windows/file-associations.wxs`. Three tests in
+`doc/io.rs` compare them against `READABLE` and against each other, because nothing else notices
+when one of them falls behind.
+
+`role` in the packager table is `editor` for a format `SaveFormat` can write and `viewer` for one
+the app can only read. macOS is the only platform that reads it, as `CFBundleTypeRole`.
+
+`packaging/mime/net.electris.RustyPaint.xml` fills the gaps in shared-mime-info. It defines
+`image/x-portable-arbitrarymap` and `image/vnd.nokia.ota-bitmap`, which the system does not know at
+all, and adds `.iris`, `.rgba`, `.bw` to `image/x-sgi` and `.bm` to `image/x-xbitmap`, which it
+knows under other extensions only. Everything else in the desktop entry is a type shared-mime-info
+already names, so it is referenced rather than redefined. dpkg, RPM and pacman all rebuild the MIME
+database from a file trigger on `/usr/share/mime/packages`, so no maintainer script is needed.
+
+The stable AUR recipe does not install that file yet. It builds from `#tag=v${pkgver}`, and the tag
+it currently pins predates the file, so the install line would fail. It joins
+`packaging/aur/rustypaint/PKGBUILD` with the first release that contains `packaging/mime/`.
+`rustypaint-git` follows HEAD and already has it.
+
+cargo-packager 0.11.8 cannot do the Windows half itself. Its WiX template renders
+`association.ext` while a `FileAssociation` serialises as `extensions`, so `#each` finds nothing and
+the MSI silently ships with no associations at all. `packaging/windows/file-associations.wxs` does
+the registration instead, wired in through `windows.wix.fragment-paths`; that path is resolved
+against the directory `cargo packager` runs in, which is the repository root, not the crate. The
+fragment offers every format through `OpenWithProgids` and a `RegisteredApplications` capabilities
+key rather than claiming extensions outright, so installing RustyPaint never takes a file type away
+from whatever already owns it. Its component GUID is fixed and must stay that way across versions.
+
+macOS needs code as well as metadata. `CFBundleDocumentTypes` lands in the plist from the packager
+table, but Finder then delivers the file as an `application:openURLs:` Apple Event rather than on
+the command line, and winit 0.30 does not handle it. `src/open_with/macos.rs` registers an
+`NSApplicationDelegate` of its own, which winit explicitly leaves room for, and feeds the paths into
+the same subscription dropped files use. Neither the Windows nor the macOS half has been run on its
+own platform.
+
 The window carries `net.electris.RustyPaint` as its Linux application id, set in `main.rs` because
 iced leaves it empty by default. Compositors match that id against the desktop file's basename to
 find the window's icon, so it, the desktop file's name, and `StartupWMClass` have to stay equal; an

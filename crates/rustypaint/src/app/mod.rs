@@ -533,13 +533,13 @@ impl App {
         let watch_drops = iced::window::latest()
             .and_then(|id| iced::window::run(id, crate::dnd::watch))
             .discard();
-        let start = Task::batch([measure, watch_drops]);
+        let watch_handovers = iced::window::latest()
+            .and_then(|id| iced::window::run(id, crate::open_with::watch))
+            .discard();
+        let start = Task::batch([measure, watch_drops, watch_handovers]);
 
-        let task = match std::env::args_os().nth(1) {
-            Some(arg) => {
-                let path = PathBuf::from(arg);
-                Task::batch([start, Task::perform(load(path), Message::Opened)])
-            }
+        let task = match crate::open_with::first() {
+            Some(path) => Task::batch([start, Task::perform(load(path), Message::Opened)]),
             None => start,
         };
         (app, task)
@@ -705,6 +705,7 @@ impl App {
                 iced::Subscription::none()
             },
             crate::dnd::drops().map(Message::FileDropped),
+            crate::open_with::later().map(Message::FileDropped),
             iced::event::listen_with(|event, _status, _window| match event {
                 iced::Event::Window(iced::window::Event::FileDropped(path)) => {
                     Some(Message::FileDropped(path))

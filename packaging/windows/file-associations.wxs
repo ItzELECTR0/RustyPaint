@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  cargo-packager 0.11.8 renders `association.ext` in its own WiX template while a
+  FileAssociation serialises `extensions`, so its built-in file associations expand
+  to nothing at all. This fragment does the registration instead, and the packager
+  metadata is what macOS reads.
+
+  Every format is offered through OpenWithProgids and Default Apps rather than
+  claimed outright, so installing RustyPaint never takes an extension away from
+  whatever already owns it.
+-->
+<?if $(sys.BUILDARCH)="x64"?>
+    <?define Win64 = "yes" ?>
+<?else?>
+    <?define Win64 = "no" ?>
+<?endif?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <ComponentGroup Id="FileAssociations" Directory="INSTALLDIR">
+            <Component Id="FileAssociations" Guid="1F0E5A34-7C6B-4D91-9A2E-3B8C5D4F6071" Win64="$(var.Win64)">
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities" Name="ApplicationName" Value="RustyPaint" Type="string" KeyPath="yes"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities" Name="ApplicationDescription" Value="Paint 3D&apos;s 2D editor, without the 3D" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RegisteredApplications" Name="RustyPaint" Value="Software\RustyPaint\Capabilities" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.png" Value="PNG image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.png\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.png\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.png\OpenWithProgids" Name="RustyPaint.png" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".png" Value="RustyPaint.png" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.jpg" Value="JPEG image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.jpg\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.jpg\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.jpg\OpenWithProgids" Name="RustyPaint.jpg" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".jpg" Value="RustyPaint.jpg" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.jpeg\OpenWithProgids" Name="RustyPaint.jpg" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".jpeg" Value="RustyPaint.jpg" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.bmp" Value="Bitmap image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.bmp\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.bmp\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.bmp\OpenWithProgids" Name="RustyPaint.bmp" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".bmp" Value="RustyPaint.bmp" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.gif" Value="GIF image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.gif\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.gif\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.gif\OpenWithProgids" Name="RustyPaint.gif" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".gif" Value="RustyPaint.gif" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.tif" Value="TIFF image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.tif\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.tif\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.tif\OpenWithProgids" Name="RustyPaint.tif" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".tif" Value="RustyPaint.tif" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.tiff\OpenWithProgids" Name="RustyPaint.tif" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".tiff" Value="RustyPaint.tif" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.webp" Value="WebP image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.webp\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.webp\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.webp\OpenWithProgids" Name="RustyPaint.webp" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".webp" Value="RustyPaint.webp" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.tga" Value="Targa image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.tga\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.tga\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.tga\OpenWithProgids" Name="RustyPaint.tga" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".tga" Value="RustyPaint.tga" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.ico" Value="Windows icon" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.ico\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.ico\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.ico\OpenWithProgids" Name="RustyPaint.ico" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".ico" Value="RustyPaint.ico" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.icns" Value="Apple icon" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.icns\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.icns\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.icns\OpenWithProgids" Name="RustyPaint.icns" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".icns" Value="RustyPaint.icns" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.qoi" Value="Quite OK Image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.qoi\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.qoi\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.qoi\OpenWithProgids" Name="RustyPaint.qoi" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".qoi" Value="RustyPaint.qoi" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.pam" Value="Portable anymap" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.pam\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.pam\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.pam\OpenWithProgids" Name="RustyPaint.pam" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".pam" Value="RustyPaint.pam" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.pbm\OpenWithProgids" Name="RustyPaint.pam" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".pbm" Value="RustyPaint.pam" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.pgm\OpenWithProgids" Name="RustyPaint.pam" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".pgm" Value="RustyPaint.pam" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.pnm\OpenWithProgids" Name="RustyPaint.pam" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".pnm" Value="RustyPaint.pam" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.ppm\OpenWithProgids" Name="RustyPaint.pam" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".ppm" Value="RustyPaint.pam" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.ff" Value="Farbfeld image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.ff\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.ff\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.ff\OpenWithProgids" Name="RustyPaint.ff" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".ff" Value="RustyPaint.ff" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.dds" Value="DirectDraw surface" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.dds\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.dds\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.dds\OpenWithProgids" Name="RustyPaint.dds" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".dds" Value="RustyPaint.dds" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.exr" Value="OpenEXR image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.exr\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.exr\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.exr\OpenWithProgids" Name="RustyPaint.exr" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".exr" Value="RustyPaint.exr" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.hdr" Value="Radiance HDR image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.hdr\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.hdr\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.hdr\OpenWithProgids" Name="RustyPaint.hdr" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".hdr" Value="RustyPaint.hdr" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.ora" Value="OpenRaster image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.ora\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.ora\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.ora\OpenWithProgids" Name="RustyPaint.ora" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".ora" Value="RustyPaint.ora" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.otb" Value="OTA bitmap image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.otb\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.otb\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.otb\OpenWithProgids" Name="RustyPaint.otb" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".otb" Value="RustyPaint.otb" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.pcx" Value="PCX image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.pcx\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.pcx\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.pcx\OpenWithProgids" Name="RustyPaint.pcx" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".pcx" Value="RustyPaint.pcx" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.sgi" Value="SGI image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.sgi\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.sgi\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.sgi\OpenWithProgids" Name="RustyPaint.sgi" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".sgi" Value="RustyPaint.sgi" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.iris\OpenWithProgids" Name="RustyPaint.sgi" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".iris" Value="RustyPaint.sgi" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.rgb\OpenWithProgids" Name="RustyPaint.sgi" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".rgb" Value="RustyPaint.sgi" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.rgba\OpenWithProgids" Name="RustyPaint.sgi" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".rgba" Value="RustyPaint.sgi" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.bw\OpenWithProgids" Name="RustyPaint.sgi" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".bw" Value="RustyPaint.sgi" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.wbmp" Value="WBMP image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.wbmp\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.wbmp\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.wbmp\OpenWithProgids" Name="RustyPaint.wbmp" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".wbmp" Value="RustyPaint.wbmp" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.xbm" Value="X BitMap image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.xbm\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.xbm\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.xbm\OpenWithProgids" Name="RustyPaint.xbm" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".xbm" Value="RustyPaint.xbm" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.bm\OpenWithProgids" Name="RustyPaint.xbm" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".bm" Value="RustyPaint.xbm" Type="string"/>
+
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.xpm" Value="X PixMap image" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.xpm\DefaultIcon" Value="&quot;[!Path]&quot;,0" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\RustyPaint.xpm\shell\open\command" Value="&quot;[!Path]&quot; &quot;%1&quot;" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\Classes\.xpm\OpenWithProgids" Name="RustyPaint.xpm" Value="" Type="string"/>
+                <RegistryValue Root="HKLM" Key="Software\RustyPaint\Capabilities\FileAssociations" Name=".xpm" Value="RustyPaint.xpm" Type="string"/>
+            </Component>
+        </ComponentGroup>
+    </Fragment>
+</Wix>

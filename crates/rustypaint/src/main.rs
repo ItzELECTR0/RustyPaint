@@ -7,6 +7,7 @@ mod config;
 mod dnd;
 mod doc;
 mod gpu;
+mod open_with;
 mod paint;
 mod select;
 mod text;

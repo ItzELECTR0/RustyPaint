@@ -424,4 +424,73 @@ mod tests {
             PathBuf::from("shot.png")
         );
     }
+
+    // The desktop entry, the packager metadata and the WiX fragment each name the
+    // formats independently, so they are checked against the one list that decides
+    // what the app can actually open.
+    const MANIFEST: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
+    const FRAGMENT: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packaging/windows/file-associations.wxs"
+    ));
+    const DESKTOP: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packaging/net.electris.RustyPaint.desktop"
+    ));
+
+    fn associations() -> Vec<toml::Table> {
+        toml::from_str::<toml::Table>(MANIFEST).expect("the manifest parses")["package"]["metadata"]
+            ["packager"]["file-associations"]
+            .as_array()
+            .expect("the associations are a list")
+            .iter()
+            .map(|entry| entry.as_table().expect("an association is a table").clone())
+            .collect()
+    }
+
+    #[test]
+    fn every_readable_format_is_offered_to_the_desktop() {
+        let mut claimed: Vec<String> = associations()
+            .iter()
+            .flat_map(|entry| entry["extensions"].as_array().expect("extensions").clone())
+            .map(|value| value.as_str().expect("an extension is a string").to_owned())
+            .collect();
+        claimed.sort();
+
+        let mut readable: Vec<String> = READABLE.iter().map(|e| (*e).to_owned()).collect();
+        readable.sort();
+
+        assert_eq!(claimed, readable, "packager metadata and READABLE disagree");
+    }
+
+    #[test]
+    fn windows_registers_every_extension_the_packager_names() {
+        for extension in READABLE {
+            assert!(
+                FRAGMENT.contains(&format!(
+                    "Key=\"Software\\Classes\\.{extension}\\OpenWithProgids\""
+                )),
+                "the WiX fragment never offers .{extension}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_desktop_entry_names_the_same_types_the_packager_does() {
+        let listed: Vec<&str> = DESKTOP
+            .lines()
+            .find_map(|line| line.strip_prefix("MimeType="))
+            .expect("a MimeType line")
+            .split(';')
+            .filter(|entry| !entry.is_empty())
+            .collect();
+
+        for entry in associations() {
+            let mime = entry["mime-type"].as_str().expect("a mime type");
+            assert!(
+                listed.contains(&mime),
+                "the desktop entry never offers {mime}"
+            );
+        }
+    }
 }

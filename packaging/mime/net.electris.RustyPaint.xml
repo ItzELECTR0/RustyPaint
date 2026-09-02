@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="image/x-portable-arbitrarymap">
+    <comment>PAM image</comment>
+    <sub-class-of type="image/x-portable-anymap"/>
+    <glob pattern="*.pam"/>
+    <magic priority="50">
+      <match type="string" value="P7" offset="0"/>
+    </magic>
+  </mime-type>
+
+  <mime-type type="image/vnd.nokia.ota-bitmap">
+    <comment>OTA bitmap image</comment>
+    <glob pattern="*.otb"/>
+  </mime-type>
+
+  <mime-type type="image/x-sgi">
+    <comment>SGI image</comment>
+    <glob pattern="*.iris"/>
+    <glob pattern="*.rgba"/>
+    <glob pattern="*.bw"/>
+  </mime-type>
+
+  <mime-type type="image/x-xbitmap">
+    <comment>X BitMap image</comment>
+    <glob pattern="*.bm"/>
+  </mime-type>
+</mime-info>

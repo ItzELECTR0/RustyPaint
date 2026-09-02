@@ -24,6 +24,35 @@
   <launchable type="desktop-id">net.electris.RustyPaint.desktop</launchable>
   <provides>
     <binary>rustypaint</binary>
+    <mediatype>image/png</mediatype>
+    <mediatype>image/jpeg</mediatype>
+    <mediatype>image/bmp</mediatype>
+    <mediatype>image/gif</mediatype>
+    <mediatype>image/tiff</mediatype>
+    <mediatype>image/webp</mediatype>
+    <mediatype>image/x-dds</mediatype>
+    <mediatype>image/vnd.ms-dds</mediatype>
+    <mediatype>image/x-exr</mediatype>
+    <mediatype>image/x-farbfeld</mediatype>
+    <mediatype>image/vnd.radiance</mediatype>
+    <mediatype>image/x-hdr</mediatype>
+    <mediatype>image/vnd.microsoft.icon</mediatype>
+    <mediatype>image/x-portable-arbitrarymap</mediatype>
+    <mediatype>image/x-portable-bitmap</mediatype>
+    <mediatype>image/x-portable-graymap</mediatype>
+    <mediatype>image/x-portable-anymap</mediatype>
+    <mediatype>image/x-portable-pixmap</mediatype>
+    <mediatype>image/qoi</mediatype>
+    <mediatype>image/x-tga</mediatype>
+    <mediatype>image/x-icns</mediatype>
+    <mediatype>image/openraster</mediatype>
+    <mediatype>image/vnd.nokia.ota-bitmap</mediatype>
+    <mediatype>image/vnd.zbrush.pcx</mediatype>
+    <mediatype>image/x-sgi</mediatype>
+    <mediatype>image/x-rgb</mediatype>
+    <mediatype>image/vnd.wap.wbmp</mediatype>
+    <mediatype>image/x-xbitmap</mediatype>
+    <mediatype>image/x-xpixmap</mediatype>
   </provides>
   <url type="homepage">https://github.com/ItzELECTR0/RustyPaint</url>
   <url type="bugtracker">https://github.com/ItzELECTR0/RustyPaint/issues</url>

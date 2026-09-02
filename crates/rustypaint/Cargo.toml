@@ -25,6 +25,11 @@ cosmic-text = "0.15"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.4"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSURL", "NSString"] }
+
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 wayland-client = { version = "0.31.15", features = ["system"] }
 
@@ -49,6 +54,167 @@ icons = [
 ]
 license-file = "../../LICENSE"
 
+# cargo-packager 0.11.8 cannot expand these into WiX itself, so the fragment does
+# the Windows half. Paths here are resolved against the directory cargo-packager
+# runs in, which is the repository root.
+[package.metadata.packager.windows.wix]
+fragment-paths = ["packaging/windows/file-associations.wxs"]
+component-group-refs = ["FileAssociations"]
+
+[[package.metadata.packager.file-associations]]
+name = "PNG image"
+extensions = ["png"]
+description = "PNG image"
+mime-type = "image/png"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "JPEG image"
+extensions = ["jpg", "jpeg"]
+description = "JPEG image"
+mime-type = "image/jpeg"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "Bitmap image"
+extensions = ["bmp"]
+description = "Bitmap image"
+mime-type = "image/bmp"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "GIF image"
+extensions = ["gif"]
+description = "GIF image"
+mime-type = "image/gif"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "TIFF image"
+extensions = ["tif", "tiff"]
+description = "TIFF image"
+mime-type = "image/tiff"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "WebP image"
+extensions = ["webp"]
+description = "WebP image"
+mime-type = "image/webp"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "Targa image"
+extensions = ["tga"]
+description = "Targa image"
+mime-type = "image/x-tga"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "Windows icon"
+extensions = ["ico"]
+description = "Windows icon"
+mime-type = "image/vnd.microsoft.icon"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "Apple icon"
+extensions = ["icns"]
+description = "Apple icon"
+mime-type = "image/x-icns"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "Quite OK Image"
+extensions = ["qoi"]
+description = "Quite OK Image"
+mime-type = "image/qoi"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "Portable anymap"
+extensions = ["pam", "pbm", "pgm", "pnm", "ppm"]
+description = "Portable anymap"
+mime-type = "image/x-portable-anymap"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "Farbfeld image"
+extensions = ["ff"]
+description = "Farbfeld image"
+mime-type = "image/x-farbfeld"
+role = "editor"
+
+[[package.metadata.packager.file-associations]]
+name = "DirectDraw surface"
+extensions = ["dds"]
+description = "DirectDraw surface"
+mime-type = "image/x-dds"
+role = "viewer"
+
+[[package.metadata.packager.file-associations]]
+name = "OpenEXR image"
+extensions = ["exr"]
+description = "OpenEXR image"
+mime-type = "image/x-exr"
+role = "viewer"
+
+[[package.metadata.packager.file-associations]]
+name = "Radiance HDR image"
+extensions = ["hdr"]
+description = "Radiance HDR image"
+mime-type = "image/vnd.radiance"
+role = "viewer"
+
+[[package.metadata.packager.file-associations]]
+name = "OpenRaster image"
+extensions = ["ora"]
+description = "OpenRaster image"
+mime-type = "image/openraster"
+role = "viewer"
+
+[[package.metadata.packager.file-associations]]
+name = "OTA bitmap image"
+extensions = ["otb"]
+description = "OTA bitmap image"
+mime-type = "image/vnd.nokia.ota-bitmap"
+role = "viewer"
+
+[[package.metadata.packager.file-associations]]
+name = "PCX image"
+extensions = ["pcx"]
+description = "PCX image"
+mime-type = "image/vnd.zbrush.pcx"
+role = "viewer"
+
+[[package.metadata.packager.file-associations]]
+name = "SGI image"
+extensions = ["sgi", "iris", "rgb", "rgba", "bw"]
+description = "SGI image"
+mime-type = "image/x-sgi"
+role = "viewer"
+
+[[package.metadata.packager.file-associations]]
+name = "WBMP image"
+extensions = ["wbmp"]
+description = "WBMP image"
+mime-type = "image/vnd.wap.wbmp"
+role = "viewer"
+
+[[package.metadata.packager.file-associations]]
+name = "X BitMap image"
+extensions = ["xbm", "bm"]
+description = "X BitMap image"
+mime-type = "image/x-xbitmap"
+role = "viewer"
+
+[[package.metadata.packager.file-associations]]
+name = "X PixMap image"
+extensions = ["xpm"]
+description = "X PixMap image"
+mime-type = "image/x-xpixmap"
+role = "viewer"
+
 [package.metadata.packager.deb]
 package-name = "rustypaint"
 desktop-template = "../../packaging/net.electris.RustyPaint.desktop"
@@ -56,10 +222,12 @@ depends = ["libfontconfig1", "libvulkan1", "libxkbcommon0"]
 
 [package.metadata.packager.deb.files]
 "../../LICENSE" = "/usr/share/doc/rustypaint/copyright"
+"../../packaging/mime/net.electris.RustyPaint.xml" = "/usr/share/mime/packages/net.electris.RustyPaint.xml"
 
 [package.metadata.packager.appimage.files]
 "../../packaging/flatpak/net.electris.RustyPaint.metainfo.xml" = "/usr/share/metainfo/net.electris.RustyPaint.metainfo.xml"
 "../../packaging/net.electris.RustyPaint.desktop" = "/usr/share/applications/net.electris.RustyPaint.desktop"
+"../../packaging/mime/net.electris.RustyPaint.xml" = "/usr/share/mime/packages/net.electris.RustyPaint.xml"
 "../../LICENSE" = "/usr/share/licenses/rustypaint/LICENSE"
 
 [package.metadata.generate-rpm]
@@ -75,6 +243,7 @@ assets = [
     { source = "res/icons/icon-256.png", dest = "/usr/share/icons/hicolor/256x256/apps/rustypaint.png", mode = "644" },
     { source = "res/icons/icon-512.png", dest = "/usr/share/icons/hicolor/512x512/apps/rustypaint.png", mode = "644" },
     { source = "packaging/flatpak/net.electris.RustyPaint.metainfo.xml", dest = "/usr/share/metainfo/net.electris.RustyPaint.metainfo.xml", mode = "644" },
+    { source = "packaging/mime/net.electris.RustyPaint.xml", dest = "/usr/share/mime/packages/net.electris.RustyPaint.xml", mode = "644" },
     { source = "LICENSE", dest = "/usr/share/licenses/rustypaint/LICENSE", mode = "644", doc = true },
 ]
 requires = { fontconfig = "*", libxkbcommon = "*", vulkan-loader = "*" }

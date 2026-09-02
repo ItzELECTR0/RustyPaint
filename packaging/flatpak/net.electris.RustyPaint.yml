@@ -26,6 +26,7 @@ modules:
       - install -Dm644 packaging/net.electris.RustyPaint.desktop /app/share/applications/net.electris.RustyPaint.desktop
       - sed -i 's/^Icon=rustypaint$/Icon=net.electris.RustyPaint/' /app/share/applications/net.electris.RustyPaint.desktop
       - install -Dm644 packaging/flatpak/net.electris.RustyPaint.metainfo.xml /app/share/metainfo/net.electris.RustyPaint.metainfo.xml
+      - install -Dm644 packaging/mime/net.electris.RustyPaint.xml /app/share/mime/packages/net.electris.RustyPaint.xml
       - install -Dm644 LICENSE /app/share/licenses/net.electris.RustyPaint/LICENSE
       - for size in 16 24 32 48 64 128 256 512; do install -Dm644 res/icons/icon-$size.png /app/share/icons/hicolor/${size}x${size}/apps/net.electris.RustyPaint.png; done
     sources:
