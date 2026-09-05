@@ -68,10 +68,11 @@ jobs:
     container: ${{ matrix.image }}
     steps:
       - name: Install build tools
-        # A container's keyring is as old as the image, and an expired key fails every later install.
+        # The keyring is as old as the image, and pacman's download sandbox wants a Landlock ruleset
+        # that a container is not allowed to set up, which the official image already turns off.
         run: |
-          pacman -Sy --noconfirm ${{ matrix.keyring }}
-          pacman -Syu --noconfirm git rustup fontconfig libxkbcommon vulkan-icd-loader
+          pacman -Sy --noconfirm --disable-sandbox ${{ matrix.keyring }}
+          pacman -Syu --noconfirm --disable-sandbox git rustup fontconfig libxkbcommon vulkan-icd-loader
       - uses: actions/checkout@v6
       - name: Create an unprivileged builder
         run: |

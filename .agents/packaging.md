@@ -115,8 +115,11 @@ through `menci/archlinuxarm:base-devel`. No official image exists; that one is r
 the alternatives have gone stale, and Valve's sponsored work on official ARM support is the thing
 that would eventually replace it. Arch Linux ARM still compresses packages with xz, so the job
 rewrites `PKGEXT` in `/etc/makepkg.conf` before building and both architectures come out as
-`.pkg.tar.zst`. The recipes name `aarch64` in `arch=()` for the same reason, the two AUR ones
-included, because that is what lets an Arch Linux ARM machine build them at all.
+`.pkg.tar.zst`. Both halves also pass `--disable-sandbox`, because pacman 7 downloads through a
+Landlock ruleset and a sandbox user that a container is not allowed to set up; the official Arch
+image already turns that off in its own `pacman.conf`, and the Arch Linux ARM one does not. The
+recipes name `aarch64` in `arch=()` for the same reason, the two AUR ones included, because that is
+what lets an Arch Linux ARM machine build them at all.
 
 The Alpine job is the one that does not use a job container. Every action GitHub runs is Node, and
 the runner's Node is linked against glibc, so a musl job container fails at `actions/checkout` before
