@@ -4,10 +4,12 @@
 `rustypaint`. Flatpak rewrites the shared desktop file's icon name to its application ID, as its
 repository rules require.
 
-The Arch `PKGBUILD` stays in `packaging/`. makepkg creates `src/` and `pkg/` beside the PKGBUILD, so
-placing it at the repository root would collide with project source. `prepare()` copies a clean set
-of build inputs into `$srcdir`; it must not mutate the checkout or copy makepkg scratch directories
-back into themselves.
+The Arch `PKGBUILD` stays in `packaging/` and the Alpine `APKBUILD` in `packaging/alpine/`. makepkg
+and abuild both create `src/` and `pkg/` beside their own recipe, so neither can sit at the
+repository root, and they cannot share a directory either. abuild also warns about every file it
+finds next to an APKBUILD that is not one of its sources, which a directory of its own settles too.
+`prepare()` copies a clean set of build inputs into `$srcdir`; it must not mutate the checkout or
+copy makepkg scratch directories back into themselves.
 
 `packaging/aur/rustypaint/` and `packaging/aur/rustypaint-git/` are the AUR repositories themselves,
 each a git checkout of `ssh://aur@aur.archlinux.org/<name>` nested inside this one and also tracked
@@ -45,6 +47,7 @@ One commit, `build: release <version>`, carrying every place the version is writ
 
 - `Cargo.toml` workspace version, and `Cargo.lock` refreshed by any cargo command
 - `packaging/PKGBUILD`
+- `packaging/alpine/APKBUILD`, whose `pkgrel` counts from 0 because Alpine counts that way
 - `packaging/aur/rustypaint/` `PKGBUILD` and `.SRCINFO`
 - `packaging/aur/rustypaint-git/` `PKGBUILD` and `.SRCINFO`
 - a `releases` entry in `packaging/flatpak/net.electris.RustyPaint.metainfo.xml`, then
@@ -79,16 +82,16 @@ git -C packaging/aur/rustypaint push
 git -C packaging/aur/rustypaint-git push
 ```
 
-`.github/workflows/build-packages.yml` builds AppImage, Debian, RPM, Arch, Flatpak, Windows MSI, and
-macOS DMG artifacts. Every job is a matrix over x86_64 and aarch64 on a native runner of that
+`.github/workflows/build-packages.yml` builds AppImage, Debian, RPM, Arch, Alpine, Flatpak, Windows
+MSI, and macOS DMG artifacts. Every job is a matrix over x86_64 and aarch64 on a native runner of that
 architecture, so nothing is cross-compiled; the macOS pair is two runners for the same reason under
 different names. It is reusable and has no triggers of its own, so the build steps have a single
 owner. `release.yml` calls it for a tag beginning with `v`, creates or updates that tag's GitHub
 release, and then submits the MSI to WinGet; a manual run only stores workflow artifacts.
 `experimental.yml` calls it for a push to `main` and replaces the rolling `experimental`
 pre-release, deleting and recreating it so GitHub lists it above the tagged releases. That build
-carries the version in `packaging/PKGBUILD`, which is the last release rather than anything derived
-from the commit.
+carries the version in `packaging/PKGBUILD` and `packaging/alpine/APKBUILD`, which is the last
+release rather than anything derived from the commit.
 
 The AppImage, Debian and RPM job runs in an `almalinux:9` container rather than straight on the
 `ubuntu-24.04` and `ubuntu-24.04-arm` runners. A glibc binary refuses to start on anything older
@@ -108,6 +111,16 @@ that would eventually replace it. Arch Linux ARM still compresses packages with 
 rewrites `PKGEXT` in `/etc/makepkg.conf` before building and both architectures come out as
 `.pkg.tar.zst`. The recipes name `aarch64` in `arch=()` for the same reason, the two AUR ones
 included, because that is what lets an Arch Linux ARM machine build them at all.
+
+The Alpine job is the one that does not use a job container. Every action GitHub runs is Node, and
+the runner's Node is linked against glibc, so a musl job container fails at `actions/checkout` before
+it reaches anything of ours. It checks out on the runner and builds inside `docker run alpine:3.24`
+instead. The image is pinned because it decides both the musl a package links against and the Rust
+that builds it: 3.24 carries Rust 1.96, and the workspace needs 1.95. abuild signs with a key it
+generates on the spot, which is why the install script passes `--allow-untrusted`, and it writes the
+architecture into the directory it drops the package in rather than into the file name, so the job
+renames each one before uploading. musl has no symbol versioning, so unlike the glibc packages there
+is no floor to hold down here.
 
 The Windows job's aarch64 half runs on `windows-11-arm`. WiX 3 is a 32-bit .NET program, so `candle`
 and `light` run there under x86 emulation rather than natively, and the image carries a thinner tool

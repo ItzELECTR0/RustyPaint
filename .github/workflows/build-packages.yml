@@ -91,6 +91,46 @@ jobs:
           path: packaging/*.pkg.tar.zst
           if-no-files-found: error
 
+  alpine:
+    name: Alpine ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      # Alpine runs as a plain container instead of the job's own, because the runner's Node is
+      # linked against glibc and every action inside a musl job container fails on that alone.
+      - name: Build Alpine package
+        run: |
+          mkdir artifacts
+          docker run --rm -v "$PWD:/work" alpine:3.24 sh -c '
+            set -eu
+            apk add --no-cache alpine-sdk cargo fontconfig libxkbcommon vulkan-loader
+            abuild-keygen -na
+            cp /root/.abuild/*.rsa.pub /etc/apk/keys/
+            cd /work/packaging/alpine
+            abuild -F
+            find /root/packages -name "*.apk" -exec cp {} /work/artifacts/ \;
+          '
+      - name: Name the package for its architecture
+        # abuild puts the architecture in the directory it writes to rather than in the file name,
+        # and a release has nowhere to keep that.
+        run: |
+          for package in artifacts/*.apk; do
+            mv "$package" "${package%.apk}-${{ matrix.arch }}.apk"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rustypaint-alpine-package-${{ matrix.arch }}
+          path: artifacts
+          if-no-files-found: error
+
   windows:
     name: Windows MSI ${{ matrix.arch }}
     strategy:

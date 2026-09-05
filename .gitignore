@@ -5,8 +5,11 @@
 /repo
 *.flatpak
 *.pkg.tar.zst
+*.apk
 packaging/src
 packaging/pkg
+packaging/alpine/src
+packaging/alpine/pkg
 packaging/flatpak/.flatpak-builder
 packaging/flatpak/build
 packaging/flatpak/repo

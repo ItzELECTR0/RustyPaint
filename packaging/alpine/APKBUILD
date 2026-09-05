@@ -1,0 +1,50 @@
+# Maintainer: ELECTRO <electro@electris.net>
+
+pkgname=rustypaint
+pkgver=0.2.2
+pkgrel=0
+pkgdesc="Paint 3D's 2D editor, without the 3D"
+url="https://github.com/ItzELECTR0/RustyPaint"
+arch="x86_64 aarch64"
+license="GPL-3.0-only"
+depends="fontconfig libxkbcommon vulkan-loader"
+makedepends="cargo"
+# Nothing to test here, and cargo has to reach crates.io while it builds.
+options="!check net"
+source=""
+builddir="$srcdir/$pkgname"
+
+prepare() {
+    _packaging=${startdir%/*}
+    _root=${_packaging%/*}
+
+    rm -rf "$builddir"
+    mkdir -p "$builddir"
+    cp -a "$_root/Cargo.toml" "$_root/Cargo.lock" "$_root/crates" "$_root/res" \
+        "$_root/README.md" "$_root/LICENSE" "$builddir/"
+}
+
+build() {
+    cd "$builddir"
+    cargo build --profile dist --locked -p rustypaint
+}
+
+package() {
+    _packaging=${startdir%/*}
+
+    cd "$builddir"
+    install -Dm755 target/dist/rustypaint "$pkgdir/usr/bin/rustypaint"
+    install -Dm644 "$_packaging/net.electris.RustyPaint.desktop" \
+        "$pkgdir/usr/share/applications/net.electris.RustyPaint.desktop"
+    install -Dm644 "$_packaging/flatpak/net.electris.RustyPaint.metainfo.xml" \
+        "$pkgdir/usr/share/metainfo/net.electris.RustyPaint.metainfo.xml"
+    install -Dm644 "$_packaging/mime/net.electris.RustyPaint.xml" \
+        "$pkgdir/usr/share/mime/packages/net.electris.RustyPaint.xml"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    for size in 16 24 32 48 64 128 256 512; do
+        install -Dm644 "res/icons/icon-$size.png" \
+            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/rustypaint.png"
+    done
+}
