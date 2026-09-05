@@ -73,6 +73,11 @@ into the recipe by the commit that carries it, so it can only name a commit that
 is fine. `pkgver()` recomputes the truth against whatever HEAD the AUR clone lands on, and the stale
 `.SRCINFO` value only has to stay lower than that so helpers still offer the update.
 
+Every edit to `rustypaint-git` carries that bump, not only a version sync. A recipe change that
+leaves `pkgver` alone leaves `.SRCINFO` naming a commit older than the change itself, and helpers
+read `.SRCINFO` rather than running `pkgver()`, so the edit reaches nobody until something else
+moves the value.
+
 Pushing is the maintainer's, always, and `main` goes before the tag or `release.yml` fails its
 `--verify-tag`. The AUR repositories are pushed separately:
 
