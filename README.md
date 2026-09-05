@@ -34,7 +34,7 @@ It detects image types from their contents, opens several icon and obscure bitma
 
 ## How do I install it?
 
-Releases offer multiple builds. An AppImage, Arch package, Debian package, RPM, Flatpak bundle, Windows MSI, and macOS DMGs for both Apple Silicon and Intel.
+Releases offer multiple builds. An AppImage, Arch package, Debian package, RPM, Flatpak bundle, Windows MSI, and macOS DMG, each one for x86_64 and for ARM64.
 
 On Arch, install the [stable](https://aur.archlinux.org/packages/rustypaint) or [Git](https://aur.archlinux.org/packages/rustypaint-git) AUR package with your favourite helper:
 

@@ -80,7 +80,9 @@ git -C packaging/aur/rustypaint-git push
 ```
 
 `.github/workflows/build-packages.yml` builds AppImage, Debian, RPM, Arch, Flatpak, Windows MSI, and
-macOS DMG artifacts. It is reusable and has no triggers of its own, so the build steps have a single
+macOS DMG artifacts. Every job is a matrix over x86_64 and aarch64 on a native runner of that
+architecture, so nothing is cross-compiled; the macOS pair is two runners for the same reason under
+different names. It is reusable and has no triggers of its own, so the build steps have a single
 owner. `release.yml` calls it for a tag beginning with `v`, creates or updates that tag's GitHub
 release, and then submits the MSI to WinGet; a manual run only stores workflow artifacts.
 `experimental.yml` calls it for a push to `main` and replaces the rolling `experimental`
@@ -89,15 +91,27 @@ carries the version in `packaging/PKGBUILD`, which is the last release rather th
 from the commit.
 
 The AppImage, Debian and RPM job runs in an `almalinux:9` container rather than straight on the
-runner. A glibc binary refuses to start on anything older than the glibc it linked against, and what
-it linked against is the build environment, so the container and not the runner decides which
-systems accept these packages. AlmaLinux 9 carries glibc 2.34, the oldest base any of the three
+`ubuntu-24.04` and `ubuntu-24.04-arm` runners. A glibc binary refuses to start on anything older
+than the glibc it linked against, and what it linked against is the build environment, so the
+container and not the runner decides which systems accept these packages. AlmaLinux 9 carries glibc 2.34, the oldest base any of the three
 formats targets. On the `ubuntu-24.04` runner the standard library's `pidfd_spawnp@GLIBC_2.39`
 raised that floor to 2.39, which is above Debian 12 and RHEL 9, and a package that installs cleanly
 and then dies with ``version `GLIBC_2.39' not found`` is worse than one that refuses to install. The
 Debian package is built in the same container because cargo-packager writes the archive itself and
 never calls dpkg. A job container has no FUSE, so `APPIMAGE_EXTRACT_AND_RUN` makes the tools
 cargo-packager downloads unpack themselves rather than mount themselves.
+
+Arch has no ARM port of its own, so the aarch64 half of the Arch job builds against Arch Linux ARM
+through `menci/archlinuxarm:base-devel`. No official image exists; that one is rebuilt daily where
+the alternatives have gone stale, and Valve's sponsored work on official ARM support is the thing
+that would eventually replace it. Arch Linux ARM still compresses packages with xz, so the job
+rewrites `PKGEXT` in `/etc/makepkg.conf` before building and both architectures come out as
+`.pkg.tar.zst`. The recipes name `aarch64` in `arch=()` for the same reason, the two AUR ones
+included, because that is what lets an Arch Linux ARM machine build them at all.
+
+The Windows job's aarch64 half runs on `windows-11-arm`. WiX 3 is a 32-bit .NET program, so `candle`
+and `light` run there under x86 emulation rather than natively, and the image carries a thinner tool
+set than the x86 one, which is why the Rust step installs rustup rather than assuming it.
 
 Building on an RPM distribution also hands cargo-generate-rpm a working `find-requires`, so the RPM
 now carries the symbol versions it needs, `libc.so.6(GLIBC_2.34)(64bit)` among them, on top of the
@@ -113,7 +127,9 @@ configured.
 
 The WinGet package identifier is `ItzELECTR0.RustyPaint` and cannot be renamed without a separate
 move request to `microsoft/winget-pkgs`. `winget.yml` owns the submission and matches `\.msi$`
-against the release's assets, so only the one Windows installer is sent. `release.yml` calls it for a
+against the release's assets, which since the Windows job became a matrix means both the x64 and the
+arm64 installer. That is what WinGet wants: one manifest with an installer per architecture, and
+Komac reads the architecture out of each MSI rather than being told. `release.yml` calls it for a
 tag beginning with `v` once the release exists, and it takes a tag on a manual run as well, which is
 how a release that could not be submitted at the time is caught up later. `experimental.yml` never
 reaches it.
