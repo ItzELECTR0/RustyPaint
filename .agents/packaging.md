@@ -88,6 +88,22 @@ pre-release, deleting and recreating it so GitHub lists it above the tagged rele
 carries the version in `packaging/PKGBUILD`, which is the last release rather than anything derived
 from the commit.
 
+The AppImage, Debian and RPM job runs in an `almalinux:9` container rather than straight on the
+runner. A glibc binary refuses to start on anything older than the glibc it linked against, and what
+it linked against is the build environment, so the container and not the runner decides which
+systems accept these packages. AlmaLinux 9 carries glibc 2.34, the oldest base any of the three
+formats targets. On the `ubuntu-24.04` runner the standard library's `pidfd_spawnp@GLIBC_2.39`
+raised that floor to 2.39, which is above Debian 12 and RHEL 9, and a package that installs cleanly
+and then dies with ``version `GLIBC_2.39' not found`` is worse than one that refuses to install. The
+Debian package is built in the same container because cargo-packager writes the archive itself and
+never calls dpkg. A job container has no FUSE, so `APPIMAGE_EXTRACT_AND_RUN` makes the tools
+cargo-packager downloads unpack themselves rather than mount themselves.
+
+Building on an RPM distribution also hands cargo-generate-rpm a working `find-requires`, so the RPM
+now carries the symbol versions it needs, `libc.so.6(GLIBC_2.34)(64bit)` among them, on top of the
+hand-written entries. A system too old for the binary refuses the package instead of taking it and
+producing something that cannot start.
+
 It skips whatever cannot change a package. A push confined to `**.md`, `.agents/` or
 `.github/assets/` never starts, and one whose tip message begins `docs` or `build: release` stops at
 the `build` job, so a release is built once from its own tag instead of twice. The message test reads

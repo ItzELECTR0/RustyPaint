@@ -7,15 +7,25 @@ jobs:
   linux:
     name: AppImage, Debian and RPM
     runs-on: ubuntu-24.04
+    # The container, not the runner, decides which systems accept these packages, so it is the
+    # oldest base the three formats target rather than the newest one available.
+    container: almalinux:9
     steps:
+      - name: Install build tools
+        run: dnf install -y gcc make file findutils which binutils desktop-file-utils git tar
       - uses: actions/checkout@v6
-      - name: Select stable Rust
-        run: rustup default stable
+      - name: Install Rust
+        run: |
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Install package tools
         run: |
           cargo install cargo-packager --version 0.11.8 --locked
           cargo install cargo-generate-rpm --version 0.21.0 --locked
       - name: Build AppImage and Debian packages
+        # A job container has no FUSE, so the tools cargo-packager downloads unpack themselves.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
         run: cargo packager -p rustypaint --profile dist --formats appimage,deb
       - name: Build RPM package
         run: cargo generate-rpm -p crates/rustypaint --profile dist
