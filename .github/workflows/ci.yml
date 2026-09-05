@@ -39,6 +39,8 @@ jobs:
         run: rustup default stable
       - name: Install lint tools
         run: rustup component add clippy rustfmt
+      - name: Check the install script
+        run: shellcheck -s sh install.sh
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy

@@ -83,11 +83,11 @@ git -C packaging/aur/rustypaint-git push
 ```
 
 `.github/workflows/build-packages.yml` builds AppImage, Debian, RPM, Arch, Alpine, Flatpak, Windows
-MSI, and macOS DMG artifacts. Every job is a matrix over x86_64 and aarch64 on a native runner of that
-architecture, so nothing is cross-compiled; the macOS pair is two runners for the same reason under
-different names. It is reusable and has no triggers of its own, so the build steps have a single
-owner. `release.yml` calls it for a tag beginning with `v`, creates or updates that tag's GitHub
-release, and then submits the MSI to WinGet; a manual run only stores workflow artifacts.
+MSI, and macOS DMG artifacts. Every job is a matrix over x86_64 and aarch64 on a native runner of
+that architecture, so nothing is cross-compiled; the macOS pair is two runners for the same reason
+under different names. It is reusable and has no triggers of its own, so the build steps have a
+single owner. `release.yml` calls it for a tag beginning with `v`, creates or updates that tag's
+GitHub release, and then submits the MSI to WinGet; a manual run only stores workflow artifacts.
 `experimental.yml` calls it for a push to `main` and replaces the rolling `experimental`
 pre-release, deleting and recreating it so GitHub lists it above the tagged releases. That build
 carries the version in `packaging/PKGBUILD` and `packaging/alpine/APKBUILD`, which is the last
@@ -96,13 +96,14 @@ release rather than anything derived from the commit.
 The AppImage, Debian and RPM job runs in an `almalinux:9` container rather than straight on the
 `ubuntu-24.04` and `ubuntu-24.04-arm` runners. A glibc binary refuses to start on anything older
 than the glibc it linked against, and what it linked against is the build environment, so the
-container and not the runner decides which systems accept these packages. AlmaLinux 9 carries glibc 2.34, the oldest base any of the three
-formats targets. On the `ubuntu-24.04` runner the standard library's `pidfd_spawnp@GLIBC_2.39`
-raised that floor to 2.39, which is above Debian 12 and RHEL 9, and a package that installs cleanly
-and then dies with ``version `GLIBC_2.39' not found`` is worse than one that refuses to install. The
-Debian package is built in the same container because cargo-packager writes the archive itself and
-never calls dpkg. A job container has no FUSE, so `APPIMAGE_EXTRACT_AND_RUN` makes the tools
-cargo-packager downloads unpack themselves rather than mount themselves.
+container and not the runner decides which systems accept these packages. AlmaLinux 9 carries glibc
+2.34, the oldest base any of the three formats targets. On the `ubuntu-24.04` runner the standard
+library's `pidfd_spawnp@GLIBC_2.39` raised that floor to 2.39, which is above Debian 12 and RHEL 9,
+and a package that installs cleanly and then dies with ``version `GLIBC_2.39' not found`` is worse
+than one that refuses to install. The Debian package is built in the same container because
+cargo-packager writes the archive itself and never calls dpkg. A job container has no FUSE, so
+`APPIMAGE_EXTRACT_AND_RUN` makes the tools cargo-packager downloads unpack themselves rather than
+mount themselves.
 
 Arch has no ARM port of its own, so the aarch64 half of the Arch job builds against Arch Linux ARM
 through `menci/archlinuxarm:base-devel`. No official image exists; that one is rebuilt daily where
@@ -131,12 +132,12 @@ now carries the symbol versions it needs, `libc.so.6(GLIBC_2.34)(64bit)` among t
 hand-written entries. A system too old for the binary refuses the package instead of taking it and
 producing something that cannot start.
 
-It skips whatever cannot change a package. A push confined to `**.md`, `.agents/` or
-`.github/assets/` never starts, and one whose tip message begins `docs` or `build: release` stops at
-the `build` job, so a release is built once from its own tag instead of twice. The message test reads
-only the tip of the push, so a batch ending on a documentation commit is skipped whatever came before
-it and the rolling pre-release stays where it was until the next push. Windows and macOS packages remain unsigned until signing credentials are
-configured.
+It skips whatever cannot change a package. A push confined to `**.md`, `.agents/`,
+`.github/assets/` or `install.sh` never starts, and one whose tip message begins `docs` or
+`build: release` stops at the `build` job, so a release is built once from its own tag instead of
+twice. The message test reads only the tip of the push, so a batch ending on a documentation commit
+is skipped whatever came before it and the rolling pre-release stays where it was until the next
+push. Windows and macOS packages remain unsigned until signing credentials are configured.
 
 The WinGet package identifier is `ItzELECTR0.RustyPaint` and cannot be renamed without a separate
 move request to `microsoft/winget-pkgs`. `winget.yml` owns the submission and matches `\.msi$`
@@ -169,6 +170,49 @@ The first version has to be submitted by hand, since there is nothing for Komac 
 ```sh
 komac submit <directory containing manifests/i/ItzELECTR0/RustyPaint/<version>/> --token <token>
 ```
+
+## The install script
+
+`install.sh` at the repository root is the `curl | sh` entry point the README and the website point
+at, so its path on `main` is a published URL and must not move. `ci.yml` runs `shellcheck -s sh` over
+it, and `experimental.yml` ignores it because it reaches no package.
+
+It reads a release through `https://api.github.com/repos/<repo>/releases/{latest,tags/experimental}`
+and falls back to scraping `https://github.com/<repo>/releases/expanded_assets/<tag>` when the API
+rate limits, which it does after 60 unauthenticated requests an hour per address. Both paths produce
+the same list of asset URLs, so everything after them has one shape.
+
+Assets are matched by pattern rather than by a reconstructed filename, in `asset_pattern`:
+`_<arch>.AppImage`, `-<arch>.flatpak`, `_<debian arch>.deb`, `.<arch>.rpm`, `-<arch>.pkg.tar.zst`,
+`-<arch>.apk`, `_<macOS arch>.dmg` and `_<Windows arch>_*.msi`. Renaming what a workflow publishes
+therefore breaks installation without breaking any build, so the two have to move together. The MSI
+pattern carries an architecture for the same reason every other one does: a bare `.msi$` matched
+whichever of the two Windows installers came first once that job became a matrix.
+
+The script asks which package type to take only when detection is genuinely unsure. `/etc/os-release`
+`ID`, then `ID_LIKE`, decide deb, rpm and Arch; a package manager on `PATH` is a hint that marks an
+entry in the menu rather than an answer. A musl system takes the Alpine package when `apk` is there
+to install it, and is otherwise sent to Flatpak along with anything carrying `/run/ostree-booted`,
+SteamOS and NixOS, because no other build can run on any of them.
+
+The last thing before the download is a summary of what is about to happen and an `Install? [Y/n]`,
+because a piped installer that goes straight from one question to a package manager is worse than one
+that shows its hand first. `--yes`, `--noconfirm` and `RUSTYPAINT_YES=1` all skip it, as does having
+no terminal to ask through, and it comes before the download so answering no costs nothing.
+
+Escalation tries `doas` before `sudo`, which is the maintainer's preference and also the only way in
+on a system that ships one and not the other. The uninstall line printed at the end names whichever
+of the two is present rather than assuming `sudo`, and names neither when the machine has neither.
+
+An AppImage mounts itself through libfuse2, which Ubuntu 24.04 and others no longer ship, so the
+script installs the unpacked AppDir and points the launcher at its `AppRun` when libfuse2 is missing.
+Either way it takes the desktop entry, icons, metainfo and MIME definitions out of the AppImage,
+rewrites `Exec=` to the installed path, and refreshes the desktop, MIME and icon caches.
+
+After a native install it runs `ldd` over the installed binary and warns when that binary wants a
+newer glibc than the system has, rather than leaving a package that installs cleanly and then refuses
+to start. Nothing published should trip it while the Linux packages are built on AlmaLinux 9, so it
+firing again means a build moved to a newer base.
 
 ## File associations
 

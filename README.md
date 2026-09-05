@@ -34,6 +34,18 @@ It detects image types from their contents, opens several icon and obscure bitma
 
 ## How do I install it?
 
+On Linux and macOS, this works out what your system wants and installs it:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ItzELECTR0/RustyPaint/main/install.sh | sh
+```
+
+It asks whether you want the stable or the experimental release, and if it cannot tell what kind of
+package your system takes, it asks that too. Then it shows you what it found and waits for a yes
+before it installs anything. Pass options after `-s --`, so `| sh -s -- --help` lists them,
+`| sh -s -- --stable --format appimage` answers the questions up front, and `--noconfirm` means it
+never asks at all.
+
 Releases offer multiple builds. An AppImage, Arch package, Debian package, RPM, Alpine apk, Flatpak bundle, Windows MSI, and macOS DMG, each one for x86_64 and for ARM64.
 
 On Arch, install the [stable](https://aur.archlinux.org/packages/rustypaint) or [Git](https://aur.archlinux.org/packages/rustypaint-git) AUR package with your favourite helper:
