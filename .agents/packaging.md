@@ -212,6 +212,14 @@ Cargo-packager owns the shared Linux, Windows, and macOS bundle metadata in
 crate manifest. The AUR-ready `PKGBUILD` and Flatpak manifest remain native definitions rather than
 generated approximations.
 
+The binary links nothing but libc, libm and libgcc: fontconfig, Vulkan and xkbcommon are all opened
+at runtime, so neither package's dependency list can be derived from it and both are written by hand.
+The RPM one names sonames, `libxkbcommon.so.0()(64bit)` and its two siblings, because RPM
+distributions disagree on package names while every one of them provides the soname. Fedora's
+`libxkbcommon` is openSUSE's `libxkbcommon0`, and naming either one makes the other refuse the
+package outright. The Debian list can stay on package names, which Debian and its derivatives agree
+on.
+
 Regenerate `packaging/flatpak/cargo-sources.json` whenever `Cargo.lock` changes:
 
 ```sh

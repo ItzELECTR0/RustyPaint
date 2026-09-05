@@ -249,7 +249,8 @@ assets = [
     { source = "packaging/mime/net.electris.RustyPaint.xml", dest = "/usr/share/mime/packages/net.electris.RustyPaint.xml", mode = "644" },
     { source = "LICENSE", dest = "/usr/share/licenses/rustypaint/LICENSE", mode = "644", doc = true },
 ]
-requires = { fontconfig = "*", libxkbcommon = "*", vulkan-loader = "*" }
+# Sonames rather than package names: RPM distributions disagree on the names, not on the sonames.
+requires = { "libfontconfig.so.1()(64bit)" = "*", "libxkbcommon.so.0()(64bit)" = "*", "libvulkan.so.1()(64bit)" = "*" }
 
 [dev-dependencies]
 naga = { version = "27", features = ["wgsl-in"] }
