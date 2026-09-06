@@ -9,6 +9,9 @@ Run `cargo test --workspace` after changes. Use `cargo fmt --all -- --check` and
 Read `.agents/architecture.md` when changing documents, image file I/O, undo, floating objects,
 coordinates, input handling, dropped files, or the clipboard.
 
+Read `.agents/brushes.md` when changing brush settings, thickness limits, the eraser, or stamp
+coverage.
+
 Read `.agents/rendering.md` when changing the viewport, GPU resources, shaders, redraws, or visual
 tests.
 

@@ -152,6 +152,90 @@ pub(super) struct Sheet {
     snapshotted: Option<(Version, u64)>,
 }
 
+struct Typed {
+    field: Field,
+    tool: Tool,
+    text: String,
+}
+
+// A number the side panel puts in a box as well as on a slider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Field {
+    Thickness,
+    Hardness,
+    Opacity,
+    Tolerance,
+    ShapeThickness,
+    FloatOpacity,
+}
+
+impl Field {
+    fn bounds(self) -> (f32, f32) {
+        match self {
+            Field::Thickness => (
+                crate::paint::brush::MIN_THICKNESS,
+                crate::paint::brush::THICKNESS_CEILING,
+            ),
+            Field::ShapeThickness => (shapes::MIN_THICKNESS, shapes::MAX_THICKNESS),
+            Field::Hardness | Field::Opacity | Field::Tolerance | Field::FloatOpacity => (0.0, 1.0),
+        }
+    }
+
+    fn in_percent(self) -> bool {
+        !matches!(self, Field::Thickness | Field::ShapeThickness)
+    }
+
+    pub fn format(self, value: f32) -> String {
+        if self.in_percent() {
+            crate::i18n::percent_value(value)
+        } else {
+            crate::i18n::pixels_value(value)
+        }
+    }
+
+    pub fn parse(self, text: &str) -> Option<f32> {
+        let suffix = if self.in_percent() { "%" } else { "px" };
+        let typed: f32 = text.trim().trim_end_matches(suffix).trim().parse().ok()?;
+        if !typed.is_finite() {
+            return None;
+        }
+        let (low, high) = self.bounds();
+        let value = if self.in_percent() {
+            typed / 100.0
+        } else {
+            typed
+        };
+        Some(value.clamp(low, high))
+    }
+
+    fn message(self, value: f32) -> Message {
+        match self {
+            Field::Thickness => Message::ThicknessChanged(value),
+            Field::Hardness => Message::HardnessChanged(value),
+            Field::Opacity => Message::OpacityChanged(value),
+            Field::Tolerance => Message::ToleranceChanged(value),
+            Field::ShapeThickness => Message::ShapeThicknessChanged(value),
+            Field::FloatOpacity => Message::FloatOpacityChanged(value),
+        }
+    }
+}
+
+impl Message {
+    // A slider drag or a nudge takes the value back, so half-typed text in its box is gone.
+    fn moves_a_field(&self) -> bool {
+        matches!(
+            self,
+            Message::ThicknessChanged(_)
+                | Message::ThicknessNudged(_)
+                | Message::HardnessChanged(_)
+                | Message::OpacityChanged(_)
+                | Message::ToleranceChanged(_)
+                | Message::ShapeThicknessChanged(_)
+                | Message::FloatOpacityChanged(_)
+        )
+    }
+}
+
 pub struct App {
     doc: Document,
     view: View,
@@ -160,6 +244,7 @@ pub struct App {
     status: String,
     tab: Tab,
     brush: Brush,
+    typed: Option<Typed>,
     panel: CanvasPanel,
     stroke: Option<Stroke>,
     last_point: Option<(f32, f32)>,
@@ -330,8 +415,12 @@ pub enum Message {
     TextBackgroundToggled(bool),
     TextEdited(TextAction),
     ThicknessChanged(f32),
+    HardnessChanged(f32),
+    AntialiasingToggled(bool),
     OpacityChanged(f32),
     ToleranceChanged(f32),
+    FieldTyped(Field, String),
+    FieldSubmitted,
     ColourPicked(usize),
     Undo,
     Redo,
@@ -474,6 +563,7 @@ impl App {
             status: complaint.unwrap_or_default(),
             tab: Tab::Brushes,
             brush: Brush::default(),
+            typed: None,
             panel: CanvasPanel::new((start_w, start_h)),
             stroke: None,
             floating: None,
@@ -750,6 +840,15 @@ impl App {
         self.text_style.colour = colour;
         self.restyle_shape();
         self.restyle_text();
+    }
+
+    // Half-typed text belongs to the box and the tool it was typed in, so a stale one ages out on
+    // its own rather than needing every place that changes tools to clear it.
+    pub(super) fn typed_field(&self) -> Option<(Field, &str)> {
+        self.typed
+            .as_ref()
+            .filter(|typed| typed.tool == self.brush.tool)
+            .map(|typed| (typed.field, typed.text.as_str()))
     }
 
     fn lassoing(&self) -> bool {

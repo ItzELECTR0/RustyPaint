@@ -36,13 +36,12 @@ fn main() {
     let mut doc = Document::blank_sized(WIDTH, height, false);
 
     if let Some(row) = strokes.iter().position(|t| *t == Tool::Eraser) {
-        let band = Brush {
+        let mut band = Brush {
             tool: Tool::Marker,
-            thickness: MAX_THICKNESS,
-            opacity: 1.0,
             colour: [150, 170, 190, 255],
             ..Default::default()
         };
+        band.set_thickness(MAX_THICKNESS);
         let y = ROW as f32 * (row as f32 + 0.5);
         let mut stroke = Stroke::begin(band, &doc, 0.0, y);
         stroke.extend(WIDTH as f32, y);
@@ -51,13 +50,12 @@ fn main() {
 
     for (i, tool) in strokes.iter().copied().enumerate() {
         let y = ROW as f32 * (i as f32 + 0.5);
-        let brush = Brush {
+        let mut brush = Brush {
             tool,
-            thickness: if tool == Tool::PixelPen { 3.0 } else { 34.0 },
-            opacity: 1.0,
             colour: [20, 20, 20, 255],
             ..Default::default()
         };
+        brush.set_thickness(if tool == Tool::PixelPen { 3.0 } else { 34.0 });
 
         let mut stroke = Stroke::begin(brush, &doc, MARGIN, y);
         for step in 0..=220 {

@@ -135,6 +135,8 @@ tool-text = Text
 tool-shape = Shape
 
 thickness = Thickness
+hardness = Hardness
+antialiasing = Anti-aliasing
 tolerance = Tolerance
 opacity = Opacity
 sticker-opacity = Sticker opacity

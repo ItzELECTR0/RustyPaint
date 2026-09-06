@@ -74,6 +74,8 @@ impl Profile {
 }
 
 impl Tool {
+    pub const COUNT: usize = Tool::Shape as usize + 1;
+
     pub fn name(self) -> &'static str {
         match self {
             Tool::Marker => i18n::tool_marker(),
@@ -156,38 +158,103 @@ impl Tool {
         matches!(self, Tool::PixelPen)
     }
 
+    pub fn edge_is_tunable(self) -> bool {
+        matches!(self, Tool::Eraser)
+    }
+
     pub fn sprays(self) -> bool {
         matches!(self, Tool::SprayCan)
     }
 }
 
 pub const MIN_THICKNESS: f32 = 1.0;
-pub const MAX_THICKNESS: f32 = 100.0;
+pub const MAX_THICKNESS: f32 = 200.0;
+// Where the slider stops is not where the brush does. The field takes anything up to a brush as
+// wide as the largest canvas, past which the extra size has nowhere to land.
+pub const THICKNESS_CEILING: f32 = 20_000.0;
+
+// What a tool keeps to itself rather than handing on to whichever tool is picked next.
+#[derive(Debug, Clone, Copy)]
+pub struct Settings {
+    pub thickness: f32,
+    pub opacity: f32,
+    pub hardness: f32,
+    pub antialiased: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            thickness: 12.0,
+            opacity: 1.0,
+            hardness: 1.0,
+            antialiased: false,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Brush {
     pub tool: Tool,
-    pub thickness: f32,
-    pub opacity: f32,
     pub colour: [u8; 4],
     pub tolerance: f32,
+    pub settings: [Settings; Tool::COUNT],
 }
 
 impl Default for Brush {
     fn default() -> Self {
         Self {
             tool: Tool::Marker,
-            thickness: 12.0,
-            opacity: 1.0,
             colour: [0, 0, 0, 255],
             tolerance: 0.12,
+            settings: [Settings::default(); Tool::COUNT],
         }
     }
 }
 
 impl Brush {
+    fn current(&self) -> &Settings {
+        &self.settings[self.tool as usize]
+    }
+
+    fn current_mut(&mut self) -> &mut Settings {
+        &mut self.settings[self.tool as usize]
+    }
+
+    pub fn thickness(&self) -> f32 {
+        self.current().thickness
+    }
+
+    pub fn set_thickness(&mut self, thickness: f32) {
+        self.current_mut().thickness = thickness.clamp(MIN_THICKNESS, THICKNESS_CEILING);
+    }
+
+    pub fn opacity(&self) -> f32 {
+        self.current().opacity
+    }
+
+    pub fn set_opacity(&mut self, opacity: f32) {
+        self.current_mut().opacity = opacity.clamp(0.0, 1.0);
+    }
+
+    pub fn hardness(&self) -> f32 {
+        self.current().hardness
+    }
+
+    pub fn set_hardness(&mut self, hardness: f32) {
+        self.current_mut().hardness = hardness.clamp(0.0, 1.0);
+    }
+
+    pub fn antialiased(&self) -> bool {
+        self.current().antialiased
+    }
+
+    pub fn set_antialiased(&mut self, antialiased: bool) {
+        self.current_mut().antialiased = antialiased;
+    }
+
     pub fn radius(&self) -> f32 {
-        self.thickness.clamp(MIN_THICKNESS, MAX_THICKNESS) / 2.0
+        self.thickness().clamp(MIN_THICKNESS, THICKNESS_CEILING) / 2.0
     }
 
     pub fn stamp_radius(&self) -> f32 {
@@ -199,7 +266,7 @@ impl Brush {
     }
 
     pub fn step(&self) -> f32 {
-        (self.thickness * self.profile().spacing).max(1.0)
+        (self.thickness() * self.profile().spacing).max(1.0)
     }
 
     pub fn coverage_at(&self, cx: f32, cy: f32, px: f32, py: f32) -> u8 {
@@ -212,11 +279,7 @@ impl Brush {
         let ry = (-dx * sin + dy * cos) / profile.aspect.max(0.01);
         let d = (rx * rx + ry * ry).sqrt();
 
-        let mut coverage = if profile.feather <= 0.0 {
-            if d <= r.max(0.5) { 1.0 } else { 0.0 }
-        } else {
-            ((r - d) / profile.feather + 0.5).clamp(0.0, 1.0)
-        };
+        let mut coverage = self.falloff(profile, r, d);
         if coverage <= 0.0 {
             return 0;
         }
@@ -229,6 +292,27 @@ impl Brush {
         }
 
         ((coverage * profile.flow).clamp(0.0, 1.0) * 255.0).round() as u8
+    }
+
+    // Hardness draws the solid core in towards the centre while the rim stays a half pixel past
+    // the stamp radius, so softening a stamp never widens it. Other tools keep a fixed-width edge.
+    fn falloff(&self, profile: Profile, r: f32, d: f32) -> f32 {
+        if !self.tool.edge_is_tunable() {
+            return if profile.feather <= 0.0 {
+                if d <= r.max(0.5) { 1.0 } else { 0.0 }
+            } else {
+                ((r - d) / profile.feather + 0.5).clamp(0.0, 1.0)
+            };
+        }
+        if !self.antialiased() {
+            return if d <= r.max(0.5) { 1.0 } else { 0.0 };
+        }
+
+        let hardness = self.hardness().clamp(0.0, 1.0);
+        let core = hardness * (r - 0.5).max(0.0);
+        let rim = r + 0.5;
+        let t = ((rim - d) / (rim - core)).clamp(0.0, 1.0);
+        t + (1.0 - hardness) * (t * t * (3.0 - 2.0 * t) - t)
     }
 }
 
@@ -292,11 +376,16 @@ mod tests {
     use super::*;
 
     fn brush(tool: Tool) -> Brush {
-        Brush {
+        sized(tool, 20.0)
+    }
+
+    fn sized(tool: Tool, thickness: f32) -> Brush {
+        let mut b = Brush {
             tool,
-            thickness: 20.0,
             ..Default::default()
-        }
+        };
+        b.set_thickness(thickness);
+        b
     }
 
     #[test]
@@ -312,11 +401,7 @@ mod tests {
 
     #[test]
     fn the_pixel_pen_has_no_partial_coverage() {
-        let b = Brush {
-            tool: Tool::PixelPen,
-            thickness: 5.0,
-            ..Default::default()
-        };
+        let b = sized(Tool::PixelPen, 5.0);
         for d in [0.0, 1.0, 2.0, 2.4, 2.6, 4.0, 10.0] {
             let c = b.coverage_at(0.0, 0.0, d, 0.0);
             assert!(
@@ -328,11 +413,7 @@ mod tests {
 
     #[test]
     fn a_one_pixel_pen_still_marks_something() {
-        let b = Brush {
-            tool: Tool::PixelPen,
-            thickness: 1.0,
-            ..Default::default()
-        };
+        let b = sized(Tool::PixelPen, 1.0);
         assert_eq!(b.coverage_at(0.0, 0.0, 0.0, 0.0), 255);
     }
 
@@ -436,15 +517,183 @@ mod tests {
         assert!(Tool::Marker.profile().is_some());
     }
 
+    fn eraser(thickness: f32, hardness: f32) -> Brush {
+        let mut b = sized(Tool::Eraser, thickness);
+        b.set_antialiased(true);
+        b.set_hardness(hardness);
+        b
+    }
+
+    fn disc_alpha(b: &Brush) -> f32 {
+        let reach = (b.radius() + 3.0).ceil() as i32;
+        (-reach..reach)
+            .flat_map(|y| (-reach..reach).map(move |x| (x as f32 + 0.5, y as f32 + 0.5)))
+            .map(|(x, y)| b.coverage_at(0.0, 0.0, x, y) as f32 / 255.0)
+            .sum()
+    }
+
+    #[test]
+    fn each_tool_keeps_its_own_opacity_and_hardness() {
+        let mut b = Brush {
+            tool: Tool::Marker,
+            ..Default::default()
+        };
+        b.set_thickness(40.0);
+        b.set_opacity(0.25);
+
+        b.tool = Tool::Eraser;
+        assert_eq!(b.opacity(), 1.0, "the eraser starts on its own setting");
+        assert_eq!(b.thickness(), 12.0);
+        b.set_opacity(0.75);
+        b.set_hardness(0.4);
+        b.set_thickness(90.0);
+        b.set_antialiased(true);
+
+        b.tool = Tool::Marker;
+        assert_eq!(b.opacity(), 0.25, "the marker kept what it was given");
+        assert_eq!(b.thickness(), 40.0);
+        assert!(!b.antialiased());
+
+        b.tool = Tool::Eraser;
+        assert_eq!(b.opacity(), 0.75);
+        assert_eq!(b.hardness(), 0.4);
+        assert_eq!(b.thickness(), 90.0);
+        assert!(b.antialiased());
+    }
+
+    #[test]
+    fn a_brush_can_be_set_wider_than_the_slider_reaches() {
+        let mut b = sized(Tool::Marker, 500.0);
+        assert_eq!(
+            b.thickness(),
+            500.0,
+            "past the slider is still a real width"
+        );
+        assert_eq!(b.radius(), 250.0);
+        b.set_thickness(THICKNESS_CEILING * 2.0);
+        assert_eq!(b.thickness(), THICKNESS_CEILING);
+    }
+
+    #[test]
+    fn an_eraser_without_antialiasing_is_all_or_nothing_at_every_size() {
+        for thickness in [5.0, 9.0, 10.0, 60.0, 200.0] {
+            let b = sized(Tool::Eraser, thickness);
+            assert!(!b.antialiased(), "and that is how one starts");
+            let r = b.radius();
+            for step in 0..80 {
+                let d = step as f32 * r / 40.0;
+                let c = b.coverage_at(0.0, 0.0, d, 0.0);
+                assert!(c == 0 || c == 255, "{thickness}px read {c} at {d}");
+            }
+            assert_eq!(b.coverage_at(0.0, 0.0, r - 0.01, 0.0), 255);
+            assert_eq!(b.coverage_at(0.0, 0.0, r + 0.01, 0.0), 0);
+        }
+    }
+
+    #[test]
+    fn no_antialiasing_answers_hardness_rather_than_shrinking_the_stamp() {
+        let mut b = sized(Tool::Eraser, 60.0);
+        b.set_hardness(0.0);
+        let r = b.radius();
+        assert_eq!(b.coverage_at(0.0, 0.0, r * 0.9, 0.0), 255, "still solid");
+        assert_eq!(
+            b.coverage_at(0.0, 0.0, r + 0.01, 0.0),
+            0,
+            "still the same width"
+        );
+    }
+
+    #[test]
+    fn a_full_hardness_eraser_is_a_plain_antialiased_disc() {
+        for thickness in [5.0, 10.0, 30.0, 100.0] {
+            let b = eraser(thickness, 1.0);
+            let r = b.radius();
+            assert_eq!(
+                b.coverage_at(0.0, 0.0, r - 0.6, 0.0),
+                255,
+                "{thickness} rim"
+            );
+            assert_eq!(
+                b.coverage_at(0.0, 0.0, r + 0.6, 0.0),
+                0,
+                "{thickness} past it"
+            );
+
+            let area = disc_alpha(&b);
+            let want = std::f32::consts::PI * r * r;
+            assert!(
+                (area - want).abs() < want * 0.02,
+                "{thickness}px covered {area:.1} where a disc of radius {r} is {want:.1}"
+            );
+        }
+    }
+
+    #[test]
+    fn softening_the_eraser_fades_it_without_widening_it() {
+        let hard = eraser(30.0, 1.0);
+        let soft = eraser(30.0, 0.0);
+        let r = soft.radius();
+
+        assert_eq!(
+            soft.coverage_at(0.0, 0.0, 0.0, 0.0),
+            255,
+            "solid at the centre"
+        );
+        assert_eq!(
+            soft.coverage_at(0.0, 0.0, r + 0.6, 0.0),
+            0,
+            "no wider than a hard one"
+        );
+
+        let midway = soft.coverage_at(0.0, 0.0, r / 2.0, 0.0);
+        assert!(
+            (100..=200).contains(&midway),
+            "halfway out it read {midway}"
+        );
+
+        for d in [r * 0.25, r * 0.5, r * 0.75, r - 0.6] {
+            let (a, b) = (
+                soft.coverage_at(0.0, 0.0, d, 0.0),
+                hard.coverage_at(0.0, 0.0, d, 0.0),
+            );
+            assert!(a < b, "at {d} the soft eraser read {a} against {b}");
+        }
+    }
+
+    #[test]
+    fn eraser_hardness_falls_off_smoothly_between_the_ends() {
+        let r = eraser(40.0, 1.0).radius();
+        let at = |h: f32, d: f32| eraser(40.0, h).coverage_at(0.0, 0.0, d, 0.0);
+        let mut previous = 0;
+        for step in 0..=10 {
+            let c = at(step as f32 / 10.0, r * 0.6);
+            assert!(
+                c >= previous,
+                "hardness {step} of 10 read {c} after {previous}"
+            );
+            previous = c;
+        }
+        assert!(at(0.0, r * 0.6) < at(1.0, r * 0.6));
+    }
+
+    #[test]
+    fn hardness_leaves_the_painting_brushes_alone() {
+        let mut b = brush(Tool::Marker);
+        let before: Vec<u8> = (0..40)
+            .map(|i| b.coverage_at(0.0, 0.0, i as f32 * 0.5, 0.0))
+            .collect();
+        b.set_hardness(0.0);
+        let after: Vec<u8> = (0..40)
+            .map(|i| b.coverage_at(0.0, 0.0, i as f32 * 0.5, 0.0))
+            .collect();
+        assert_eq!(before, after);
+    }
+
     #[test]
     fn stamp_spacing_never_collapses_to_zero() {
         for thickness in [1.0, 2.0, 50.0, 100.0] {
             for tool in PANEL_ORDER {
-                let b = Brush {
-                    tool,
-                    thickness,
-                    ..Default::default()
-                };
+                let b = sized(tool, thickness);
                 assert!(
                     b.step() >= 1.0,
                     "{tool:?} step was {} at {thickness}",

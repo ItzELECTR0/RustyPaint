@@ -1,4 +1,4 @@
-use crate::app::{CanvasPanel, Drawing, Message, Tab};
+use crate::app::{CanvasPanel, Drawing, Field, Message, Tab};
 use crate::i18n;
 use crate::paint::curve::{self, CurveKind};
 use crate::paint::shapes::{self, ShapeKind, ShapeStyle};
@@ -29,6 +29,7 @@ pub const TABS: [(&str, &[u8], Option<Tab>); 5] = [
 pub fn panel<'a>(
     tab: Tab,
     brush: &Brush,
+    typed: Option<(Field, &'a str)>,
     canvas: &CanvasPanel,
     size: (u32, u32),
     transparent: bool,
@@ -45,8 +46,16 @@ pub fn panel<'a>(
     let [gutter_l, _, gutter_r, _] = metrics::SIDE_PANEL_GUTTER_MARGIN;
 
     let body = match tab {
-        Tab::Brushes => brushes(brush, custom, custom_menu),
-        Tab::Shapes => shapes_panel(drawing, style, colour_target, live, custom, custom_menu),
+        Tab::Brushes => brushes(brush, typed, custom, custom_menu),
+        Tab::Shapes => shapes_panel(
+            drawing,
+            style,
+            colour_target,
+            live,
+            typed,
+            custom,
+            custom_menu,
+        ),
         Tab::Stickers => stickers(history),
         Tab::Text => text_panel(text_style, custom, custom_menu),
         Tab::Canvas => canvas_panel(canvas, size, transparent),
@@ -68,16 +77,21 @@ pub fn panel<'a>(
         .into()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one panel, each control with its own state"
+)]
 fn shapes_panel<'a>(
     chosen: Drawing,
     style: ShapeStyle,
     target: bool,
     live: Option<Live>,
+    typed: Option<(Field, &'a str)>,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
 ) -> Element<'a, Message> {
     match live {
-        Some(live) => shape_style_panel(style, target, live, custom, custom_menu),
+        Some(live) => shape_style_panel(style, target, live, typed, custom, custom_menu),
         None => shape_grid(chosen),
     }
 }
@@ -141,6 +155,7 @@ fn shape_style_panel<'a>(
     style: ShapeStyle,
     target: bool,
     live: Live,
+    typed: Option<(Field, &'a str)>,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
 ) -> Element<'a, Message> {
@@ -163,14 +178,18 @@ fn shape_style_panel<'a>(
 
     if style.outline.is_some() || live.curve {
         panel = panel
-            .push(labelled(
+            .push(field_row(
                 i18n::thickness(),
-                i18n::pixels_value(style.thickness),
+                Field::ShapeThickness,
+                style.thickness,
+                typed,
             ))
             .push(
                 slider(
                     shapes::MIN_THICKNESS..=shapes::MAX_THICKNESS,
-                    style.thickness,
+                    style
+                        .thickness
+                        .clamp(shapes::MIN_THICKNESS, shapes::MAX_THICKNESS),
                     Message::ShapeThicknessChanged,
                 )
                 .style(controls::slider_style),
@@ -178,9 +197,11 @@ fn shape_style_panel<'a>(
     }
 
     panel = panel
-        .push(labelled(
+        .push(field_row(
             i18n::sticker_opacity(),
-            i18n::percent_value(live.opacity),
+            Field::FloatOpacity,
+            live.opacity,
+            typed,
         ))
         .push(
             slider(0.0..=1.0, live.opacity, Message::FloatOpacityChanged)
@@ -520,6 +541,7 @@ fn heading<'a>(label: &'a str) -> Element<'a, Message> {
 
 fn brushes<'a>(
     brush: &Brush,
+    typed: Option<(Field, &'a str)>,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
 ) -> Element<'a, Message> {
@@ -527,24 +549,51 @@ fn brushes<'a>(
 
     if brush.tool.profile().is_some() {
         panel = panel
-            .push(labelled(
+            .push(field_row(
                 i18n::thickness(),
-                i18n::pixels_value(brush.thickness),
+                Field::Thickness,
+                brush.thickness(),
+                typed,
             ))
             .push(
                 slider(
                     brush::MIN_THICKNESS..=brush::MAX_THICKNESS,
-                    brush.thickness,
+                    brush.thickness().min(brush::MAX_THICKNESS),
                     Message::ThicknessChanged,
                 )
                 .style(controls::slider_style),
             );
     }
+    if brush.tool.edge_is_tunable() {
+        panel = panel.push(
+            checkbox(brush.antialiased())
+                .style(controls::checkbox_style)
+                .label(i18n::antialiasing())
+                .text_size(13)
+                .on_toggle(Message::AntialiasingToggled),
+        );
+        if brush.antialiased() {
+            panel = panel
+                .push(field_row(
+                    i18n::hardness(),
+                    Field::Hardness,
+                    brush.hardness(),
+                    typed,
+                ))
+                .push(
+                    slider(0.0..=1.0_f32, brush.hardness(), Message::HardnessChanged)
+                        .step(0.01_f32)
+                        .style(controls::slider_style),
+                );
+        }
+    }
     if brush.tool == Tool::Fill {
         panel = panel
-            .push(labelled(
+            .push(field_row(
                 i18n::tolerance(),
-                i18n::percent_value(brush.tolerance),
+                Field::Tolerance,
+                brush.tolerance,
+                typed,
             ))
             .push(
                 slider(0.0..=1.0_f32, brush.tolerance, Message::ToleranceChanged)
@@ -554,12 +603,14 @@ fn brushes<'a>(
     }
     if brush.tool != Tool::Pipette {
         panel = panel
-            .push(labelled(
+            .push(field_row(
                 i18n::opacity(),
-                i18n::percent_value(brush.opacity),
+                Field::Opacity,
+                brush.opacity(),
+                typed,
             ))
             .push(
-                slider(0.0..=1.0_f32, brush.opacity, Message::OpacityChanged)
+                slider(0.0..=1.0_f32, brush.opacity(), Message::OpacityChanged)
                     .step(0.01_f32)
                     .style(controls::slider_style),
             );
@@ -570,6 +621,31 @@ fn brushes<'a>(
         .push(current_colour(brush))
         .push(swatches(brush.colour, custom, custom_menu))
         .into()
+}
+
+fn field_row<'a>(
+    label: &'a str,
+    field: Field,
+    value: f32,
+    typed: Option<(Field, &'a str)>,
+) -> Element<'a, Message> {
+    let shown = match typed {
+        Some((typed, text)) if typed == field => text.to_owned(),
+        _ => field.format(value),
+    };
+
+    row![
+        text(label).size(13),
+        Space::new().width(Length::Fill),
+        text_input("", &shown)
+            .style(controls::text_input_style)
+            .on_input(move |text| Message::FieldTyped(field, text))
+            .on_submit(Message::FieldSubmitted)
+            .size(13)
+            .width(Length::Fixed(72.0)),
+    ]
+    .align_y(iced::Alignment::Center)
+    .into()
 }
 
 fn current_colour<'a>(brush: &Brush) -> Element<'a, Message> {
@@ -920,15 +996,6 @@ fn divider<'a>() -> Element<'a, Message> {
             ..Default::default()
         })
         .into()
-}
-
-fn labelled<'a>(label: &'a str, value: String) -> Element<'a, Message> {
-    row![
-        text(label).size(13),
-        Space::new().width(Length::Fill),
-        text(value).size(13)
-    ]
-    .into()
 }
 
 pub fn pressable<'a>(

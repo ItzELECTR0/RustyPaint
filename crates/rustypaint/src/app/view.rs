@@ -735,6 +735,7 @@ impl App {
                     (None, None) => sidebar::panel(
                         self.tab,
                         &self.brush,
+                        self.typed_field(),
                         &self.panel,
                         self.resize_preview.unwrap_or(self.doc.size()),
                         self.doc.transparent,
@@ -970,7 +971,7 @@ impl App {
                 Some(CuttingOut::BRUSH * 2.0 / self.view.zoom.max(0.01))
             } else {
                 (self.tab == Tab::Brushes && self.brush.tool.profile().is_some())
-                    .then_some(self.brush.thickness)
+                    .then_some(self.brush.thickness())
             },
         })
         .width(Length::Fill)

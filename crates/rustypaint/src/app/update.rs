@@ -22,6 +22,9 @@ impl App {
     }
 
     fn dispatch(&mut self, message: Message) -> Task<Message> {
+        if self.typed.is_some() && message.moves_a_field() {
+            self.typed = None;
+        }
         match message {
             Message::SnapshotTick => return self.snapshot(),
             Message::Snapshotted(at, result) => {
@@ -501,10 +504,7 @@ impl App {
                         .clamp(shapes::MIN_THICKNESS, shapes::MAX_THICKNESS);
                     self.restyle_shape();
                 } else {
-                    self.brush.thickness = (self.brush.thickness + by).clamp(
-                        crate::paint::brush::MIN_THICKNESS,
-                        crate::paint::brush::MAX_THICKNESS,
-                    );
+                    self.brush.set_thickness(self.brush.thickness() + by);
                 }
             }
             Message::FreeformToggled(on) => {
@@ -562,8 +562,23 @@ impl App {
                 self.restyle_text();
             }
             Message::TextEdited(action) => self.edit_text(action),
-            Message::ThicknessChanged(v) => self.brush.thickness = v,
-            Message::OpacityChanged(v) => self.brush.opacity = v,
+            Message::ThicknessChanged(v) => self.brush.set_thickness(v),
+            Message::AntialiasingToggled(on) => self.brush.set_antialiased(on),
+            Message::FieldTyped(field, text) => {
+                let task = match field.parse(&text) {
+                    Some(value) => self.dispatch(field.message(value)),
+                    None => Task::none(),
+                };
+                self.typed = Some(Typed {
+                    field,
+                    tool: self.brush.tool,
+                    text,
+                });
+                return task;
+            }
+            Message::FieldSubmitted => self.typed = None,
+            Message::HardnessChanged(v) => self.brush.set_hardness(v),
+            Message::OpacityChanged(v) => self.brush.set_opacity(v),
             Message::ToleranceChanged(v) => self.brush.tolerance = v,
             Message::ColourPicked(i) => {
                 if let Some(c) = theme::SWATCHES.get(i) {

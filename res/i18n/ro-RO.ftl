@@ -134,6 +134,8 @@ tool-text = Text
 tool-shape = Formă
 
 thickness = Grosime
+hardness = Duritate
+antialiasing = Anti-aliasing
 tolerance = Toleranță
 opacity = Opacitate
 sticker-opacity = Opacitate sticker

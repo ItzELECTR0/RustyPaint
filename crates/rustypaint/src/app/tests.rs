@@ -311,10 +311,10 @@ fn the_pipette_takes_the_colour_under_it_without_editing() {
     let mut app = app(8, 8);
     app.brush = Brush {
         tool: Tool::PixelPen,
-        thickness: 1.0,
         colour: [12, 34, 56, 255],
         ..Default::default()
     };
+    app.brush.set_thickness(1.0);
     click(&mut app, 3.5, 3.5);
 
     app.brush.colour = [0, 0, 0, 255];
@@ -345,9 +345,9 @@ fn the_spray_paints_while_the_pointer_stands_still() {
     let mut app = app(64, 64);
     app.brush = Brush {
         tool: Tool::SprayCan,
-        thickness: 20.0,
         ..Default::default()
     };
+    app.brush.set_thickness(20.0);
 
     send(
         &mut app,
@@ -1543,6 +1543,164 @@ fn the_palette_writes_to_whichever_swatch_is_chosen() {
     let first = sidebar::to_bytes(crate::ui::theme::SWATCHES[0]);
     assert_eq!(app.shape_style.fill, Some(first));
     assert_eq!(app.shape_style.outline, Some(want), "and now the line is");
+}
+
+#[test]
+fn a_brush_cannot_grow_wider_than_the_largest_canvas() {
+    assert_eq!(
+        crate::paint::brush::THICKNESS_CEILING,
+        crate::canvas::MAX_CANVAS as f32
+    );
+}
+
+#[test]
+fn thickness_belongs_to_the_brush_it_was_set_on() {
+    let mut app = app(8, 8);
+    send(&mut app, Message::ToolPicked(Tool::Marker));
+    send(&mut app, Message::ThicknessChanged(40.0));
+
+    send(&mut app, Message::ToolPicked(Tool::Eraser));
+    assert_eq!(app.brush.thickness(), 12.0, "the eraser has its own");
+    send(&mut app, Message::ThicknessChanged(180.0));
+    send(&mut app, Message::AntialiasingToggled(true));
+
+    send(&mut app, Message::ToolPicked(Tool::Marker));
+    assert_eq!(app.brush.thickness(), 40.0);
+    assert!(
+        !app.brush.antialiased(),
+        "aliasing did not follow the tool over"
+    );
+
+    send(&mut app, Message::ToolPicked(Tool::Eraser));
+    assert_eq!(app.brush.thickness(), 180.0);
+    assert!(app.brush.antialiased());
+}
+
+#[test]
+fn every_field_reads_and_writes_in_its_own_unit() {
+    assert_eq!(Field::Thickness.parse("245"), Some(245.0));
+    assert_eq!(Field::Thickness.parse(" 360px "), Some(360.0));
+    assert_eq!(
+        Field::Thickness.parse("0"),
+        Some(1.0),
+        "clamped, not refused"
+    );
+    assert_eq!(Field::Thickness.parse("99999999"), Some(20_000.0));
+    assert_eq!(Field::Thickness.format(360.0), "360px");
+
+    assert_eq!(Field::Opacity.parse("40"), Some(0.4));
+    assert_eq!(Field::Hardness.parse(" 75% "), Some(0.75));
+    assert_eq!(
+        Field::Tolerance.parse("500"),
+        Some(1.0),
+        "clamped, not refused"
+    );
+    assert_eq!(Field::Opacity.format(0.4), "40%");
+
+    for field in [Field::Thickness, Field::Opacity] {
+        assert_eq!(field.parse(""), None);
+        assert_eq!(field.parse("wide"), None);
+        assert_eq!(field.parse("inf"), None);
+    }
+}
+
+#[test]
+fn the_thickness_field_takes_what_the_slider_cannot_reach() {
+    let mut app = app(8, 8);
+    send(&mut app, Message::ToolPicked(Tool::Marker));
+
+    send(
+        &mut app,
+        Message::FieldTyped(Field::Thickness, "500".into()),
+    );
+    assert_eq!(app.brush.thickness(), 500.0);
+    assert_eq!(app.typed_field(), Some((Field::Thickness, "500")));
+
+    send(&mut app, Message::FieldSubmitted);
+    assert_eq!(app.typed_field(), None, "the field goes back to the value");
+    assert_eq!(app.brush.thickness(), 500.0);
+}
+
+#[test]
+fn every_slider_in_the_panel_can_be_typed_into() {
+    let mut app = app(8, 8);
+    send(&mut app, Message::ToolPicked(Tool::Eraser));
+    send(&mut app, Message::AntialiasingToggled(true));
+
+    send(&mut app, Message::FieldTyped(Field::Hardness, "40".into()));
+    assert_eq!(app.brush.hardness(), 0.4);
+
+    send(&mut app, Message::FieldTyped(Field::Opacity, "25".into()));
+    assert_eq!(app.brush.opacity(), 0.25);
+
+    send(&mut app, Message::ToolPicked(Tool::Fill));
+    send(&mut app, Message::FieldTyped(Field::Tolerance, "80".into()));
+    assert_eq!(app.brush.tolerance, 0.8);
+
+    send(&mut app, Message::TabPicked(Tab::Shapes));
+    send(
+        &mut app,
+        Message::FieldTyped(Field::ShapeThickness, "45".into()),
+    );
+    assert_eq!(app.shape_style.thickness, 45.0);
+}
+
+#[test]
+fn a_half_typed_thickness_leaves_the_brush_where_it_was() {
+    let mut app = app(8, 8);
+    send(&mut app, Message::ToolPicked(Tool::Marker));
+    send(&mut app, Message::ThicknessChanged(30.0));
+
+    send(
+        &mut app,
+        Message::FieldTyped(Field::Thickness, String::new()),
+    );
+    assert_eq!(app.brush.thickness(), 30.0, "an empty box changes nothing");
+    assert_eq!(
+        app.typed_field(),
+        Some((Field::Thickness, "")),
+        "but it shows what was typed"
+    );
+
+    send(&mut app, Message::FieldTyped(Field::Thickness, "2".into()));
+    assert_eq!(app.brush.thickness(), 2.0);
+    send(&mut app, Message::FieldTyped(Field::Thickness, "24".into()));
+    assert_eq!(app.brush.thickness(), 24.0);
+
+    send(&mut app, Message::ToolPicked(Tool::Eraser));
+    assert_eq!(
+        app.typed_field(),
+        None,
+        "half-typed text is not the eraser's"
+    );
+
+    send(&mut app, Message::ToolPicked(Tool::Marker));
+    send(&mut app, Message::FieldTyped(Field::Thickness, "7".into()));
+    send(&mut app, Message::ThicknessChanged(60.0));
+    assert_eq!(app.typed_field(), None, "and the slider takes it back");
+}
+
+#[test]
+fn opacity_belongs_to_the_brush_it_was_set_on() {
+    let mut app = app(8, 8);
+    send(&mut app, Message::ToolPicked(Tool::Marker));
+    send(&mut app, Message::OpacityChanged(0.3));
+
+    send(&mut app, Message::ToolPicked(Tool::Eraser));
+    assert_eq!(app.brush.opacity(), 1.0, "the eraser has its own");
+    send(&mut app, Message::OpacityChanged(0.8));
+    send(&mut app, Message::HardnessChanged(0.25));
+
+    send(&mut app, Message::ToolPicked(Tool::Marker));
+    assert_eq!(
+        app.brush.opacity(),
+        0.3,
+        "the marker kept what it was set to"
+    );
+
+    send(&mut app, Message::ToolPicked(Tool::Eraser));
+    assert_eq!(app.brush.opacity(), 0.8);
+    assert_eq!(app.brush.hardness(), 0.25);
 }
 
 #[test]
@@ -2789,20 +2947,26 @@ fn delete_throws_a_selection_away_and_leaves_the_hole() {
 #[test]
 fn the_bracket_keys_move_whichever_thickness_is_in_use() {
     let mut app = app(60, 60);
-    let brush = app.brush.thickness;
+    let brush = app.brush.thickness();
     send(&mut app, Message::ThicknessNudged(1.0));
-    assert_eq!(app.brush.thickness, brush + 1.0);
+    assert_eq!(app.brush.thickness(), brush + 1.0);
 
     send(&mut app, Message::TabPicked(Tab::Shapes));
     let shape = app.shape_style.thickness;
     send(&mut app, Message::ThicknessNudged(1.0));
     assert_eq!(app.shape_style.thickness, shape + 1.0);
-    assert_eq!(app.brush.thickness, brush + 1.0, "the brush was left alone");
 
     for _ in 0..500 {
         send(&mut app, Message::ThicknessNudged(-1.0));
     }
     assert_eq!(app.shape_style.thickness, shapes::MIN_THICKNESS);
+
+    send(&mut app, Message::TabPicked(Tab::Brushes));
+    assert_eq!(
+        app.brush.thickness(),
+        brush + 1.0,
+        "the brush was left alone"
+    );
 }
 
 #[test]
@@ -3514,11 +3678,10 @@ fn transparency_clears_an_untouched_canvas_but_spares_painted_white() {
     let mut app = app(4, 1);
     app.brush = Brush {
         tool: Tool::PixelPen,
-        thickness: 1.0,
-        opacity: 1.0,
         colour: [255, 255, 255, 255],
         ..Default::default()
     };
+    app.brush.set_thickness(1.0);
     send(
         &mut app,
         Message::Canvas(gpu::Interaction::PaintBegan(0.5, 0.5)),
@@ -3542,11 +3705,10 @@ fn the_transparency_toggle_loses_nothing_either_way() {
     let mut app = app(4, 4);
     app.brush = Brush {
         tool: Tool::PixelPen,
-        thickness: 1.0,
-        opacity: 1.0,
         colour: [10, 20, 30, 255],
         ..Default::default()
     };
+    app.brush.set_thickness(1.0);
     send(
         &mut app,
         Message::Canvas(gpu::Interaction::PaintBegan(2.5, 2.5)),

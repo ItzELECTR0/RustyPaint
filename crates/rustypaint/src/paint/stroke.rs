@@ -125,7 +125,7 @@ impl Stroke {
 
     fn composite(&self, doc: &mut Document, rect: Rect) {
         let width = self.size.0 as usize;
-        let opacity = self.brush.opacity.clamp(0.0, 1.0);
+        let opacity = self.brush.opacity().clamp(0.0, 1.0);
         let erase = self.brush.tool.mode() == Mode::Erase;
         let colour = self.brush.colour;
         let backup = self.backup.as_bytes();
@@ -200,13 +200,13 @@ mod tests {
     }
 
     fn red() -> Brush {
-        Brush {
+        let mut b = Brush {
             tool: Tool::PixelPen,
-            thickness: 1.0,
-            opacity: 1.0,
             colour: [255, 0, 0, 255],
             ..Default::default()
-        }
+        };
+        b.set_thickness(1.0);
+        b
     }
 
     #[test]
@@ -232,10 +232,8 @@ mod tests {
     #[test]
     fn overlapping_passes_do_not_darken_within_one_stroke() {
         let mut d = doc(false);
-        let half = Brush {
-            opacity: 0.5,
-            ..red()
-        };
+        let mut half = red();
+        half.set_opacity(0.5);
         let mut s = Stroke::begin(half, &d, 8.5, 8.5);
         for _ in 0..12 {
             s.extend(8.5, 8.5);
@@ -259,11 +257,11 @@ mod tests {
         paint.flush(&mut d);
         assert_eq!(at(&d, 8, 8)[3], 255);
 
-        let rubber = Brush {
+        let mut rubber = Brush {
             tool: Tool::Eraser,
-            thickness: 4.0,
             ..red()
         };
+        rubber.set_thickness(4.0);
         let mut s = Stroke::begin(rubber, &d, 8.5, 8.5);
         s.flush(&mut d);
         assert_eq!(at(&d, 8, 8)[3], 0, "pixel should be fully transparent");
@@ -275,11 +273,11 @@ mod tests {
         let mut paint = Stroke::begin(red(), &d, 8.5, 8.5);
         paint.flush(&mut d);
 
-        let rubber = Brush {
+        let mut rubber = Brush {
             tool: Tool::Eraser,
-            thickness: 4.0,
             ..red()
         };
+        rubber.set_thickness(4.0);
         let mut s = Stroke::begin(rubber, &d, 8.5, 8.5);
         s.flush(&mut d);
         assert_eq!(
@@ -290,6 +288,40 @@ mod tests {
 
         d.set_transparent(true);
         assert_eq!(at(&d, 8, 8)[3], 0, "and it is genuinely see-through now");
+    }
+
+    #[test]
+    fn a_soft_eraser_leaves_a_fading_edge() {
+        let mut d = doc(true);
+        let mut ink = Brush {
+            tool: Tool::Marker,
+            colour: [255, 0, 0, 255],
+            ..Default::default()
+        };
+        ink.set_thickness(100.0);
+        let mut paint = Stroke::begin(ink, &d, 8.0, 8.0);
+        paint.flush(&mut d);
+
+        let mut rubber = Brush {
+            tool: Tool::Eraser,
+            ..Default::default()
+        };
+        rubber.set_thickness(12.0);
+        rubber.set_antialiased(true);
+        rubber.set_hardness(0.0);
+        let mut s = Stroke::begin(rubber, &d, 8.0, 8.0);
+        s.flush(&mut d);
+
+        let alpha: Vec<u8> = (8..14).map(|x| at(&d, x, 8)[3]).collect();
+        assert!(
+            alpha[0] < 16,
+            "the centre should be all but gone: {alpha:?}"
+        );
+        assert!(
+            alpha.windows(2).all(|w| w[0] < w[1]),
+            "alpha should climb outwards: {alpha:?}"
+        );
+        assert!(alpha[5] > 200, "and barely touch the rim: {alpha:?}");
     }
 
     #[test]

@@ -135,6 +135,8 @@ catalogue! {
         tool_text => "tool-text",
         tool_shape => "tool-shape",
         thickness => "thickness",
+        hardness => "hardness",
+        antialiasing => "antialiasing",
         tolerance => "tolerance",
         opacity => "opacity",
         sticker_opacity => "sticker-opacity",
