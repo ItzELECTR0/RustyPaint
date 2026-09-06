@@ -370,7 +370,7 @@ available_formats() {
     out=
     for candidate in appimage flatpak deb rpm arch apk dmg msi nsis; do
         case $OS in
-            linux)   case $candidate in dmg|msi) continue ;; esac ;;
+            linux)   case $candidate in dmg|msi|nsis) continue ;; esac ;;
             macos)   if [ "$candidate" != dmg ]; then continue; fi ;;
             windows) case $candidate in msi|nsis) ;; *) continue ;; esac ;;
         esac
