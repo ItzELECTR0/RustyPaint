@@ -133,17 +133,20 @@ jobs:
           if-no-files-found: error
 
   windows:
-    name: Windows MSI ${{ matrix.arch }}
+    name: Windows ${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x86_64
             triple: x86_64-pc-windows-msvc
+            formats: wix,nsis
           - arch: aarch64
             triple: aarch64-pc-windows-msvc
-    # Both on the x86 runner, because cargo-packager only knows WiX 3 and its `candle` will not run
-    # on Windows on ARM. The aarch64 installer is cross-built, which is usual for an ARM64 MSI.
+            # WiX 3 has no arm64 architecture at all and cargo-packager pins it by checksum, so on
+            # ARM the NSIS installer is the only one there is.
+            formats: nsis
+    # Both architectures on the x86 runner, since that is where the installer toolchains run.
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v6
@@ -153,17 +156,17 @@ jobs:
           rustup target add ${{ matrix.triple }}
       - name: Install cargo-packager
         run: cargo install cargo-packager --version 0.11.8 --locked
-      - name: Build installer
+      - name: Build installers
         # The packager hands its build hook no arguments of ours, and cargo reads the target from
         # the environment, so this is what makes that hook cross-compile.
         env:
           CARGO_BUILD_TARGET: ${{ matrix.triple }}
-        run: cargo packager -p rustypaint --profile dist --formats wix --target ${{ matrix.triple }}
-      - name: Collect installer
+        run: cargo packager -p rustypaint --profile dist --formats ${{ matrix.formats }} --target ${{ matrix.triple }}
+      - name: Collect installers
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path artifacts
-          Get-ChildItem -Path target -Recurse -Filter *.msi | Copy-Item -Destination artifacts
+          Get-ChildItem -Path target -Recurse -Include *.msi, *-setup.exe | Copy-Item -Destination artifacts
       - uses: actions/upload-artifact@v7
         with:
           name: rustypaint-windows-${{ matrix.arch }}

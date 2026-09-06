@@ -30,7 +30,7 @@ Options need "-s --" when the script is piped in, as in "| sh -s -- --stable".
 
     --stable            The latest tagged release
     --experimental      The rolling build from the tip of main
-    --format FORMAT     appimage, flatpak, deb, rpm, arch, apk, dmg or msi
+    --format FORMAT     appimage, flatpak, deb, rpm, arch, apk, dmg, msi or nsis
     --yes               Ask nothing, take the detected answers, install straight away
     --noconfirm         The same thing, spelled the way pacman spells it
     --dry-run           Say what would be installed and stop
@@ -89,7 +89,7 @@ parse_args() {
     done
 
     case $CHANNEL in ''|stable|experimental) ;; *) die "Unknown channel: $CHANNEL" ;; esac
-    case $FORMAT in ''|appimage|flatpak|deb|rpm|arch|apk|dmg|msi) ;; *) die "Unknown format: $FORMAT" ;; esac
+    case $FORMAT in ''|appimage|flatpak|deb|rpm|arch|apk|dmg|msi|nsis) ;; *) die "Unknown format: $FORMAT" ;; esac
 }
 
 # The script itself is on stdin under "curl | sh", so questions go to the terminal directly.
@@ -282,6 +282,7 @@ asset_pattern() {
         apk)      printf '%s\n' "-${ARCH}[.]apk$" ;;
         dmg)      printf '%s\n' "_${MAC_ARCH}[.]dmg$" ;;
         msi)      printf '%s\n' "_${WIN_ARCH}_[^/]*[.]msi$" ;;
+        nsis)     printf '%s\n' "_${WIN_ARCH}-setup[.]exe$" ;;
     esac
 }
 
@@ -302,7 +303,8 @@ format_label() {
         arch)     printf '%s\n' "Arch package, for pacman systems" ;;
         apk)      printf '%s\n' "Alpine package, for apk systems" ;;
         dmg)      printf '%s\n' "macOS disk image" ;;
-        msi)      printf '%s\n' "Windows installer" ;;
+        msi)      printf '%s\n' "Windows MSI installer" ;;
+        nsis)     printf '%s\n' "Windows setup program" ;;
     esac
 }
 
@@ -312,8 +314,12 @@ guess_format() {
     SURE=0
 
     case $OS in
-        macos)   GUESS=dmg; SURE=1; return 0 ;;
-        windows) GUESS=msi; SURE=1; return 0 ;;
+        macos) GUESS=dmg; SURE=1; return 0 ;;
+        windows)
+            # The MSI is the one to take where it exists, which is x86_64 only.
+            if have_asset msi; then GUESS=msi; else GUESS=nsis; fi
+            SURE=1
+            return 0 ;;
     esac
 
     if [ "$IMMUTABLE" = 1 ]; then
@@ -362,11 +368,11 @@ guess_format() {
 
 available_formats() {
     out=
-    for candidate in appimage flatpak deb rpm arch apk dmg msi; do
+    for candidate in appimage flatpak deb rpm arch apk dmg msi nsis; do
         case $OS in
             linux)   case $candidate in dmg|msi) continue ;; esac ;;
             macos)   if [ "$candidate" != dmg ]; then continue; fi ;;
-            windows) if [ "$candidate" != msi ]; then continue; fi ;;
+            windows) case $candidate in msi|nsis) ;; *) continue ;; esac ;;
         esac
         if have_asset "$candidate"; then out="$out $candidate"; fi
     done
@@ -504,7 +510,7 @@ preflight() {
     esac
 
     case $FORMAT in
-        appimage|flatpak|dmg|msi) ;;
+        appimage|flatpak|dmg|msi|nsis) ;;
         *)
             if [ "$ROOT" != 1 ] && [ -z "$SUDO" ]; then
                 die "Installing the $FORMAT build needs root and neither doas nor sudo is here. $(fallback_hint)"
@@ -526,7 +532,7 @@ confirm_install() {
     printf '  Package  %s\n' "$(format_label "$FORMAT")" >&4
     printf '  File     %s\n' "$(basename "$(asset_url "$FORMAT")")" >&4
     case $FORMAT in
-        appimage|flatpak|dmg|msi) ;;
+        appimage|flatpak|dmg|msi|nsis) ;;
         *)
             if [ "$ROOT" = 1 ]; then
                 printf '  Needs    root, which you already are\n' >&4
@@ -760,6 +766,21 @@ install_apk() {
     UNINSTALL=$(root_hint apk del "$BIN")
 }
 
+install_nsis() {
+    keep=$HOME/$(basename "$FILE")
+    cp "$FILE" "$keep" 2>/dev/null || keep=$FILE
+    chmod 0755 "$keep" 2>/dev/null || true
+
+    say "Handing the setup program to Windows. It installs for every user, so expect a prompt."
+    if ! "$keep" /S; then
+        die "The setup program would not run. It is at $keep, so open that instead."
+    fi
+    if [ "$keep" != "$FILE" ]; then rm -f "$keep"; fi
+
+    INSTALLED_AT="RustyPaint, in the Start menu"
+    UNINSTALL="winget uninstall ItzELECTR0.RustyPaint"
+}
+
 install_dmg() {
     mnt=$TMP/mnt
     mkdir -p "$mnt"
@@ -818,7 +839,7 @@ report() {
     case $FORMAT in
         flatpak) say "Run it with: flatpak run $APP_ID" ;;
         dmg)     say "It is at $INSTALLED_AT" ;;
-        msi)     say "It is $INSTALLED_AT" ;;
+        msi|nsis) say "It is $INSTALLED_AT" ;;
         *)       say "Run it with: $BIN" ;;
     esac
     note "Remove it with: $UNINSTALL"
@@ -827,7 +848,7 @@ report() {
         note "This one is built from the tip of main and is replaced on every push."
     fi
     case $FORMAT in
-        dmg|msi) note "This build is not code-signed yet, so the system may warn about it." ;;
+        dmg|msi|nsis) note "This build is not code-signed yet, so the system may warn about it." ;;
         apk)     note "apk called it untrusted because the key that signed it is not one it knows." ;;
     esac
 }
@@ -863,6 +884,7 @@ main() {
         apk)      install_apk ;;
         dmg)      install_dmg ;;
         msi)      install_msi ;;
+        nsis)     install_nsis ;;
     esac
     STAGE=
 

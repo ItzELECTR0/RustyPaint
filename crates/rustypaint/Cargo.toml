@@ -64,6 +64,10 @@ license-file = "../../LICENSE"
 fragment-paths = ["../../packaging/windows/file-associations.wxs"]
 component-group-refs = ["FileAssociations"]
 
+# The MSI installs per machine, and a fallback that lands somewhere else is not much of a fallback.
+[package.metadata.packager.nsis]
+installer-mode = "perMachine"
+
 [[package.metadata.packager.file-associations]]
 name = "PNG image"
 extensions = ["png"]

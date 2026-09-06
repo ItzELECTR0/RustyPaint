@@ -46,7 +46,7 @@ before it installs anything. Pass options after `-s --`, so `| sh -s -- --help` 
 `| sh -s -- --stable --format appimage` answers the questions up front, and `--noconfirm` means it
 never asks at all.
 
-Releases offer multiple builds. An AppImage, Arch package, Debian package, RPM, Alpine apk, Flatpak bundle, Windows MSI, and macOS DMG, each one for x86_64 and for ARM64.
+Releases offer multiple builds. An AppImage, Arch package, Debian package, RPM, Alpine apk, Flatpak bundle, Windows setup program, and macOS DMG, each one for x86_64 and for ARM64. Windows gets an MSI too, but only for x86_64.
 
 On Arch, install the [stable](https://aur.archlinux.org/packages/rustypaint) or [Git](https://aur.archlinux.org/packages/rustypaint-git) AUR package with your favourite helper:
 

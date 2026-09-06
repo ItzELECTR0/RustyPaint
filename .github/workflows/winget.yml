@@ -48,5 +48,6 @@ jobs:
         with:
           identifier: ${{ env.IDENTIFIER }}
           release-tag: ${{ inputs.tag }}
-          installers-regex: '\.msi$'
+          # The MSI and both setup executables, and nothing else a release might ever carry.
+          installers-regex: '(\.msi|-setup\.exe)$'
           token: ${{ secrets.WINGET_TOKEN }}

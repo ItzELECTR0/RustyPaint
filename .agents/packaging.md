@@ -88,11 +88,12 @@ git -C packaging/aur/rustypaint-git push
 ```
 
 `.github/workflows/build-packages.yml` builds AppImage, Debian, RPM, Arch, Alpine, Flatpak, Windows
-MSI, and macOS DMG artifacts. Every job is a matrix over x86_64 and aarch64, and every one but
-Windows builds on a native runner of its architecture; the macOS pair is two runners for the same
-reason under different names. It is reusable and has no triggers of its own, so the build steps have
-a single owner. `release.yml` calls it for a tag beginning with `v`, creates or updates that tag's
-GitHub release, and then submits the MSI to WinGet; a manual run only stores workflow artifacts.
+MSI and setup program, and macOS DMG artifacts. Every job is a matrix over x86_64 and aarch64, and
+every one but Windows builds on a native runner of its architecture; the macOS pair is two runners
+for the same reason under different names. It is reusable and has no triggers of its own, so the
+build steps have a single owner. `release.yml` calls it for a tag beginning with `v`, creates or
+updates that tag's GitHub release, and then submits the Windows installers to WinGet; a manual run
+only stores workflow artifacts.
 `experimental.yml` calls it for a push to `main` and replaces the rolling `experimental`
 pre-release, deleting and recreating it so GitHub lists it above the tagged releases. That build
 carries the version in `packaging/PKGBUILD` and `packaging/alpine/APKBUILD`, which is the last
@@ -131,14 +132,22 @@ architecture into the directory it drops the package in rather than into the fil
 renames each one before uploading. musl has no symbol versioning, so unlike the glibc packages there
 is no floor to hold down here.
 
-Both Windows installers are built on `windows-2025`, the aarch64 one cross-compiled. cargo-packager
-knows only WiX 3, an x86 .NET Framework toolset, and `candle` fails on `windows-11-arm`. What it
-fails with is unknown: cargo-packager's `WixFailed` variant formats its first field twice and drops
-the error, so the log carries the tool's name where the message should be. Cross-building is how an
-ARM64 MSI is normally produced anyway. `--target` moves the directory the packager reads to
-`target/<triple>/<profile>`, and `CARGO_BUILD_TARGET` is what makes `before-packaging-command` build
-there, since the hook is handed no arguments of ours. `-v` would put `candle`'s own output in the
-log, which is the way back to the question if it ever matters.
+Windows gets two kinds of installer. WiX 3 has no arm64 architecture at all, so the MSI is x86_64
+only: cargo-packager's bundled template stops at `<?error Unsupported value of sys.BUILDARCH?>` for
+anything that is not x86 or x64, and `wix311-binaries.zip`, which the crate pins by checksum,
+contains the string `arm64` in no file. 0.11.8 is the newest cargo-packager published and it offers
+no template override, so that is the end of the road rather than something configured wrongly. Its
+NSIS backend does handle arm64, branching on it for the install directory and the registry view, so
+the setup program is built for both architectures and is the only installer ARM has.
+
+`installer-mode = "perMachine"` puts the setup program where the MSI goes, because a fallback that
+installs somewhere else is not much of a fallback; NSIS on its own defaults to a per-user install
+recorded under `HKCU`. Both architectures build on `windows-2025`, since that is where the installer
+toolchains run. `--target` moves the directory the packager reads to `target/<triple>/<profile>`,
+and `CARGO_BUILD_TARGET` is what makes `before-packaging-command` build there, since the hook is
+handed no arguments of ours. When a Windows package build fails, note that cargo-packager's
+`WixFailed` formats its first field twice and drops the error, so the log shows the tool's name
+where the message should be; `-v` puts the tool's own output in the log instead.
 
 Building on an RPM distribution also hands cargo-generate-rpm a working `find-requires`, so the RPM
 now carries the symbol versions it needs, `libc.so.6(GLIBC_2.34)(64bit)` among them, on top of the
@@ -153,10 +162,11 @@ is skipped whatever came before it and the rolling pre-release stays where it wa
 push. Windows and macOS packages remain unsigned until signing credentials are configured.
 
 The WinGet package identifier is `ItzELECTR0.RustyPaint` and cannot be renamed without a separate
-move request to `microsoft/winget-pkgs`. `winget.yml` owns the submission and matches `\.msi$`
-against the release's assets, which since the Windows job became a matrix means both the x64 and the
-arm64 installer. That is what WinGet wants: one manifest with an installer per architecture, and
-Komac reads the architecture out of each MSI rather than being told. `release.yml` calls it for a
+move request to `microsoft/winget-pkgs`. `winget.yml` owns the submission and matches
+`(\.msi|-setup\.exe)$` against the release's assets, which is the x64 MSI and both setup programs.
+That is what WinGet wants: one manifest carrying every installer, with Komac reading the
+architecture and the installer type out of each file rather than being told. The x64 side offers
+both kinds and ARM offers only the setup program. `release.yml` calls it for a
 tag beginning with `v` once the release exists, and it takes a tag on a manual run as well, which is
 how a release that could not be submitted at the time is caught up later. `experimental.yml` never
 reaches it.
@@ -197,10 +207,12 @@ the same list of asset URLs, so everything after them has one shape.
 
 Assets are matched by pattern rather than by a reconstructed filename, in `asset_pattern`:
 `_<arch>.AppImage`, `-<arch>.flatpak`, `_<debian arch>.deb`, `.<arch>.rpm`, `-<arch>.pkg.tar.zst`,
-`-<arch>.apk`, `_<macOS arch>.dmg` and `_<Windows arch>_*.msi`. Renaming what a workflow publishes
-therefore breaks installation without breaking any build, so the two have to move together. The MSI
-pattern carries an architecture for the same reason every other one does: a bare `.msi$` matched
-whichever of the two Windows installers came first once that job became a matrix.
+`-<arch>.apk`, `_<macOS arch>.dmg`, `_<Windows arch>_*.msi` and `_<Windows arch>-setup.exe`.
+Renaming what a workflow publishes therefore breaks installation without breaking any build, so the
+two have to move together. The MSI pattern carries an architecture for the same reason every other
+one does: a bare `.msi$` matched whichever Windows installer came first once that job became a
+matrix. On Windows the script takes the MSI where there is one and the setup program otherwise,
+which on aarch64 is always.
 
 The script asks which package type to take only when detection is genuinely unsure. `/etc/os-release`
 `ID`, then `ID_LIKE`, decide deb, rpm and Arch; a package manager on `PATH` is a hint that marks an
@@ -250,12 +262,14 @@ it currently pins predates the file, so the install line would fail. It joins
 `packaging/aur/rustypaint/PKGBUILD` with the first release that contains `packaging/mime/`.
 `rustypaint-git` follows HEAD and already has it.
 
-cargo-packager 0.11.8 cannot do the Windows half itself. Its WiX template renders
+cargo-packager 0.11.8 cannot do the MSI's half itself. Its WiX template renders
 `association.ext` while a `FileAssociation` serialises as `extensions`, so `#each` finds nothing and
 the MSI silently ships with no associations at all. `packaging/windows/file-associations.wxs` does
 the registration instead, wired in through `wix.fragment-paths`. That table is a sibling of
 `windows` rather than a child of it, and the config refuses unknown fields, so putting it under
-`windows` fails every format's build at config load rather than only the Windows one.
+`windows` fails every format's build at config load rather than only the Windows one. The NSIS
+backend has no such bug: it feeds the same table through `FileAssociation.nsh`, so the setup
+program registers the types on its own and the fragment is a WiX-only workaround.
 
 Every path in that table is relative to `crates/rustypaint/Cargo.toml`, not to the repository root:
 cargo-packager chdirs to the directory of the config it is reading before it resolves anything, so
