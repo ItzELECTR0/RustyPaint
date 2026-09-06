@@ -139,29 +139,26 @@ jobs:
       matrix:
         include:
           - arch: x86_64
-            runner: windows-2025
             triple: x86_64-pc-windows-msvc
           - arch: aarch64
-            runner: windows-11-arm
             triple: aarch64-pc-windows-msvc
-    runs-on: ${{ matrix.runner }}
+    # Both on the x86 runner, because cargo-packager only knows WiX 3 and its `candle` will not run
+    # on Windows on ARM. The aarch64 installer is cross-built, which is usual for an ARM64 MSI.
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v6
       - name: Select stable Rust
-        # The ARM image carries a smaller tool set than the x86 one, so rustup may not be on it.
-        shell: pwsh
         run: |
-          if (Get-Command rustup -ErrorAction SilentlyContinue) {
-            rustup default stable
-          } else {
-            Invoke-WebRequest "https://static.rust-lang.org/rustup/dist/${{ matrix.triple }}/rustup-init.exe" -OutFile rustup-init.exe
-            ./rustup-init.exe -y --default-toolchain stable --profile minimal
-            "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
-          }
+          rustup default stable
+          rustup target add ${{ matrix.triple }}
       - name: Install cargo-packager
         run: cargo install cargo-packager --version 0.11.8 --locked
       - name: Build installer
-        run: cargo packager -p rustypaint --profile dist --formats wix
+        # The packager hands its build hook no arguments of ours, and cargo reads the target from
+        # the environment, so this is what makes that hook cross-compile.
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.triple }}
+        run: cargo packager -p rustypaint --profile dist --formats wix --target ${{ matrix.triple }}
       - name: Collect installer
         shell: pwsh
         run: |

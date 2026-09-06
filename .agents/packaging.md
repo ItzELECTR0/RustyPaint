@@ -88,10 +88,10 @@ git -C packaging/aur/rustypaint-git push
 ```
 
 `.github/workflows/build-packages.yml` builds AppImage, Debian, RPM, Arch, Alpine, Flatpak, Windows
-MSI, and macOS DMG artifacts. Every job is a matrix over x86_64 and aarch64 on a native runner of
-that architecture, so nothing is cross-compiled; the macOS pair is two runners for the same reason
-under different names. It is reusable and has no triggers of its own, so the build steps have a
-single owner. `release.yml` calls it for a tag beginning with `v`, creates or updates that tag's
+MSI, and macOS DMG artifacts. Every job is a matrix over x86_64 and aarch64, and every one but
+Windows builds on a native runner of its architecture; the macOS pair is two runners for the same
+reason under different names. It is reusable and has no triggers of its own, so the build steps have
+a single owner. `release.yml` calls it for a tag beginning with `v`, creates or updates that tag's
 GitHub release, and then submits the MSI to WinGet; a manual run only stores workflow artifacts.
 `experimental.yml` calls it for a push to `main` and replaces the rolling `experimental`
 pre-release, deleting and recreating it so GitHub lists it above the tagged releases. That build
@@ -131,9 +131,14 @@ architecture into the directory it drops the package in rather than into the fil
 renames each one before uploading. musl has no symbol versioning, so unlike the glibc packages there
 is no floor to hold down here.
 
-The Windows job's aarch64 half runs on `windows-11-arm`. WiX 3 is a 32-bit .NET program, so `candle`
-and `light` run there under x86 emulation rather than natively, and the image carries a thinner tool
-set than the x86 one, which is why the Rust step installs rustup rather than assuming it.
+Both Windows installers are built on `windows-2025`, the aarch64 one cross-compiled. cargo-packager
+knows only WiX 3, an x86 .NET Framework toolset, and `candle` fails on `windows-11-arm`. What it
+fails with is unknown: cargo-packager's `WixFailed` variant formats its first field twice and drops
+the error, so the log carries the tool's name where the message should be. Cross-building is how an
+ARM64 MSI is normally produced anyway. `--target` moves the directory the packager reads to
+`target/<triple>/<profile>`, and `CARGO_BUILD_TARGET` is what makes `before-packaging-command` build
+there, since the hook is handed no arguments of ours. `-v` would put `candle`'s own output in the
+log, which is the way back to the question if it ever matters.
 
 Building on an RPM distribution also hands cargo-generate-rpm a working `find-requires`, so the RPM
 now carries the symbol versions it needs, `libc.so.6(GLIBC_2.34)(64bit)` among them, on top of the
