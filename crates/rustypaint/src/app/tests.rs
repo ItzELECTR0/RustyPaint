@@ -1725,6 +1725,76 @@ fn opacity_reaches_the_canvas_and_not_only_the_preview() {
 }
 
 #[test]
+fn the_dial_reads_the_turn_and_only_shows_during_one() {
+    let mut app = app(200, 200);
+    send(&mut app, Message::TabPicked(Tab::Shapes));
+    send(&mut app, Message::ShapePicked(shapes::ShapeKind::Rectangle));
+    drag_shape(&mut app, (40.0, 40.0), (160.0, 160.0));
+    assert_eq!(app.rotation_dial(), None, "nothing to show while it sits");
+
+    let (cx, cy) = app.floating.as_ref().unwrap().xform.centre();
+    let (gx, gy) = app.floating.as_ref().unwrap().xform.rotation_grip(20.0);
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatGrabbed(gpu::Grab::Rotate, gx, gy)),
+    );
+
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatDragged(cx + 60.0, cy)),
+    );
+    let (at, turned) = app.rotation_dial().expect("the dial should be up");
+    assert_eq!(at, (cx, cy), "it sits on the object it is turning");
+    assert!(
+        (turned.to_degrees() - 90.0).abs() < 0.5,
+        "a quarter turn read {}",
+        turned.to_degrees()
+    );
+
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatDragged(cx - 60.0, cy)),
+    );
+    let (_, back) = app.rotation_dial().unwrap();
+    assert!(
+        (back.rem_euclid(std::f32::consts::TAU).to_degrees() - 270.0).abs() < 0.5,
+        "turning the other way should read the long way round, not a minus: {}",
+        back.to_degrees()
+    );
+
+    send(&mut app, Message::Canvas(gpu::Interaction::FloatReleased));
+    assert_eq!(
+        app.rotation_dial(),
+        None,
+        "and it goes once the turn is done"
+    );
+}
+
+#[test]
+fn the_dial_can_be_turned_off() {
+    let mut app = app(200, 200);
+    app.config.rotation_dial = false;
+    send(&mut app, Message::TabPicked(Tab::Shapes));
+    send(&mut app, Message::ShapePicked(shapes::ShapeKind::Rectangle));
+    drag_shape(&mut app, (40.0, 40.0), (160.0, 160.0));
+
+    let (gx, gy) = app.floating.as_ref().unwrap().xform.rotation_grip(20.0);
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatGrabbed(gpu::Grab::Rotate, gx, gy)),
+    );
+    let (cx, cy) = app.floating.as_ref().unwrap().xform.centre();
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatDragged(cx + 60.0, cy)),
+    );
+    assert_eq!(app.rotation_dial(), None, "the setting keeps it away");
+
+    send(&mut app, Message::RotationDialToggled(true));
+    assert!(app.rotation_dial().is_some(), "and brings it back");
+}
+
+#[test]
 fn a_shape_can_be_turned_and_mirrored() {
     let mut app = app(200, 200);
     send(&mut app, Message::TabPicked(Tab::Shapes));

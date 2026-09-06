@@ -71,6 +71,8 @@ catalogue! {
         settings_accent => "settings-accent",
         settings_acrylic => "settings-acrylic",
         settings_acrylic_note => "settings-acrylic-note",
+        settings_rotation_dial => "settings-rotation-dial",
+        settings_rotation_dial_note => "settings-rotation-dial-note",
         settings_unsaved => "settings-unsaved",
         settings_unsaved_note => "settings-unsaved-note",
         settings_second_picture => "settings-second-picture",
@@ -301,6 +303,9 @@ catalogue! {
         "size-in-pixels",
         "document-size",
 
+        // Live object
+        "degrees-value",
+
         // Dialogs
         "save-work-body",
         "save-work-body-closing",
@@ -362,6 +367,10 @@ pub fn canvas_size(width: u32, height: u32) -> String {
 
 pub fn size_in_pixels(value: u32) -> String {
     tr!("size-in-pixels", value = value.to_string())
+}
+
+pub fn degrees_value(value: f32) -> String {
+    tr!("degrees-value", value = format!("{value:.0}"))
 }
 
 pub fn document_size(width: u32, height: u32) -> String {

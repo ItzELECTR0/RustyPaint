@@ -295,9 +295,15 @@ pub(super) fn custom_fields(preset: NewCanvas) -> (String, String) {
 pub(super) struct Outline<'a> {
     drawn: Option<&'a Lasso>,
     readout: Option<(Rect, (f32, f32))>,
+    dial: Option<((f32, f32), f32)>,
     view: gpu::View,
     canvas: (u32, u32),
 }
+
+// A fixed size on screen rather than on the picture, so the angle stays readable at any zoom the
+// way the grips do.
+pub(super) const DIAL_OUTER: f32 = 60.0;
+pub(super) const DIAL_INNER: f32 = 46.0;
 
 pub(super) const READOUT_TEXT: f32 = 12.0;
 
@@ -332,7 +338,7 @@ impl iced::widget::canvas::Program<Message> for Outline<'_> {
     ) -> Vec<iced::widget::canvas::Geometry> {
         use iced::widget::canvas::{Frame, Path, Stroke};
 
-        if self.drawn.is_none() && self.readout.is_none() {
+        if self.drawn.is_none() && self.readout.is_none() && self.dial.is_none() {
             return Vec::new();
         }
 
@@ -369,8 +375,75 @@ impl iced::widget::canvas::Program<Message> for Outline<'_> {
             self.draw_readout(&mut frame, bounds, at(from), region);
         }
 
+        if let Some((centre, rotation)) = self.dial {
+            draw_dial(&mut frame, at(centre), rotation);
+        }
+
         vec![frame.into_geometry()]
     }
+}
+
+// Paint 3D's dial: a track with the turn so far filled in clockwise from twelve, and the angle in
+// a pill at the centre.
+fn draw_dial(frame: &mut iced::widget::canvas::Frame, centre: Point, rotation: f32) {
+    use iced::widget::canvas::{Path, Stroke, Text, path::Builder};
+
+    let c = theme::colours();
+    let mid = (DIAL_OUTER + DIAL_INNER) / 2.0;
+    let band = DIAL_OUTER - DIAL_INNER;
+    let turned = rotation.rem_euclid(std::f32::consts::TAU);
+
+    let track = Path::circle(centre, mid);
+    frame.stroke(
+        &track,
+        Stroke::default()
+            .with_color(veil(c.control))
+            .with_width(band),
+    );
+
+    if turned > f32::EPSILON {
+        let swept = Path::new(|builder: &mut Builder| {
+            builder.arc(iced::widget::canvas::path::Arc {
+                center: centre,
+                radius: mid,
+                start_angle: (-std::f32::consts::FRAC_PI_2).into(),
+                end_angle: (turned - std::f32::consts::FRAC_PI_2).into(),
+            });
+        });
+        frame.stroke(
+            &swept,
+            Stroke::default().with_color(c.accent).with_width(band),
+        );
+    }
+
+    let reading = i18n::degrees_value(turned.to_degrees());
+    let size = iced::Size::new(
+        READOUT_PAD * 2.0 + reading.len() as f32 * READOUT_GLYPH,
+        READOUT_PAD * 2.0 + READOUT_LINE,
+    );
+    let origin = Point::new(centre.x - size.width / 2.0, centre.y - size.height / 2.0);
+    let pill = Path::rectangle(origin, size);
+    frame.fill(&pill, c.control);
+    frame.stroke(
+        &pill,
+        Stroke::default().with_color(c.border).with_width(1.0),
+    );
+    frame.fill_text(Text {
+        content: reading,
+        position: centre,
+        color: c.text,
+        size: READOUT_TEXT.into(),
+        font: crate::assets::ui_font(),
+        align_x: iced::alignment::Horizontal::Center.into(),
+        align_y: iced::alignment::Vertical::Center,
+        ..Text::default()
+    });
+}
+
+// The track is washed over the picture rather than laid on it, because the whole complaint about
+// the dial is that it hides the result.
+fn veil(colour: iced::Color) -> iced::Color {
+    iced::Color { a: 0.55, ..colour }
 }
 
 impl Outline<'_> {
@@ -982,6 +1055,7 @@ impl App {
             iced::widget::canvas(Outline {
                 drawn: self.being_drawn(),
                 readout: self.readout(),
+                dial: self.rotation_dial(),
                 view: self.view,
                 canvas: self.doc.size(),
             })
@@ -989,6 +1063,14 @@ impl App {
             .height(Length::Fill),
         ]
         .into()
+    }
+
+    pub(super) fn rotation_dial(&self) -> Option<((f32, f32), f32)> {
+        if !self.config.rotation_dial || self.grab != Some(gpu::Grab::Rotate) {
+            return None;
+        }
+        let floating = self.floating.as_ref()?;
+        Some((floating.xform.centre(), floating.xform.rotation))
     }
 
     pub(super) fn readout(&self) -> Option<(Rect, (f32, f32))> {

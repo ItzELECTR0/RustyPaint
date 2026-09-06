@@ -56,6 +56,8 @@ settings-appearance = Afișare
 settings-accent = Accent
 settings-acrylic = Panouri Acrylic
 settings-acrylic-note = Permite sistemului să aplice efectul de blur asupra fundalului RustyPaint.
+settings-rotation-dial = Cadran de rotație
+settings-rotation-dial-note = Arată unghiul pe imagine în timp ce roteşti o selecție sau un sticker.
 settings-unsaved = Schimbări nesalvate
 settings-unsaved-note = întreabă înainte ca orice să șteargă muncă pe care nu ai salvat-o.
 settings-second-picture = Imagini noi
@@ -245,6 +247,7 @@ canvas-size = { $width } x { $height } px
 selection-width = W:
 selection-height = H:
 size-in-pixels = { $value } px
+degrees-value = { $value }°
 document-size = { $width } x { $height }
 
 ## Crop

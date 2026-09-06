@@ -700,6 +700,10 @@ impl App {
                 theme::set_acrylic(on);
                 self.save_config();
             }
+            Message::RotationDialToggled(on) => {
+                self.config.rotation_dial = on;
+                self.save_config();
+            }
             Message::DecorationsToggled(on) => {
                 if self.config.decorations == on {
                     return Task::none();

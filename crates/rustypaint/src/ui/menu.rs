@@ -274,6 +274,14 @@ fn pane_settings<'a>(
             .text_size(13)
             .on_toggle(Message::AcrylicToggled),
         divider(),
+        subheading(i18n::settings_rotation_dial()),
+        note(i18n::settings_rotation_dial_note()),
+        toggler(config.rotation_dial)
+            .style(crate::ui::controls::toggler_style)
+            .label(on_off(config.rotation_dial))
+            .text_size(13)
+            .on_toggle(Message::RotationDialToggled),
+        divider(),
         subheading(i18n::settings_unsaved()),
         note(i18n::settings_unsaved_note()),
         toggler(config.confirm_discard)

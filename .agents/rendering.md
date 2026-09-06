@@ -15,6 +15,12 @@ Selection outlines use physical-pixel metrics. Their phase comes from elapsed ti
 blend across fractional pixels so movement remains smooth on high-refresh displays. The rectangular
 marquee and the alpha-edge outline share the same renderer but have different geometry.
 
+`app::view::Outline` is an `iced` canvas stacked over the shader, and anything with words in it
+belongs there rather than in `viewport.wgsl`: the shader has no glyphs, and putting them there would
+mean an atlas and a second font path for two small readouts. The lasso being drawn, the selection
+size readout, and the rotation dial all live in it. Its geometry is in logical pixels and stays a
+fixed size on screen, so a readout is as legible at 800% as at 9%.
+
 Offscreen GPU tests create and destroy devices. They are serialized because concurrent device
 teardown has crashed Mesa without identifying a failing test. Returning no adapter skips a visual
 test; a rendered mismatch fails it.

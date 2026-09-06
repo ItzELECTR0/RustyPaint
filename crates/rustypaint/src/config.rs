@@ -35,6 +35,7 @@ pub struct Config {
     pub acrylic: bool,
     pub decorations: bool,
     pub confirm_discard: bool,
+    pub rotation_dial: bool,
     pub open_in: OpenIn,
     pub custom_colours: Vec<[u8; 4]>,
 }
@@ -49,6 +50,7 @@ impl Default for Config {
             acrylic: true,
             decorations: false,
             confirm_discard: true,
+            rotation_dial: true,
             open_in: OpenIn::default(),
             custom_colours: Vec::new(),
         }
@@ -150,6 +152,7 @@ mod tests {
             acrylic: false,
             decorations: true,
             confirm_discard: false,
+            rotation_dial: false,
             open_in: OpenIn::Window,
             custom_colours: vec![[254, 168, 69, 255]],
         };
@@ -164,6 +167,10 @@ mod tests {
         assert_eq!(config.accent, Scheme::Rusty);
         assert!(config.acrylic);
         assert!(config.confirm_discard, "asking is the old behaviour");
+        assert!(
+            config.rotation_dial,
+            "a build that never had one still shows it"
+        );
         assert_eq!(
             config.open_in,
             OpenIn::Tab,

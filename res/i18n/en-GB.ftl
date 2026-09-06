@@ -57,6 +57,8 @@ settings-appearance = Appearance
 settings-accent = Accent
 settings-acrylic = Acrylic panels
 settings-acrylic-note = Let your compositor blur what's behind RustyPaint.
+settings-rotation-dial = Rotation dial
+settings-rotation-dial-note = Show the angle on the picture while you turn a selection or a sticker.
 settings-unsaved = Unsaved changes
 settings-unsaved-note = Ask before anything that would discard work you have not saved.
 settings-second-picture = New pictures
@@ -246,6 +248,7 @@ canvas-size = { $width } x { $height } px
 selection-width = W:
 selection-height = H:
 size-in-pixels = { $value } px
+degrees-value = { $value }°
 document-size = { $width } x { $height }
 
 ## Crop

@@ -451,6 +451,7 @@ pub enum Message {
     DiscardAnswered(Discard),
     ConfirmDiscardToggled(bool),
     AcrylicToggled(bool),
+    RotationDialToggled(bool),
     DecorationsToggled(bool),
     ModifiersChanged(iced::keyboard::Modifiers),
     Rotate(bool),
