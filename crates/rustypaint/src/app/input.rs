@@ -332,6 +332,7 @@ impl App {
                     }
                     self.grab_from = Some(Grabbed {
                         at: (x, y),
+                        pointer: (x, y),
                         xform: floating.xform,
                         points: floating.points().to_vec(),
                     });
@@ -449,9 +450,10 @@ impl App {
         let (Some(grab), Some(floating)) = (self.grab, &mut self.floating) else {
             return;
         };
-        let Some(grabbed) = &self.grab_from else {
+        let Some(grabbed) = &mut self.grab_from else {
             return;
         };
+        grabbed.pointer = (x, y);
         let original = grabbed.xform;
 
         match grab {
@@ -466,7 +468,10 @@ impl App {
                 self.float_version += 1;
             }
             gpu::Grab::Rotate => {
-                let target = original.rotated_towards(x, y);
+                let mut target = original.rotated_towards(x, y);
+                if shift {
+                    target.rotation = crate::select::xform::snap_angle(target.rotation);
+                }
                 if floating.is_curve() {
                     floating.refit(original, target, &grabbed.points);
                     self.float_version += 1;

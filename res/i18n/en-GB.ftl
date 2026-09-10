@@ -163,8 +163,8 @@ cancel = Cancel
 
 shapes-heading = Shapes
 shapes-line-and-curve = Line and curve
-shapes-hint = Drag on the canvas to draw.
-curves-hint = Drag to draw. Then pull the points to bend it.
+shapes-hint = Drag on the canvas to draw. Hold Shift while rotating to snap to 15-degree steps.
+curves-hint = Drag to draw, then pull the points to bend it. Hold Shift while drawing or rotating to snap to 15-degree steps.
 fill = Fill
 fill-type = Fill type
 line-type = Line type

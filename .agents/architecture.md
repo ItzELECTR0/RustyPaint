@@ -173,6 +173,10 @@ not a discarded click.
 High-rate pointer samples for live-object transforms are coalesced until redraw. Release must flush
 the last sample before completing the operation.
 
+Shift snaps live-object rotation and the initial line/curve direction to 15-degree increments.
+Keep the unsnapped pointer during a drag so changing Shift updates the preview immediately without
+accumulating rounding. Resize keeps its existing Shift aspect-ratio behavior.
+
 Arrow keys work the live object a pixel at a time, and what they do follows the last grip it was
 dragged by: a move grip leaves them moving it, a resize grip leaves them stretching that same edge,
 so the axis a side grip does not own stays still. The keyboard's own repeat is ignored and the ramp

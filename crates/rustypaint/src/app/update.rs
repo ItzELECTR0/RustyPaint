@@ -167,7 +167,23 @@ impl App {
                         .zoomed_at(centre, 2.0f32.powf(steps), self.viewport, self.doc.size());
             }
 
-            Message::ModifiersChanged(mods) => self.mods = mods,
+            Message::ModifiersChanged(mods) => {
+                let shift_changed = self.mods.shift() != mods.shift();
+                self.mods = mods;
+                if shift_changed {
+                    if self.grab == Some(gpu::Grab::Rotate)
+                        && let Some(grabbed) = &self.grab_from
+                    {
+                        let (x, y) = grabbed.pointer;
+                        self.drag_float(x, y);
+                    } else if self.brush.tool == Tool::Shape
+                        && matches!(self.drawing, Drawing::Curve(_))
+                        && let Some((from, to)) = self.selecting
+                    {
+                        self.draw_drawing(from, to);
+                    }
+                }
+            }
 
             // The whole canvas as it stands, so it can be pasted into another tab. Anything still
             // floating is deliberately left out: it is not part of the picture yet.

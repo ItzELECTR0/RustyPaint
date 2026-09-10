@@ -12,6 +12,11 @@ pub struct Xform {
 
 const MIN_SIDE: f32 = 2.0;
 
+pub fn snap_angle(angle: f32) -> f32 {
+    let step = std::f32::consts::PI / 12.0;
+    (angle / step).round() * step
+}
+
 impl Xform {
     pub fn from_rect(rect: Rect) -> Self {
         Self {

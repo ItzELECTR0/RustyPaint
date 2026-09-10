@@ -162,8 +162,8 @@ cancel = Anulează
 
 shapes-heading = Forme
 shapes-line-and-curve = Linie și curbări
-shapes-hint = Trage pe canvas pentru a desena.
-curves-hint = Trage pentru a desena. Apoi trage punctele pentru a îndoi.
+shapes-hint = Trage pe canvas pentru a desena. Ține Shift la rotire pentru pași de 15 grade.
+curves-hint = Trage pentru a desena, apoi trage punctele pentru a îndoi. Ține Shift la desenare sau rotire pentru pași de 15 grade.
 fill = Umplere
 fill-type = Tip de umplere
 line-type = Tip de linie

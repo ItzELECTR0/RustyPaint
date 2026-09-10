@@ -12,6 +12,7 @@ use super::*;
 
 pub(super) struct Grabbed {
     pub(super) at: (f32, f32),
+    pub(super) pointer: (f32, f32),
     pub(super) xform: Xform,
     pub(super) points: Vec<(f32, f32)>,
 }
@@ -272,6 +273,14 @@ impl App {
             }
             Drawing::Curve(kind) => {
                 let (from, to) = (self.within_reach(from), self.within_reach(to));
+                let to = if self.mods.shift() {
+                    let (dx, dy) = (to.0 - from.0, to.1 - from.1);
+                    let angle = select::xform::snap_angle(dy.atan2(dx));
+                    let length = dx.hypot(dy);
+                    (from.0 + length * angle.cos(), from.1 + length * angle.sin())
+                } else {
+                    to
+                };
                 self.draw_curve(kind, from, to)
             }
         }

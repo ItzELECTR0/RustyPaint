@@ -1725,6 +1725,156 @@ fn opacity_reaches_the_canvas_and_not_only_the_preview() {
 }
 
 #[test]
+fn shift_snaps_drawing_direction_without_losing_the_pointer() {
+    for kind in [curve::CurveKind::Line, curve::CurveKind::Curve3] {
+        let mut app = app(200, 200);
+        send(&mut app, Message::CurvePicked(kind));
+        send(
+            &mut app,
+            Message::Canvas(gpu::Interaction::SelectBegan(60.0, 60.0)),
+        );
+        send(
+            &mut app,
+            Message::Canvas(gpu::Interaction::SelectMoved(120.0, 64.0)),
+        );
+        let free = app.floating.as_ref().unwrap().points().to_vec();
+        send(
+            &mut app,
+            Message::ModifiersChanged(iced::keyboard::Modifiers::SHIFT),
+        );
+        let points = app.floating.as_ref().unwrap().points();
+        assert!((points.last().unwrap().1 - points[0].1).abs() < 0.001);
+        send(
+            &mut app,
+            Message::ModifiersChanged(iced::keyboard::Modifiers::empty()),
+        );
+        assert_eq!(app.floating.as_ref().unwrap().points(), free);
+        send(
+            &mut app,
+            Message::ModifiersChanged(iced::keyboard::Modifiers::SHIFT),
+        );
+        let snapped = app.floating.as_ref().unwrap().pixels.clone();
+        send(&mut app, Message::Canvas(gpu::Interaction::SelectEnded));
+        assert_eq!(
+            app.floating.as_ref().unwrap().pixels.as_bytes(),
+            snapped.as_bytes()
+        );
+        send(&mut app, Message::Deselect);
+        assert!(
+            app.doc
+                .pixels()
+                .as_bytes()
+                .chunks_exact(4)
+                .any(|p| p[3] != 0)
+        );
+        send(&mut app, Message::Undo);
+        assert!(
+            app.doc
+                .pixels()
+                .as_bytes()
+                .chunks_exact(4)
+                .all(|p| p[3] == 0)
+        );
+    }
+}
+
+#[test]
+fn shift_snaps_rotation_and_release_uses_the_final_pointer() {
+    let mut app = app(200, 200);
+    send(&mut app, Message::ShapePicked(shapes::ShapeKind::Rectangle));
+    drag_shape(&mut app, (50.0, 60.0), (150.0, 140.0));
+    let original = app.floating.as_ref().unwrap().xform;
+    let (gx, gy) = original.rotation_grip(20.0);
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatGrabbed(gpu::Grab::Rotate, gx, gy)),
+    );
+    let pointer = |degrees: f32| {
+        let angle = degrees.to_radians();
+        (100.0 + 80.0 * angle.sin(), 100.0 - 80.0 * angle.cos())
+    };
+    let (x, y) = pointer(22.0);
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatDragged(x, y)),
+    );
+    assert!((app.floating.as_ref().unwrap().xform.rotation.to_degrees() - 22.0).abs() < 0.001);
+    send(
+        &mut app,
+        Message::ModifiersChanged(iced::keyboard::Modifiers::SHIFT),
+    );
+    assert!((app.floating.as_ref().unwrap().xform.rotation.to_degrees() - 15.0).abs() < 0.001);
+    send(
+        &mut app,
+        Message::ModifiersChanged(iced::keyboard::Modifiers::empty()),
+    );
+    assert!((app.floating.as_ref().unwrap().xform.rotation.to_degrees() - 22.0).abs() < 0.001);
+    send(
+        &mut app,
+        Message::ModifiersChanged(iced::keyboard::Modifiers::SHIFT),
+    );
+    let (x, y) = pointer(-29.0);
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatReleasedAt(x, y)),
+    );
+    let result = app.floating.as_ref().unwrap().xform;
+    assert!((result.rotation.to_degrees() + 30.0).abs() < 0.001);
+    assert_eq!(result.centre(), original.centre());
+    assert_eq!(
+        (result.width, result.height),
+        (original.width, original.height)
+    );
+    assert!(app.grab.is_none());
+}
+
+#[test]
+fn snapped_curve_rotation_uses_the_original_points() {
+    let mut app = app(200, 200);
+    send(&mut app, Message::CurvePicked(curve::CurveKind::Curve3));
+    drag_shape(&mut app, (60.0, 100.0), (140.0, 100.0));
+    let floating = app.floating.as_ref().unwrap();
+    let original = floating.points().to_vec();
+    let (cx, cy) = floating.xform.centre();
+    let (gx, gy) = floating.xform.rotation_grip(20.0);
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatGrabbed(gpu::Grab::Rotate, gx, gy)),
+    );
+    let angle = 44.0f32.to_radians();
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatDragged(
+            cx + 60.0 * angle.sin(),
+            cy - 60.0 * angle.cos(),
+        )),
+    );
+    let free = app.floating.as_ref().unwrap().points().to_vec();
+    send(
+        &mut app,
+        Message::ModifiersChanged(iced::keyboard::Modifiers::SHIFT),
+    );
+    let diagonal = std::f32::consts::FRAC_1_SQRT_2;
+    for (point, from) in app
+        .floating
+        .as_ref()
+        .unwrap()
+        .points()
+        .iter()
+        .zip(&original)
+    {
+        let (dx, dy) = (from.0 - cx, from.1 - cy);
+        assert!((point.0 - (cx + (dx - dy) * diagonal)).abs() < 0.001);
+        assert!((point.1 - (cy + (dx + dy) * diagonal)).abs() < 0.001);
+    }
+    send(
+        &mut app,
+        Message::ModifiersChanged(iced::keyboard::Modifiers::empty()),
+    );
+    assert_eq!(app.floating.as_ref().unwrap().points(), free);
+}
+
+#[test]
 fn the_dial_reads_the_turn_and_only_shows_during_one() {
     let mut app = app(200, 200);
     send(&mut app, Message::TabPicked(Tab::Shapes));
