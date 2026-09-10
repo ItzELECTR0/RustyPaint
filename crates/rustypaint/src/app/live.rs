@@ -17,6 +17,16 @@ pub(super) struct Grabbed {
     pub(super) points: Vec<(f32, f32)>,
 }
 
+impl Grabbed {
+    pub(super) fn rotated(&self, snap: bool) -> Xform {
+        let mut target = self.xform.rotated_towards(self.pointer.0, self.pointer.1);
+        if snap {
+            target.rotation = select::xform::snap_angle(target.rotation);
+        }
+        target
+    }
+}
+
 pub(super) struct LiveRedo {
     pub(super) floating: Floating,
     pub(super) canvas: Option<(Rgba8, bool)>,

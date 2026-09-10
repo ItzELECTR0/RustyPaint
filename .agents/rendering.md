@@ -21,6 +21,9 @@ mean an atlas and a second font path for two small readouts. The lasso being dra
 size readout, and the rotation dial all live in it. Its geometry is in logical pixels and stays a
 fixed size on screen, so a readout is as legible at 800% as at 9%.
 
+The rotation dial uses the drag's original pivot and current target angle. Curve redraws bake the
+rotation into their points and replace the bitmap bounds, so those bounds cannot drive the dial.
+
 Offscreen GPU tests create and destroy devices. They are serialized because concurrent device
 teardown has crashed Mesa without identifying a failing test. Returning no adapter skips a visual
 test; a rendered mismatch fails it.

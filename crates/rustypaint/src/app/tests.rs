@@ -1875,6 +1875,53 @@ fn snapped_curve_rotation_uses_the_original_points() {
 }
 
 #[test]
+fn the_curve_rotation_dial_keeps_its_pivot_and_reports_the_drag_angle() {
+    for kind in [
+        curve::CurveKind::Line,
+        curve::CurveKind::Curve3,
+        curve::CurveKind::Curve5,
+    ] {
+        let mut app = app(400, 400);
+        send(&mut app, Message::CurvePicked(kind));
+        drag_shape(&mut app, (80.0, 100.0), (250.0, 160.0));
+        let floating = app.floating.as_ref().unwrap();
+        let pivot = floating.xform.centre();
+        let (gx, gy) = floating.xform.rotation_grip(20.0);
+        send(
+            &mut app,
+            Message::Canvas(gpu::Interaction::FloatGrabbed(gpu::Grab::Rotate, gx, gy)),
+        );
+        for degrees in [22.0f32, -44.0, 91.0, -179.0] {
+            let angle = degrees.to_radians();
+            let (x, y) = (pivot.0 + 100.0 * angle.sin(), pivot.1 - 100.0 * angle.cos());
+            send(
+                &mut app,
+                Message::Canvas(gpu::Interaction::FloatDragged(x, y)),
+            );
+            let (centre, rotation) = app.rotation_dial().unwrap();
+            assert_eq!(
+                centre, pivot,
+                "the dial must not follow the changing curve bounds"
+            );
+            assert!((rotation.to_degrees() - degrees).abs() < 0.001);
+            send(
+                &mut app,
+                Message::ModifiersChanged(iced::keyboard::Modifiers::SHIFT),
+            );
+            let (centre, rotation) = app.rotation_dial().unwrap();
+            assert_eq!(centre, pivot);
+            assert!((rotation.to_degrees() - (degrees / 15.0).round() * 15.0).abs() < 0.001);
+            send(
+                &mut app,
+                Message::ModifiersChanged(iced::keyboard::Modifiers::empty()),
+            );
+        }
+        send(&mut app, Message::Canvas(gpu::Interaction::FloatReleased));
+        assert!(app.rotation_dial().is_none());
+    }
+}
+
+#[test]
 fn the_dial_reads_the_turn_and_only_shows_during_one() {
     let mut app = app(200, 200);
     send(&mut app, Message::TabPicked(Tab::Shapes));

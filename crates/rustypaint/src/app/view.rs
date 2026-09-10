@@ -1069,8 +1069,8 @@ impl App {
         if !self.config.rotation_dial || self.grab != Some(gpu::Grab::Rotate) {
             return None;
         }
-        let floating = self.floating.as_ref()?;
-        Some((floating.xform.centre(), floating.xform.rotation))
+        let target = self.grab_from.as_ref()?.rotated(self.mods.shift());
+        Some((target.centre(), target.rotation))
     }
 
     pub(super) fn readout(&self) -> Option<(Rect, (f32, f32))> {

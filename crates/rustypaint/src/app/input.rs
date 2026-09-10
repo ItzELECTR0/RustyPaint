@@ -468,10 +468,7 @@ impl App {
                 self.float_version += 1;
             }
             gpu::Grab::Rotate => {
-                let mut target = original.rotated_towards(x, y);
-                if shift {
-                    target.rotation = crate::select::xform::snap_angle(target.rotation);
-                }
+                let target = grabbed.rotated(shift);
                 if floating.is_curve() {
                     floating.refit(original, target, &grabbed.points);
                     self.float_version += 1;
