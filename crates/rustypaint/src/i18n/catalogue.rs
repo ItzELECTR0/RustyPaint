@@ -178,6 +178,8 @@ catalogue! {
         bones_hint => "bones-hint",
         put_down_hint => "put-down-hint",
         curve_line => "curve-line",
+        live_curve => "live-curve",
+        live_shape => "live-shape",
         curve_3 => "curve-3",
         curve_4 => "curve-4",
         curve_5 => "curve-5",
@@ -305,6 +307,7 @@ catalogue! {
 
         // Live object
         "degrees-value",
+        "point-count",
 
         // Dialogs
         "save-work-body",
@@ -363,6 +366,10 @@ pub fn canvas_size(width: u32, height: u32) -> String {
         width = width.to_string(),
         height = height.to_string()
     )
+}
+
+pub fn point_count(count: usize) -> String {
+    tr!("point-count", count = count.to_string())
 }
 
 pub fn size_in_pixels(value: u32) -> String {

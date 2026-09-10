@@ -182,6 +182,9 @@ bones-hint = Double click the line to add a bone, or a bone to remove it.
 put-down-hint = Click away from the shape to insert it.
 
 curve-line = Line
+live-curve = Curve
+live-shape = Shape
+point-count = Points: { $count }
 curve-3 = 3-point curve
 curve-4 = 4-point curve
 curve-5 = 5-point curve

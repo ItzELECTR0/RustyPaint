@@ -23,6 +23,10 @@ a selection, sticker, shape, curve, or text box. Committing composites that obje
 Cancelling a lifted selection restores its hole; cancelling a newly created object simply discards
 it.
 
+Live drawing labels follow the current source and point count, not the preset used to start it.
+Open paths with two points are lines, longer ones are curves, and closed paths are shapes. The
+picker keeps the original curve presets; editable paths show their point count separately.
+
 Document history stores before-and-after regions for local edits and copy-on-write whole buffers for
 canvas-wide changes. Live objects sit outside that history. Undo first resolves live state: text uses
 its own edit journal, while another live object is cancelled before committed document history moves.

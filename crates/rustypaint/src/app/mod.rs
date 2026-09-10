@@ -858,14 +858,25 @@ impl App {
 
     fn live_drawing(&self) -> Option<sidebar::Live> {
         let floating = self.floating.as_ref()?;
-        let (name, curve) = match self.drawing {
-            Drawing::Shape(kind) => (kind.name(), false),
-            Drawing::Curve(kind) => (kind.name(), true),
+        let (name, curve, points) = match &floating.source {
+            select::Source::Shape { kind, .. } => (kind.name(), false, None),
+            select::Source::Curve { points, closed, .. } => {
+                let name = if *closed {
+                    crate::i18n::live_shape()
+                } else if points.len() == 2 {
+                    crate::i18n::curve_line()
+                } else {
+                    crate::i18n::live_curve()
+                };
+                (name, !closed, Some(points.len()))
+            }
+            _ => return None,
         };
-        floating.is_drawing().then_some(sidebar::Live {
+        Some(sidebar::Live {
             name,
+            points,
             opacity: floating.opacity(),
-            curve: curve && !floating.is_closed(),
+            curve,
             bones: !floating.is_curve(),
             boned: floating.is_closed(),
         })

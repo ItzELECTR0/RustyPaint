@@ -182,6 +182,9 @@ bones-hint = Dublu click pe linie pentru a adăuga un os, sau pe un os pentru al
 put-down-hint = Click în afara formei pentru a insera.
 
 curve-line = Linie
+live-curve = Curbă
+live-shape = Formă
+point-count = Puncte: { $count }
 curve-3 = Curbare în 3 puncte
 curve-4 = Curbare în 4 puncte
 curve-5 = Curbare în 5 puncte

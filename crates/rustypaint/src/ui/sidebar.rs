@@ -99,6 +99,7 @@ fn shapes_panel<'a>(
 #[derive(Debug, Clone, Copy)]
 pub struct Live {
     pub name: &'static str,
+    pub points: Option<usize>,
     pub opacity: f32,
     pub curve: bool,
     pub bones: bool,
@@ -160,6 +161,13 @@ fn shape_style_panel<'a>(
     custom_menu: Option<usize>,
 ) -> Element<'a, Message> {
     let mut panel = column![heading(live.name)].spacing(10);
+    if let Some(count) = live.points {
+        panel = panel.push(
+            text(i18n::point_count(count))
+                .size(12)
+                .color(theme::colours().text_dim),
+        );
+    }
 
     if !live.curve {
         panel = panel.push(section(i18n::fill())).push(paint_row(

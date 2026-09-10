@@ -472,10 +472,6 @@ impl Floating {
         self.redraw();
     }
 
-    pub fn is_drawing(&self) -> bool {
-        matches!(self.source, Source::Shape { .. } | Source::Curve { .. })
-    }
-
     pub fn opacity(&self) -> f32 {
         self.opacity
     }

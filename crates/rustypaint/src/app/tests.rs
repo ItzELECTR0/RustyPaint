@@ -2280,17 +2280,59 @@ fn the_crop_fields_move_the_frame() {
 }
 
 #[test]
+fn curve_labels_follow_added_and_removed_points() {
+    for kind in curve::ALL {
+        let mut app = app(200, 200);
+        send(&mut app, Message::CurvePicked(*kind));
+        drag_shape(&mut app, (30.0, 40.0), (150.0, 90.0));
+        let initial = kind.points();
+        assert_eq!(app.live_drawing().unwrap().points, Some(initial));
+        let (x, y) = app.floating.as_ref().unwrap().points()[0];
+        send(
+            &mut app,
+            Message::Canvas(gpu::Interaction::PointAdded(x, y)),
+        );
+        let live = app.live_drawing().unwrap();
+        assert_eq!(live.name, crate::i18n::live_curve());
+        assert_eq!(live.points, Some(initial + 1));
+        for count in (2..=initial).rev() {
+            send(&mut app, Message::Canvas(gpu::Interaction::PointRemoved(0)));
+            let live = app.live_drawing().unwrap();
+            assert_eq!(live.points, Some(count));
+            assert_eq!(
+                live.name,
+                if count == 2 {
+                    crate::i18n::curve_line()
+                } else {
+                    crate::i18n::live_curve()
+                }
+            );
+        }
+        send(&mut app, Message::Canvas(gpu::Interaction::PointRemoved(0)));
+        assert_eq!(app.live_drawing().unwrap().points, Some(2));
+        send(&mut app, Message::Undo);
+        assert!(app.live_drawing().is_none());
+        send(&mut app, Message::Redo);
+        assert_eq!(app.live_drawing().unwrap().points, Some(2));
+        assert_eq!(app.live_drawing().unwrap().name, crate::i18n::curve_line());
+    }
+}
+
+#[test]
 fn a_shape_takes_bones_and_the_canvas_adds_more() {
     let mut app = app(200, 200);
     send(&mut app, Message::TabPicked(Tab::Shapes));
     send(&mut app, Message::ShapePicked(shapes::ShapeKind::Circle));
     drag_shape(&mut app, (20.0, 20.0), (180.0, 180.0));
 
+    assert_eq!(app.live_drawing().unwrap().points, None);
     send(&mut app, Message::BonesRequested);
     let floating = app.floating.as_ref().expect("still floating");
     assert!(floating.is_closed(), "the shape came back as a loop");
     let bones = floating.points().len();
     assert_eq!(bones, crate::paint::curve::SHAPE_BONES);
+    assert_eq!(app.live_drawing().unwrap().points, Some(bones));
+    assert_eq!(app.live_drawing().unwrap().name, crate::i18n::live_shape());
 
     let on_the_line = app.floating.as_ref().unwrap().points()[0];
     send(
@@ -2298,6 +2340,7 @@ fn a_shape_takes_bones_and_the_canvas_adds_more() {
         Message::Canvas(gpu::Interaction::PointAdded(on_the_line.0, on_the_line.1)),
     );
     assert_eq!(app.floating.as_ref().unwrap().points().len(), bones + 1);
+    assert_eq!(app.live_drawing().unwrap().points, Some(bones + 1));
 
     send(
         &mut app,
@@ -2309,6 +2352,7 @@ fn a_shape_takes_bones_and_the_canvas_adds_more() {
     assert_eq!(app.floating.as_ref().unwrap().points().len(), bones);
 
     let live = app.live_drawing().expect("the style panel is up");
+    assert_eq!(live.points, Some(bones));
     assert!(
         !live.curve,
         "a shape with bones is still a shape to the panel"
