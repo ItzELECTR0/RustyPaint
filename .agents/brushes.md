@@ -7,6 +7,10 @@
 the accessors read through it, so there is one copy of each value and nothing to sync when the tool
 changes. Colour and tolerance stay shared, which is what Paint 3D does.
 
+The eyedropper temporarily remembers the previous tool and restores it after a nontransparent
+canvas sample. Re-selecting the eyedropper keeps that return target; choosing another tool replaces
+it. Invalid samples leave the eyedropper active, and the sampling gesture never paints.
+
 Nothing persists to the config file. Paint 3D forgets these on exit too, and a brush panel that
 comes back mid-stroke-faint after a restart is worse than one that starts clean.
 

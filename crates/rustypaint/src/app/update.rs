@@ -281,7 +281,12 @@ impl App {
                 };
                 self.tab = tab;
             }
-            Message::ToolPicked(tool) => self.brush.tool = tool,
+            Message::ToolPicked(tool) => {
+                if tool != self.brush.tool {
+                    self.pipette_return = (tool == Tool::Pipette).then_some(self.brush.tool);
+                    self.brush.tool = tool;
+                }
+            }
             Message::ShapePicked(kind) => {
                 self.brush.tool = Tool::Shape;
                 self.drawing = Drawing::Shape(kind);

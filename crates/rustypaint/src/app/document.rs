@@ -370,6 +370,9 @@ impl App {
             && colour[3] > 0
         {
             self.brush.colour = colour;
+            if let Some(tool) = self.pipette_return.take() {
+                self.brush.tool = tool;
+            }
         }
     }
 

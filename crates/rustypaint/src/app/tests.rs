@@ -307,6 +307,64 @@ fn the_bucket_ignores_a_click_off_the_canvas() {
 }
 
 #[test]
+fn the_pipette_returns_to_the_previous_tool_and_the_next_stroke_uses_its_colour() {
+    let mut app = app(16, 16);
+    send(&mut app, Message::ToolPicked(Tool::PixelPen));
+    app.brush.set_thickness(1.0);
+    app.brush.colour = [12, 34, 56, 255];
+    click(&mut app, 3.5, 3.5);
+    app.brush.colour = [0, 0, 0, 255];
+    let before = app.doc.pixels().clone();
+    let version = app.doc.version();
+    send(&mut app, Message::ToolPicked(Tool::Pipette));
+    send(&mut app, Message::ToolPicked(Tool::Pipette));
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintBegan(3.5, 3.5)),
+    );
+    assert_eq!(app.brush.tool, Tool::PixelPen);
+    assert_eq!(app.brush.thickness(), 1.0);
+    assert_eq!(app.brush.colour, [12, 34, 56, 255]);
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintMoved(10.5, 10.5)),
+    );
+    send(&mut app, Message::Canvas(gpu::Interaction::PaintEnded));
+    assert_eq!(app.doc.pixels().as_bytes(), before.as_bytes());
+    assert_eq!(app.doc.version(), version);
+    click(&mut app, 10.5, 10.5);
+    assert_eq!(pixel(&app, 10, 10), [12, 34, 56, 255]);
+    send(&mut app, Message::Undo);
+    assert_eq!(app.doc.pixels().as_bytes(), before.as_bytes());
+}
+
+#[test]
+fn the_pipette_waits_for_a_colour_and_remembers_each_new_tool() {
+    let mut app = app(16, 16);
+    send(&mut app, Message::ToolPicked(Tool::PixelPen));
+    app.brush.set_thickness(1.0);
+    app.brush.colour = [12, 34, 56, 255];
+    click(&mut app, 3.5, 3.5);
+    for tool in [Tool::Marker, Tool::Fill, Tool::Eraser] {
+        send(&mut app, Message::ToolPicked(tool));
+        send(&mut app, Message::ToolPicked(Tool::Pipette));
+        app.brush.colour = [1, 2, 3, 255];
+        click(&mut app, -1.0, 4.0);
+        click(&mut app, 8.0, 8.0);
+        assert_eq!(app.brush.tool, Tool::Pipette);
+        assert_eq!(app.brush.colour, [1, 2, 3, 255]);
+        click(&mut app, 3.5, 3.5);
+        assert_eq!(app.brush.tool, tool);
+        assert_eq!(app.brush.colour, [12, 34, 56, 255]);
+    }
+    send(&mut app, Message::ToolPicked(Tool::Pipette));
+    send(&mut app, Message::ToolPicked(Tool::PixelPen));
+    send(&mut app, Message::ToolPicked(Tool::Pipette));
+    click(&mut app, 3.5, 3.5);
+    assert_eq!(app.brush.tool, Tool::PixelPen);
+}
+
+#[test]
 fn the_pipette_takes_the_colour_under_it_without_editing() {
     let mut app = app(8, 8);
     app.brush = Brush {
