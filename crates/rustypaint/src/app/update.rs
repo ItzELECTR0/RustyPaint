@@ -26,6 +26,25 @@ impl App {
     }
 
     fn dispatch(&mut self, message: Message) -> Task<Message> {
+        if matches!(
+            message,
+            Message::TabPicked(_)
+                | Message::ToolPicked(_)
+                | Message::ShapePicked(_)
+                | Message::CurvePicked(_)
+                | Message::FreeformToggled(_)
+                | Message::CropOpened
+                | Message::CutoutOpened
+        ) {
+            self.cropping = None;
+            if self.cutting_out.take().is_some() {
+                self.float_version += 1;
+            }
+            self.selecting = None;
+            self.lasso = None;
+            self.grab = None;
+            self.grab_from = None;
+        }
         if self.typed.is_some() && message.moves_a_field() {
             self.typed = None;
         }

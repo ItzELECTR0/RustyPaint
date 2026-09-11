@@ -59,6 +59,47 @@ fn automatic_pixel_grid_follows_zoom_and_allows_manual_toggling() {
 }
 
 #[test]
+fn secondary_tools_cancel_the_previous_frame_mode() {
+    let pick = |tool| match tool {
+        0 => Message::FreeformToggled(false),
+        1 => Message::FreeformToggled(true),
+        2 => Message::TextToolPicked,
+        3 => Message::CropOpened,
+        _ => Message::CutoutOpened,
+    };
+    for from in 0..5 {
+        for to in 0..5 {
+            let mut app = app(32, 32);
+            send(&mut app, pick(from));
+            if from == 4 {
+                send(&mut app, Message::CutoutNext);
+                assert!(app.refining());
+            }
+            send(&mut app, pick(to));
+            assert_eq!(app.cropping.is_some(), to == 3);
+            assert_eq!(app.cutting_out.is_some(), to == 4);
+            assert!(
+                !app.refining(),
+                "old refinement must not survive switching tools"
+            );
+            assert!(app.cutout_overlay().is_none());
+            match to {
+                0 | 1 => {
+                    assert_eq!(app.brush.tool, Tool::Select);
+                    assert_eq!(app.freeform, to == 1);
+                }
+                2 => assert_eq!(app.brush.tool, Tool::Text),
+                _ => {}
+            }
+            assert!(
+                !app.doc.modified(),
+                "switching tools must not apply the cutout or crop"
+            );
+        }
+    }
+}
+
+#[test]
 fn the_pixel_grid_is_a_view_preference_without_document_edits() {
     let mut app = app(32, 32);
     let pixels = app.doc.pixels().bytes_arc();

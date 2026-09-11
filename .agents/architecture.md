@@ -166,6 +166,9 @@ interval helper and `iced::time::every` needs the `tokio` or `smol` backend.
 
 ## Coordinates and input
 
+Picking a drawing, selection, crop or cutout tool cancels pending crop/cutout state and clears
+unfinished drag state. Frame tools suppress the underlying selection/text highlight while active.
+
 Keep image, viewport-logical, and physical-pixel coordinates explicit. Painting and selection work
 in image coordinates. iced layout uses logical pixels. wgpu uniforms and hit targets that must remain
 the same visible size use physical pixels.

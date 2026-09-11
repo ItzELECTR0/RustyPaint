@@ -903,9 +903,10 @@ impl App {
     }
 
     pub(super) fn tool_strip(&self) -> Element<'_, Message> {
-        let selecting = self.brush.tool == Tool::Select;
+        let framing = self.cropping.is_some() || self.cutting_out.is_some();
+        let selecting = !framing && self.brush.tool == Tool::Select;
         let (boxed, looped) = (selecting && !self.freeform, selecting && self.freeform);
-        let writing = self.brush.tool == Tool::Text;
+        let writing = !framing && self.brush.tool == Tool::Text;
         let cropping = self.cropping.is_some();
         let cutting_out = self.cutting_out.is_some();
         let bar = row![
