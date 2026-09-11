@@ -93,7 +93,7 @@ cargo run -p rustypaint -- path/to/image.png
 
 ## How is it configured?
 
-Settings are written whenever they change in the application.
+All options are available in the settings menu in the app and written to these files:
 
 | Where? | Settings file |
 |---|---|
@@ -101,18 +101,6 @@ Settings are written whenever they change in the application.
 | Flatpak | `~/.var/app/net.electris.RustyPaint/config/rustypaint/config.toml` |
 | Windows | `%APPDATA%\RustyPaint\config.toml` |
 | macOS | `~/Library/Application Support/RustyPaint/config.toml` |
-
-| What? | Effect |
-|---|---|
-| `theme` | Uses `auto`, `light`, or `dark` |
-| `accent` | Uses the `rusty` or `classic` palette |
-| `language` | Uses `auto`, `en-GB`, `en-US`, or `ro-RO` |
-| `new_canvas` | Selects the starting canvas dimensions |
-| `custom_colours` | Keeps colours added with the picker |
-| `acrylic` | Makes panels translucent for compositor blur |
-| `decorations` | Lets the compositor draw the window frame |
-| `confirm_discard` | Asks before anything that would throw away unsaved work |
-| `open_in` | Opens another picture in a `tab` or a `window` |
 
 ## Where do the assets come from?
 
