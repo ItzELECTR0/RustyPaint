@@ -453,6 +453,8 @@ pub enum Message {
     ConfirmDiscardToggled(bool),
     AcrylicToggled(bool),
     RotationDialToggled(bool),
+    PixelGridToggled,
+    AutoPixelGridToggled(bool),
     DecorationsToggled(bool),
     ModifiersChanged(iced::keyboard::Modifiers),
     Rotate(bool),
@@ -557,6 +559,10 @@ impl App {
             Size::new(1.0, 1.0),
             Document::DEFAULT_SIZE,
         );
+        let mut config = config;
+        if config.auto_pixel_grid {
+            config.pixel_grid = View::default().zoom >= 8.0;
+        }
         let app = Self {
             doc: Document::blank_sized(start_w, start_h, false),
             view: View::default(),

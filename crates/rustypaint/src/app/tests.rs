@@ -5,6 +5,76 @@ use iced::Point;
 use iced::time::Duration;
 
 #[test]
+fn automatic_pixel_grid_follows_zoom_and_allows_manual_toggling() {
+    let (restored, _) = App::boot(
+        Config {
+            pixel_grid: true,
+            auto_pixel_grid: true,
+            ..Config::default()
+        },
+        None,
+        None,
+        None,
+    );
+    assert!(
+        !restored.frame().pixel_grid,
+        "automatic mode starts from the current zoom"
+    );
+    let mut app = app(32, 32);
+    send(&mut app, Message::PixelGridToggled);
+    assert!(app.frame().pixel_grid, "manual grid works at 100%");
+    send(&mut app, Message::AutoPixelGridToggled(true));
+    assert!(!app.frame().pixel_grid);
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::Viewed(View {
+            zoom: 8.0,
+            ..View::default()
+        })),
+    );
+    assert!(app.frame().pixel_grid);
+    send(&mut app, Message::PixelGridToggled);
+    assert!(
+        !app.frame().pixel_grid,
+        "manual toggle overrides automatic visibility"
+    );
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::Viewed(View {
+            zoom: 9.0,
+            ..View::default()
+        })),
+    );
+    assert!(app.frame().pixel_grid);
+    send(&mut app, Message::ZoomActual);
+    assert!(!app.frame().pixel_grid);
+    send(&mut app, Message::AutoPixelGridToggled(false));
+    send(&mut app, Message::PixelGridToggled);
+    send(&mut app, Message::ZoomIn);
+    assert!(
+        app.frame().pixel_grid,
+        "manual visibility survives zooming with automatic mode off"
+    );
+    assert!(!app.doc.modified());
+}
+
+#[test]
+fn the_pixel_grid_is_a_view_preference_without_document_edits() {
+    let mut app = app(32, 32);
+    let pixels = app.doc.pixels().bytes_arc();
+    let version = app.doc.version();
+    assert!(!app.frame().pixel_grid);
+    send(&mut app, Message::PixelGridToggled);
+    assert!(app.config.pixel_grid && app.frame().pixel_grid);
+    assert_eq!(app.doc.version(), version);
+    assert!(std::sync::Arc::ptr_eq(&app.frame().pixels, &pixels));
+    assert!(!app.doc.modified());
+    assert!(!app.can_undo());
+    send(&mut app, Message::PixelGridToggled);
+    assert!(!app.frame().pixel_grid);
+}
+
+#[test]
 fn a_tile_that_is_not_selected_lets_its_bar_through() {
     let nothing: Option<iced::Background> = Some(iced::Color::TRANSPARENT.into());
     assert_eq!(tab_style(false).background, nothing, "the tabs");

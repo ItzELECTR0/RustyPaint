@@ -97,6 +97,7 @@ pub struct CanvasFrame {
     pub dirty: Option<(u64, Rect)>,
     pub view: View,
     pub show_canvas: bool,
+    pub pixel_grid: bool,
     pub handles: bool,
     pub preview: Option<(u32, u32)>,
     pub backing: bool,
@@ -313,7 +314,8 @@ impl shader::Primitive for Primitive {
                 crop: self.frame_rect(canvas, scale),
                 marquee: self.marquee_rect(canvas, scale),
                 float_masked: float.masked,
-                _pad3: [0.0; 3],
+                pixel_grid: if self.frame.pixel_grid { 1.0 } else { 0.0 },
+                _pad3: [0.0; 2],
             },
         );
     }
@@ -817,6 +819,7 @@ mod tests {
                 dirty: None,
                 view: View::default(),
                 show_canvas: true,
+                pixel_grid: false,
                 handles: false,
                 preview: None,
                 backing: true,
@@ -1575,11 +1578,117 @@ mod tests {
 
     static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    #[test]
+    fn the_pixel_grid_tracks_pixels_at_fractional_pan_and_display_scales() {
+        let mut program = floating_program(Vec::new());
+        program.frame.size = (8, 8);
+        let mut pixels = vec![255; 8 * 8 * 4];
+        for y in 0..8 {
+            for x in 4..8 {
+                pixels[(y * 8 + x) * 4..(y * 8 + x) * 4 + 3].fill(0);
+            }
+        }
+        program.frame.pixels = Arc::new(pixels);
+        program.frame.floating = None;
+        program.frame.view = View {
+            zoom: 8.5,
+            pan: Vector::new(1.25, -2.75),
+        };
+        for scale in [1.0f32, 1.5, 2.0] {
+            let side = (96.0 * scale) as u32;
+            program.frame.pixel_grid = false;
+            let Some(plain) = render_offscreen_scaled(
+                &program,
+                (side, side),
+                "pixel-grid-off",
+                mouse::Cursor::Unavailable,
+                scale,
+            ) else {
+                return;
+            };
+            program.frame.pixel_grid = true;
+            let Some(grid) = render_offscreen_scaled(
+                &program,
+                (side, side),
+                "pixel-grid-on",
+                mouse::Cursor::Unavailable,
+                scale,
+            ) else {
+                return;
+            };
+            let rect = program
+                .frame
+                .view
+                .canvas_rect(Size::new(96.0, 96.0), (8, 8));
+            let pitch = program.frame.view.zoom * scale;
+            let mut lighter = 0;
+            let mut darker = 0;
+            for y in 0..side {
+                for x in 0..side {
+                    let i = ((y * side + x) * 4) as usize;
+                    if plain[i..i + 4] == grid[i..i + 4] {
+                        continue;
+                    }
+                    let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                    assert!(
+                        px >= rect.x * scale
+                            && px <= (rect.x + rect.width) * scale
+                            && py >= rect.y * scale
+                            && py <= (rect.y + rect.height) * scale,
+                        "grid leaked outside the canvas at ({px}, {py}), scale {scale}"
+                    );
+                    let (ix, iy) = ((px - rect.x * scale) / pitch, (py - rect.y * scale) / pitch);
+                    let distance = (ix - ix.round()).abs().min((iy - iy.round()).abs()) * pitch;
+                    assert!(
+                        distance <= 1.01,
+                        "grid left the pixel boundary at scale {scale}"
+                    );
+                    lighter += usize::from(grid[i] > plain[i]);
+                    darker += usize::from(grid[i] < plain[i]);
+                }
+            }
+            assert!(
+                lighter > 0 && darker > 0,
+                "grid must be visible on dark and light pixels"
+            );
+        }
+        program.frame.view.zoom = 7.99;
+        program.frame.pixel_grid = false;
+        let Some(plain) = render_offscreen(
+            &program,
+            (96, 96),
+            "pixel-grid-low-off",
+            mouse::Cursor::Unavailable,
+        ) else {
+            return;
+        };
+        program.frame.pixel_grid = true;
+        let Some(grid) = render_offscreen(
+            &program,
+            (96, 96),
+            "pixel-grid-low-on",
+            mouse::Cursor::Unavailable,
+        ) else {
+            return;
+        };
+        assert_ne!(plain, grid, "the button must work below 800% too");
+    }
+
     fn render_offscreen(
         program: &Program,
         size: (u32, u32),
         name: &str,
         cursor: mouse::Cursor,
+    ) -> Option<Vec<u8>> {
+        render_offscreen_scaled(program, size, name, cursor, 1.0)
+    }
+
+    fn render_offscreen_scaled(
+        program: &Program,
+        size: (u32, u32),
+        name: &str,
+        cursor: mouse::Cursor,
+        scale: f32,
     ) -> Option<Vec<u8>> {
         use iced::widget::shader::{Pipeline, Primitive as _};
 
@@ -1616,12 +1725,12 @@ mod tests {
         let bounds = Rectangle {
             x: 0.0,
             y: 0.0,
-            width: size.0 as f32,
-            height: size.1 as f32,
+            width: size.0 as f32 / scale,
+            height: size.1 as f32 / scale,
         };
         let viewport = iced::widget::shader::Viewport::with_physical_size(
             iced::Size::new(size.0, size.1),
-            1.0,
+            scale,
         );
         let primitive = <Program as shader::Program<Interaction>>::draw(
             program,

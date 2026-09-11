@@ -46,6 +46,8 @@ catalogue! {
         zoom_in => "zoom-in",
         zoom_out => "zoom-out",
         actual_size => "actual-size",
+        pixel_grid => "pixel-grid",
+        settings_auto_pixel_grid => "settings-auto-pixel-grid",
         fit_to_window => "fit-to-window",
 
         // Menu rail

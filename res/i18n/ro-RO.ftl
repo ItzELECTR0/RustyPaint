@@ -28,6 +28,8 @@ zoom = Zoom
 zoom-in = Mărește
 zoom-out = Micșorează
 actual-size = 100%
+pixel-grid = Grilă de pixeli
+settings-auto-pixel-grid = Arată grila de pixeli la un zoom de 800%
 fit-to-window = Încadrează
 
 ## Menu rail

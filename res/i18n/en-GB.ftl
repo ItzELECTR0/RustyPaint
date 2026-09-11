@@ -29,6 +29,8 @@ zoom = Zoom
 zoom-in = Zoom in
 zoom-out = Zoom out
 actual-size = 100%
+pixel-grid = Pixel grid
+settings-auto-pixel-grid = Show the pixel grid at 800% zoom
 fit-to-window = Fit to window
 
 ## Menu rail

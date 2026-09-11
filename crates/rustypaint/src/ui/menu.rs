@@ -282,6 +282,13 @@ fn pane_settings<'a>(
             .text_size(13)
             .on_toggle(Message::RotationDialToggled),
         divider(),
+        subheading(i18n::settings_auto_pixel_grid()),
+        toggler(config.auto_pixel_grid)
+            .style(crate::ui::controls::toggler_style)
+            .label(on_off(config.auto_pixel_grid))
+            .text_size(13)
+            .on_toggle(Message::AutoPixelGridToggled),
+        divider(),
         subheading(i18n::settings_unsaved()),
         note(i18n::settings_unsaved_note()),
         toggler(config.confirm_discard)

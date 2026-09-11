@@ -36,6 +36,8 @@ pub struct Config {
     pub decorations: bool,
     pub confirm_discard: bool,
     pub rotation_dial: bool,
+    pub pixel_grid: bool,
+    pub auto_pixel_grid: bool,
     pub open_in: OpenIn,
     pub custom_colours: Vec<[u8; 4]>,
 }
@@ -51,6 +53,8 @@ impl Default for Config {
             decorations: false,
             confirm_discard: true,
             rotation_dial: true,
+            pixel_grid: false,
+            auto_pixel_grid: false,
             open_in: OpenIn::default(),
             custom_colours: Vec::new(),
         }
@@ -153,6 +157,8 @@ mod tests {
             decorations: true,
             confirm_discard: false,
             rotation_dial: false,
+            pixel_grid: true,
+            auto_pixel_grid: true,
             open_in: OpenIn::Window,
             custom_colours: vec![[254, 168, 69, 255]],
         };
@@ -166,6 +172,8 @@ mod tests {
         assert_eq!(config.theme, Choice::Dark);
         assert_eq!(config.accent, Scheme::Rusty);
         assert!(config.acrylic);
+        assert!(!config.pixel_grid);
+        assert!(!config.auto_pixel_grid);
         assert!(config.confirm_discard, "asking is the old behaviour");
         assert!(
             config.rotation_dial,

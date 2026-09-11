@@ -538,6 +538,16 @@ impl App {
                     .on_press(Message::ZoomActual),
                 strings::with_key(i18n::actual_size(), &strings::command_key("1")),
             ),
+            hint(
+                bar_button(crate::ui::centred(icon(
+                    icons::PIXEL_GRID,
+                    16.0,
+                    colour_on_strip(self.config.pixel_grid)
+                )))
+                .style(|_t, _s| tool_style(self.config.pixel_grid))
+                .on_press(Message::PixelGridToggled),
+                i18n::pixel_grid(),
+            ),
         ]
         .spacing(4)
         .align_y(iced::Alignment::Center)
@@ -975,6 +985,7 @@ impl App {
             dirty: self.dirty,
             view: self.view,
             show_canvas: self.panel.show_canvas,
+            pixel_grid: self.config.pixel_grid,
             handles: self.tab == Tab::Canvas && self.panel.show_canvas,
             preview: self.resize_preview,
             backing: self.doc.has_backing(),

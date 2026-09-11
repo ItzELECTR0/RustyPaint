@@ -17,7 +17,11 @@ use super::*;
 
 impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        let zoom = self.view.zoom;
         let task = self.dispatch(message);
+        if self.config.auto_pixel_grid && self.view.zoom != zoom {
+            self.config.pixel_grid = self.view.zoom >= 8.0;
+        }
         Task::batch([task, self.snapshot()])
     }
 
@@ -723,6 +727,17 @@ impl App {
             }
             Message::RotationDialToggled(on) => {
                 self.config.rotation_dial = on;
+                self.save_config();
+            }
+            Message::PixelGridToggled => {
+                self.config.pixel_grid = !self.config.pixel_grid;
+                self.save_config();
+            }
+            Message::AutoPixelGridToggled(on) => {
+                self.config.auto_pixel_grid = on;
+                if on {
+                    self.config.pixel_grid = self.view.zoom >= 8.0;
+                }
                 self.save_config();
             }
             Message::DecorationsToggled(on) => {

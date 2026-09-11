@@ -21,6 +21,7 @@ pub const REDO: &[u8] = ui_icon!("redo");
 pub const ZOOM_IN: &[u8] = ui_icon!("zoom-in");
 pub const ZOOM_OUT: &[u8] = ui_icon!("zoom-out");
 pub const FIT: &[u8] = ui_icon!("fit");
+pub const PIXEL_GRID: &[u8] = ui_icon!("pixel-grid");
 
 pub const BRUSHES: &[u8] = ui_icon!("brushes");
 pub const SHAPES_2D: &[u8] = ui_icon!("shapes");

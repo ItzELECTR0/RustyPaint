@@ -30,6 +30,7 @@ struct Uniforms {
     curve_points: array<vec4<f32>, 12>,
     accent: vec4<f32>,
     float_masked: f32,
+    pixel_grid: f32,
     brush_ring: vec4<f32>,
     crop: vec4<f32>,
     marquee: vec4<f32>,
@@ -352,6 +353,19 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             let texel = textureSampleLevel(float_tex, canvas_sampler, float_texel(uv), 0.0);
             colour = mix(colour, texel.rgb, texel.a * u.float_opacity);
         }
+    }
+
+    if (u.pixel_grid > 0.5 && inside <= 0.0 && u.show_canvas > 0.5) {
+        let pitch = u.canvas_size / u.texture_size;
+        let cell = fract((local - u.canvas_pos) / pitch);
+        let distance = min(cell, vec2<f32>(1.0) - cell) * pitch;
+        let coverage = clamp(1.0 - min(distance.x, distance.y), 0.0, 1.0);
+        let luminance = dot(colour, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let ink = select(vec3<f32>(1.0), vec3<f32>(0.0), luminance > 0.5);
+        colour = mix(colour, ink, coverage * 0.4);
+    }
+
+    if (u.float_present > 0.5) {
         if (u.float_masked > 0.5) {
             colour = mask_ants(colour, local);
         } else {

@@ -7,6 +7,12 @@ The canvas texture is keyed by document version. A dirty rectangle may be upload
 describes every change since the version already on the GPU; the first frame, a skipped version, or a
 shape change requires a full upload. This invariant keeps brush strokes on large images inexpensive.
 
+The optional pixel grid is a shader overlay toggled from the zoom toolbar. Its spacing follows canvas
+pixels, its line width follows physical screen pixels, and it draws below editing handles. The
+toggle is a saved viewing preference; it never changes document pixels or history. Automatic mode
+sets visibility at 800% and above when zoom changes. A manual toggle lasts until the next zoom
+change; disabling automatic mode leaves the current visibility alone.
+
 The Rust uniform struct and `src/gpu/shaders/viewport.wgsl` must agree on every field offset, not just
 total size. The pipeline tests intentionally verify both. Floating previews render at canvas
 resolution so zoomed pixels and the object about to be committed match.
