@@ -312,7 +312,7 @@ impl App {
 
     pub(super) fn carry_on(&mut self, pending: Pending) -> Task<Message> {
         match pending {
-            Pending::Close => iced::window::latest().and_then(iced::window::close),
+            Pending::Close => iced::exit(),
             Pending::Tab => self.close_tab(),
         }
     }

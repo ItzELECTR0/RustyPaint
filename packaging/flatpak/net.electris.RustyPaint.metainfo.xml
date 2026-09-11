@@ -95,6 +95,17 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.2.3" date="2026-09-11">
+      <url type="details">https://github.com/ItzELECTR0/RustyPaint/releases/tag/v0.2.3</url>
+      <description>
+        <ul>
+          <li>Resize pictures with nearest-neighbour scaling for crisp pixel art</li>
+          <li>Show a pixel grid when the canvas is zoomed in</li>
+          <li>Snap rotations and show the angle while turning floating objects</li>
+          <li>Give each brush its own settings, including a tunable eraser edge</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.2" date="2026-09-02">
       <url type="details">https://github.com/ItzELECTR0/RustyPaint/releases/tag/v0.2.2</url>
       <description>
