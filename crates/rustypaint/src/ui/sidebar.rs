@@ -917,6 +917,26 @@ fn canvas_panel<'a>(
             .label(i18n::resize_image_with_canvas())
             .text_size(13)
             .on_toggle(Message::ResizeImageToggled),
+        if state.resize_image {
+            column![
+                text(i18n::resampling()).size(13),
+                iced::widget::pick_list(
+                    [
+                        crate::doc::transform::Resampling::Smooth,
+                        crate::doc::transform::Resampling::Nearest
+                    ],
+                    Some(state.resampling),
+                    Message::ResamplingPicked,
+                )
+                .style(controls::pick_list_style)
+                .menu_style(controls::menu_style)
+                .text_size(13)
+                .width(Length::Fill),
+            ]
+            .spacing(6)
+        } else {
+            column![]
+        },
         row![
             button(text(i18n::unit_pixels()).size(12))
                 .style(|_theme, status| action_style(status))

@@ -53,6 +53,7 @@ pub struct CanvasPanel {
     pub height: String,
     pub lock_aspect: bool,
     pub resize_image: bool,
+    pub resampling: crate::doc::transform::Resampling,
     pub percent: bool,
     pub show_canvas: bool,
 }
@@ -64,6 +65,7 @@ impl CanvasPanel {
             height: size.1.to_string(),
             lock_aspect: true,
             resize_image: false,
+            resampling: crate::doc::transform::Resampling::default(),
             percent: false,
             show_canvas: true,
         }
@@ -429,6 +431,7 @@ pub enum Message {
     ShowCanvasToggled(bool),
     LockAspectToggled(bool),
     ResizeImageToggled(bool),
+    ResamplingPicked(crate::doc::transform::Resampling),
     CanvasWidthEdited(String),
     CanvasHeightEdited(String),
     CanvasUnitPicked(bool),

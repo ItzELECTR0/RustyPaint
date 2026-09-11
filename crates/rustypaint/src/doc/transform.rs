@@ -1,6 +1,22 @@
 use super::Rect;
 use super::image::{CHANNELS, Rgba8};
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Resampling {
+    #[default]
+    Smooth,
+    Nearest,
+}
+
+impl std::fmt::Display for Resampling {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Smooth => crate::i18n::resampling_smooth(),
+            Self::Nearest => crate::i18n::resampling_nearest(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Anchor {
     TopLeft,
@@ -85,38 +101,44 @@ pub fn crop(src: &Rgba8, rect: Rect) -> Rgba8 {
     )
 }
 
-pub fn scale(src: &Rgba8, width: u32, height: u32) -> Rgba8 {
+pub fn scale(src: &Rgba8, width: u32, height: u32, resampling: Resampling) -> Rgba8 {
     let (width, height) = (width.max(1), height.max(1));
     if (width, height) == src.size() {
         return src.clone();
     }
-    // Resampling non-premultiplied pixels averages the colour of invisible neighbours into visible
-    // edges, so weight every channel by its alpha first and divide it back out afterwards.
-    let mut premultiplied = src.as_bytes().to_vec();
-    for px in premultiplied.as_chunks_mut::<CHANNELS>().0 {
-        let a = px[3] as u32;
-        for c in &mut px[..3] {
-            *c = ((*c as u32 * a + 127) / 255) as u8;
+    let mut pixels = src.as_bytes().to_vec();
+    // Smooth filtering needs premultiplied alpha; nearest must preserve exact RGBA values.
+    if resampling == Resampling::Smooth {
+        for px in pixels.as_chunks_mut::<CHANNELS>().0 {
+            let a = px[3] as u32;
+            for c in &mut px[..3] {
+                *c = ((*c as u32 * a + 127) / 255) as u8;
+            }
         }
     }
 
-    let buffer = image::RgbaImage::from_raw(src.width(), src.height(), premultiplied)
+    let buffer = image::RgbaImage::from_raw(src.width(), src.height(), pixels)
         .expect("buffer size always matches its dimensions");
     let mut scaled = image::imageops::resize(
         &buffer,
         width,
         height,
-        image::imageops::FilterType::Triangle,
+        match resampling {
+            Resampling::Smooth => image::imageops::FilterType::Triangle,
+            Resampling::Nearest => image::imageops::FilterType::Nearest,
+        },
     )
     .into_raw();
 
-    for px in scaled.as_chunks_mut::<CHANNELS>().0 {
-        let a = px[3] as u32;
-        if a == 0 {
-            continue;
-        }
-        for c in &mut px[..3] {
-            *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
+    if resampling == Resampling::Smooth {
+        for px in scaled.as_chunks_mut::<CHANNELS>().0 {
+            let a = px[3] as u32;
+            if a == 0 {
+                continue;
+            }
+            for c in &mut px[..3] {
+                *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
+            }
         }
     }
     Rgba8::from_raw(width, height, scaled).expect("resize produces a matching buffer")
@@ -298,7 +320,7 @@ mod tests {
     fn scaling_keeps_transparent_neighbours_out_of_visible_edges() {
         let mut src = Rgba8::new(2, 1, RED);
         src.pixels_mut()[CHANNELS..].copy_from_slice(&CLEAR);
-        let out = scale(&src, 101, 1);
+        let out = scale(&src, 101, 1, Resampling::Smooth);
 
         let edges = out.as_bytes().as_chunks::<CHANNELS>().0;
         let mixed = edges.iter().filter(|px| (128..255).contains(&px[3]));
@@ -317,7 +339,7 @@ mod tests {
     #[test]
     fn scaling_changes_size_and_keeps_a_flat_colour_flat() {
         let src = Rgba8::new(4, 4, RED);
-        let out = scale(&src, 9, 7);
+        let out = scale(&src, 9, 7, Resampling::Smooth);
         assert_eq!(out.size(), (9, 7));
         assert!(
             out.as_bytes()
@@ -327,5 +349,24 @@ mod tests {
                 .all(|p| *p == RED),
             "resampling a flat colour should not invent new ones"
         );
+    }
+
+    #[test]
+    fn nearest_scaling_keeps_each_pixel_as_an_exact_block() {
+        let src = Rgba8::from_raw(
+            2,
+            2,
+            [
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255,
+            ]
+            .to_vec(),
+        )
+        .unwrap();
+        let out = scale(&src, 4, 4, Resampling::Nearest);
+        let pixels = out.as_bytes().as_chunks::<CHANNELS>().0;
+        for (index, pixel) in pixels.iter().enumerate() {
+            let source = ((index / 4) / 2) * 2 + (index % 4) / 2;
+            assert_eq!(*pixel, src.as_bytes().as_chunks::<CHANNELS>().0[source]);
+        }
     }
 }

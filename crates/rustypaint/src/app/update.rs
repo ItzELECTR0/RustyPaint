@@ -640,6 +640,7 @@ impl App {
             Message::ShowCanvasToggled(on) => self.panel.show_canvas = on,
             Message::LockAspectToggled(on) => self.panel.lock_aspect = on,
             Message::ResizeImageToggled(on) => self.panel.resize_image = on,
+            Message::ResamplingPicked(resampling) => self.panel.resampling = resampling,
             Message::CanvasUnitPicked(percent) => {
                 self.panel.percent = percent;
                 self.panel.sync(self.doc.size());
@@ -804,7 +805,7 @@ impl App {
             Message::CanvasResizeSubmitted => {
                 if let Some((w, h)) = self.panel.target(self.doc.size()) {
                     if self.panel.resize_image {
-                        self.doc.resize_image(w, h);
+                        self.doc.resize_image(w, h, self.panel.resampling);
                     } else {
                         self.doc.resize_canvas(w, h, Anchor::Centre);
                     }

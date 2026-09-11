@@ -261,6 +261,7 @@ impl Sticker {
             &pixels,
             ((w as f32 * fit).round() as u32).max(1),
             ((h as f32 * fit).round() as u32).max(1),
+            doc::transform::Resampling::Smooth,
         );
         let (tw, th) = small.size();
         let thumb = iced::widget::image::Handle::from_rgba(tw, th, small.as_bytes().to_vec());

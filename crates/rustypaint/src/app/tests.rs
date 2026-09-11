@@ -3998,6 +3998,33 @@ fn resize_image_with_canvas_scales_instead() {
 }
 
 #[test]
+fn resize_image_can_use_nearest_neighbour_for_pixel_art() {
+    let mut app = app(2, 2);
+    let source = crate::doc::Rgba8::from_raw(
+        2,
+        2,
+        [
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255,
+        ]
+        .to_vec(),
+    )
+    .unwrap();
+    app.doc = Document::from_image(source.clone(), None);
+    send(&mut app, Message::ResizeImageToggled(true));
+    send(
+        &mut app,
+        Message::ResamplingPicked(crate::doc::transform::Resampling::Nearest),
+    );
+    resize_to(&mut app, "4", "4");
+    assert_eq!(
+        app.doc.pixels().as_bytes(),
+        crate::doc::transform::scale(&source, 4, 4, crate::doc::transform::Resampling::Nearest)
+            .as_bytes()
+    );
+    assert!(app.doc.modified());
+}
+
+#[test]
 fn locking_the_aspect_ratio_fills_in_the_other_field() {
     let mut app = app(200, 100);
     assert!(app.panel.lock_aspect, "on by default, as in Paint 3D");

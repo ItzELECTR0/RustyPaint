@@ -174,11 +174,11 @@ impl Document {
         self.reshape("Resize canvas", out, self.transparent);
     }
 
-    pub fn resize_image(&mut self, width: u32, height: u32) {
+    pub fn resize_image(&mut self, width: u32, height: u32, resampling: transform::Resampling) {
         if width == 0 || height == 0 {
             return;
         }
-        let out = transform::scale(&self.pixels, width, height);
+        let out = transform::scale(&self.pixels, width, height, resampling);
         self.reshape("Resize image", out, self.transparent);
     }
 
