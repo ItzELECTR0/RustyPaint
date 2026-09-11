@@ -1966,7 +1966,9 @@ fn shift_snaps_drawing_direction_without_losing_the_pointer() {
             app.doc
                 .pixels()
                 .as_bytes()
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|p| p[3] != 0)
         );
         send(&mut app, Message::Undo);
@@ -1974,7 +1976,9 @@ fn shift_snaps_drawing_direction_without_losing_the_pointer() {
             app.doc
                 .pixels()
                 .as_bytes()
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .all(|p| p[3] == 0)
         );
     }
