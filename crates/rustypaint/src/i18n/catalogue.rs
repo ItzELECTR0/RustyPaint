@@ -118,6 +118,7 @@ catalogue! {
 
         // Side panel tabs
         tab_brushes => "tab-brushes",
+        tab_symmetry => "tab-symmetry",
         tab_shapes => "tab-shapes",
         tab_stickers => "tab-stickers",
         tab_text => "tab-text",
@@ -141,6 +142,11 @@ catalogue! {
         thickness => "thickness",
         hardness => "hardness",
         antialiasing => "antialiasing",
+        symmetry => "symmetry",
+        symmetry_hint => "symmetry-hint",
+        symmetry_axes => "symmetry-axes",
+        mirror_horizontal => "mirror-horizontal",
+        mirror_vertical => "mirror-vertical",
         tolerance => "tolerance",
         opacity => "opacity",
         sticker_opacity => "sticker-opacity",

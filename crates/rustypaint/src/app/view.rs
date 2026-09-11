@@ -818,6 +818,7 @@ impl App {
                     (None, None) => sidebar::panel(
                         self.tab,
                         &self.brush,
+                        self.mirror,
                         self.typed_field(),
                         &self.panel,
                         self.resize_preview.unwrap_or(self.doc.size()),
@@ -1055,8 +1056,9 @@ impl App {
             brush: if self.refining() {
                 Some(CuttingOut::BRUSH * 2.0 / self.view.zoom.max(0.01))
             } else {
-                (self.tab == Tab::Brushes && self.brush.tool.profile().is_some())
-                    .then_some(self.brush.thickness())
+                (matches!(self.tab, Tab::Brushes | Tab::Symmetry)
+                    && self.brush.tool.profile().is_some())
+                .then_some(self.brush.thickness())
             },
         })
         .width(Length::Fill)

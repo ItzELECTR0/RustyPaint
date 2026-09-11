@@ -115,6 +115,7 @@ about-source = Codul sursă pe GitHub
 ## Side panel tabs
 
 tab-brushes = Pensule
+tab-symmetry = Simetrie
 tab-shapes = Forme
 tab-stickers = Stickere
 tab-text = Text
@@ -140,6 +141,11 @@ tool-shape = Formă
 thickness = Grosime
 hardness = Duritate
 antialiasing = Anti-aliasing
+symmetry = Simetrie
+symmetry-hint = Repetă tușele de pensulă în jurul centrului pânzei.
+symmetry-axes = Axe de oglindire
+mirror-horizontal = Oglindire orizontală
+mirror-vertical = Oglindire verticală
 tolerance = Toleranță
 opacity = Opacitate
 sticker-opacity = Opacitate sticker

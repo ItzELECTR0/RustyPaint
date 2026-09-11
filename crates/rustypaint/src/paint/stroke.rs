@@ -4,8 +4,15 @@ use crate::doc::{Document, Rgba8, image::CHANNELS};
 
 const DOTS_PER_PUFF: usize = 12;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Mirror {
+    pub horizontal: bool,
+    pub vertical: bool,
+}
+
 pub struct Stroke {
     brush: Brush,
+    mirror: Mirror,
     backup: Rgba8,
     coverage: Vec<u8>,
     size: (u32, u32),
@@ -17,10 +24,11 @@ pub struct Stroke {
 }
 
 impl Stroke {
-    pub fn begin(brush: Brush, doc: &Document, x: f32, y: f32) -> Self {
+    pub fn begin_with_mirror(brush: Brush, doc: &Document, x: f32, y: f32, mirror: Mirror) -> Self {
         let size = doc.size();
         let mut stroke = Self {
             brush,
+            mirror,
             backup: doc.pixels().clone(),
             coverage: vec![0; size.0 as usize * size.1 as usize],
             size,
@@ -65,6 +73,28 @@ impl Stroke {
         };
         self.last = Some((x, y));
 
+        let mirrored_x = self.mirror.horizontal.then_some(self.size.0 as f32 - x);
+        let mirrored_y = self.mirror.vertical.then_some(self.size.1 as f32 - y);
+        let candidates = [
+            (x, y),
+            (mirrored_x.unwrap_or(x), y),
+            (x, mirrored_y.unwrap_or(y)),
+            (mirrored_x.unwrap_or(x), mirrored_y.unwrap_or(y)),
+        ];
+        let mut points = [(0.0, 0.0); 4];
+        let mut count = 0;
+        for point in candidates {
+            if !points[..count].contains(&point) {
+                points[count] = point;
+                count += 1;
+            }
+        }
+        for point in points.into_iter().take(count) {
+            self.stamp_at(point.0, point.1);
+        }
+    }
+
+    fn stamp_at(&mut self, x: f32, y: f32) {
         let radius = self.brush.stamp_radius() + 1.0;
         let Some(box_) = Rect::around(x, y, radius, self.size.0, self.size.1) else {
             return;
@@ -212,16 +242,39 @@ mod tests {
     #[test]
     fn a_stamp_lands_where_it_was_put() {
         let mut d = doc(false);
-        let mut s = Stroke::begin(red(), &d, 8.5, 4.5);
+        let mut s = Stroke::begin_with_mirror(red(), &d, 8.5, 4.5, Mirror::default());
         s.flush(&mut d);
         assert_eq!(at(&d, 8, 4), [255, 0, 0, 255]);
         assert_eq!(at(&d, 0, 0), [0, 0, 0, 0], "elsewhere is still empty");
     }
 
     #[test]
+    fn mirror_axes_repeat_a_stamp_without_changing_its_undo_shape() {
+        let mut d = doc(false);
+        let mut s = Stroke::begin_with_mirror(
+            red(),
+            &d,
+            3.5,
+            4.5,
+            Mirror {
+                horizontal: true,
+                vertical: true,
+            },
+        );
+        s.flush(&mut d);
+
+        for (x, y) in [(3, 4), (12, 4), (3, 11), (12, 11)] {
+            assert_eq!(at(&d, x, y), [255, 0, 0, 255], "missing mirrored pixel");
+        }
+        assert_eq!(at(&d, 4, 4), [0, 0, 0, 0]);
+        assert_eq!(s.touched().unwrap().width(), 10);
+        assert_eq!(s.touched().unwrap().height(), 8);
+    }
+
+    #[test]
     fn a_dragged_stroke_leaves_no_gaps() {
         let mut d = doc(false);
-        let mut s = Stroke::begin(red(), &d, 1.5, 8.5);
+        let mut s = Stroke::begin_with_mirror(red(), &d, 1.5, 8.5, Mirror::default());
         s.extend(14.5, 8.5);
         s.flush(&mut d);
         for x in 1..=14 {
@@ -234,7 +287,7 @@ mod tests {
         let mut d = doc(false);
         let mut half = red();
         half.set_opacity(0.5);
-        let mut s = Stroke::begin(half, &d, 8.5, 8.5);
+        let mut s = Stroke::begin_with_mirror(half, &d, 8.5, 8.5, Mirror::default());
         for _ in 0..12 {
             s.extend(8.5, 8.5);
             s.extend(8.6, 8.5);
@@ -243,7 +296,7 @@ mod tests {
 
         let once = {
             let mut d2 = doc(false);
-            let mut s2 = Stroke::begin(half, &d2, 8.5, 8.5);
+            let mut s2 = Stroke::begin_with_mirror(half, &d2, 8.5, 8.5, Mirror::default());
             s2.flush(&mut d2);
             at(&d2, 8, 8)
         };
@@ -253,7 +306,7 @@ mod tests {
     #[test]
     fn the_eraser_clears_alpha_on_a_transparent_canvas() {
         let mut d = doc(true);
-        let mut paint = Stroke::begin(red(), &d, 8.5, 8.5);
+        let mut paint = Stroke::begin_with_mirror(red(), &d, 8.5, 8.5, Mirror::default());
         paint.flush(&mut d);
         assert_eq!(at(&d, 8, 8)[3], 255);
 
@@ -262,7 +315,7 @@ mod tests {
             ..red()
         };
         rubber.set_thickness(4.0);
-        let mut s = Stroke::begin(rubber, &d, 8.5, 8.5);
+        let mut s = Stroke::begin_with_mirror(rubber, &d, 8.5, 8.5, Mirror::default());
         s.flush(&mut d);
         assert_eq!(at(&d, 8, 8)[3], 0, "pixel should be fully transparent");
     }
@@ -270,7 +323,7 @@ mod tests {
     #[test]
     fn the_eraser_never_paints_white_it_only_removes() {
         let mut d = doc(false);
-        let mut paint = Stroke::begin(red(), &d, 8.5, 8.5);
+        let mut paint = Stroke::begin_with_mirror(red(), &d, 8.5, 8.5, Mirror::default());
         paint.flush(&mut d);
 
         let mut rubber = Brush {
@@ -278,7 +331,7 @@ mod tests {
             ..red()
         };
         rubber.set_thickness(4.0);
-        let mut s = Stroke::begin(rubber, &d, 8.5, 8.5);
+        let mut s = Stroke::begin_with_mirror(rubber, &d, 8.5, 8.5, Mirror::default());
         s.flush(&mut d);
         assert_eq!(
             at(&d, 8, 8),
@@ -299,7 +352,7 @@ mod tests {
             ..Default::default()
         };
         ink.set_thickness(100.0);
-        let mut paint = Stroke::begin(ink, &d, 8.0, 8.0);
+        let mut paint = Stroke::begin_with_mirror(ink, &d, 8.0, 8.0, Mirror::default());
         paint.flush(&mut d);
 
         let mut rubber = Brush {
@@ -309,7 +362,7 @@ mod tests {
         rubber.set_thickness(12.0);
         rubber.set_antialiased(true);
         rubber.set_hardness(0.0);
-        let mut s = Stroke::begin(rubber, &d, 8.0, 8.0);
+        let mut s = Stroke::begin_with_mirror(rubber, &d, 8.0, 8.0, Mirror::default());
         s.flush(&mut d);
 
         let alpha: Vec<u8> = (8..14).map(|x| at(&d, x, 8)[3]).collect();
@@ -327,7 +380,7 @@ mod tests {
     #[test]
     fn only_the_touched_region_is_reported() {
         let mut d = doc(false);
-        let mut s = Stroke::begin(red(), &d, 8.5, 8.5);
+        let mut s = Stroke::begin_with_mirror(red(), &d, 8.5, 8.5, Mirror::default());
         s.flush(&mut d);
         let touched = s.touched().unwrap();
         assert!(

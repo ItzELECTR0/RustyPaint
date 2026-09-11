@@ -5,4 +5,4 @@ pub mod shapes;
 pub mod stroke;
 
 pub use brush::{Brush, Tool};
-pub use stroke::Stroke;
+pub use stroke::{Mirror, Stroke};

@@ -4,7 +4,7 @@ use crate::doc::clipboard::Clip;
 use crate::doc::{self, Document, Rect, Rgba8, Version};
 use crate::gpu::{self, View};
 use crate::i18n::Language;
-use crate::paint::{Brush, Stroke, Tool, curve, shapes};
+use crate::paint::{Brush, Mirror, Stroke, Tool, curve, shapes};
 use crate::select::{self, Floating, Lasso};
 use crate::text::{Align, TextStyle};
 use crate::ui::menu::Page as MenuPage;
@@ -36,6 +36,7 @@ mod tests;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Brushes,
+    Symmetry,
     Shapes,
     Stickers,
     Text,
@@ -246,6 +247,7 @@ pub struct App {
     status: String,
     tab: Tab,
     brush: Brush,
+    mirror: Mirror,
     pipette_return: Option<Tool>,
     typed: Option<Typed>,
     panel: CanvasPanel,
@@ -420,6 +422,8 @@ pub enum Message {
     ThicknessChanged(f32),
     HardnessChanged(f32),
     AntialiasingToggled(bool),
+    MirrorHorizontalToggled(bool),
+    MirrorVerticalToggled(bool),
     OpacityChanged(f32),
     ToleranceChanged(f32),
     FieldTyped(Field, String),
@@ -574,6 +578,7 @@ impl App {
             status: complaint.unwrap_or_default(),
             tab: Tab::Brushes,
             brush: Brush::default(),
+            mirror: Mirror::default(),
             pipette_return: None,
             typed: None,
             panel: CanvasPanel::new((start_w, start_h)),

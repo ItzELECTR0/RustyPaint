@@ -422,7 +422,7 @@ impl App {
         }
 
         self.commit_floating();
-        if self.tab == Tab::Brushes {
+        if matches!(self.tab, Tab::Brushes | Tab::Symmetry) {
             self.stashed_tool = self.brush.tool;
         }
         self.tab = Tab::Text;

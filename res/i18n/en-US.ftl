@@ -115,6 +115,7 @@ about-source = Source on GitHub
 ## Side panel tabs
 
 tab-brushes = Brushes
+tab-symmetry = Symmetry
 tab-shapes = 2D shapes
 tab-stickers = Stickers
 tab-text = Text
@@ -140,6 +141,11 @@ tool-shape = Shape
 thickness = Thickness
 hardness = Hardness
 antialiasing = Anti-aliasing
+symmetry = Symmetry
+symmetry-hint = Repeat brush strokes across the canvas centre.
+symmetry-axes = Mirror axes
+mirror-horizontal = Mirror horizontally
+mirror-vertical = Mirror vertically
 tolerance = Tolerance
 opacity = Opacity
 sticker-opacity = Sticker opacity

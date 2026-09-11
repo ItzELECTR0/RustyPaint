@@ -2,7 +2,7 @@ use crate::app::{CanvasPanel, Drawing, Field, Message, Tab};
 use crate::i18n;
 use crate::paint::curve::{self, CurveKind};
 use crate::paint::shapes::{self, ShapeKind, ShapeStyle};
-use crate::paint::{Brush, Tool, brush};
+use crate::paint::{Brush, Mirror, Tool, brush};
 use crate::text::{Align, TextStyle};
 use crate::ui::controls;
 use crate::ui::icons::{self, icon};
@@ -14,8 +14,9 @@ use iced::widget::{
 use iced::{Color, Element, Length};
 
 // The label is a catalogue key, resolved where the strip is drawn.
-pub const TABS: [(&str, &[u8], Option<Tab>); 5] = [
+pub const TABS: [(&str, &[u8], Option<Tab>); 6] = [
     ("tab-brushes", icons::BRUSHES, Some(Tab::Brushes)),
+    ("tab-symmetry", icons::SYMMETRY, Some(Tab::Symmetry)),
     ("tab-shapes", icons::SHAPES_2D, Some(Tab::Shapes)),
     ("tab-stickers", icons::STICKERS, Some(Tab::Stickers)),
     ("tab-text", icons::TEXT, Some(Tab::Text)),
@@ -29,6 +30,7 @@ pub const TABS: [(&str, &[u8], Option<Tab>); 5] = [
 pub fn panel<'a>(
     tab: Tab,
     brush: &Brush,
+    mirror: Mirror,
     typed: Option<(Field, &'a str)>,
     canvas: &CanvasPanel,
     size: (u32, u32),
@@ -47,6 +49,7 @@ pub fn panel<'a>(
 
     let body = match tab {
         Tab::Brushes => brushes(brush, typed, custom, custom_menu),
+        Tab::Symmetry => symmetry_panel(mirror),
         Tab::Shapes => shapes_panel(
             drawing,
             style,
@@ -629,6 +632,28 @@ fn brushes<'a>(
         .push(current_colour(brush))
         .push(swatches(brush.colour, custom, custom_menu))
         .into()
+}
+
+fn symmetry_panel<'a>(mirror: Mirror) -> Element<'a, Message> {
+    column![
+        heading(i18n::symmetry()),
+        text(i18n::symmetry_hint())
+            .size(13)
+            .color(theme::colours().text_dim),
+        section(i18n::symmetry_axes()),
+        checkbox(mirror.horizontal)
+            .style(controls::checkbox_style)
+            .label(i18n::mirror_horizontal())
+            .text_size(13)
+            .on_toggle(Message::MirrorHorizontalToggled),
+        checkbox(mirror.vertical)
+            .style(controls::checkbox_style)
+            .label(i18n::mirror_vertical())
+            .text_size(13)
+            .on_toggle(Message::MirrorVerticalToggled),
+    ]
+    .spacing(6)
+    .into()
 }
 
 fn field_row<'a>(

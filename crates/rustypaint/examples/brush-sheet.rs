@@ -15,7 +15,7 @@ mod paint;
 
 use doc::Document;
 use paint::brush::{MAX_THICKNESS, PANEL_ORDER};
-use paint::{Brush, Stroke, Tool};
+use paint::{Brush, Mirror, Stroke, Tool};
 
 const ROW: u32 = 92;
 const WIDTH: u32 = 620;
@@ -43,7 +43,7 @@ fn main() {
         };
         band.set_thickness(MAX_THICKNESS);
         let y = ROW as f32 * (row as f32 + 0.5);
-        let mut stroke = Stroke::begin(band, &doc, 0.0, y);
+        let mut stroke = Stroke::begin_with_mirror(band, &doc, 0.0, y, Mirror::default());
         stroke.extend(WIDTH as f32, y);
         stroke.flush(&mut doc);
     }
@@ -57,7 +57,7 @@ fn main() {
         };
         brush.set_thickness(if tool == Tool::PixelPen { 3.0 } else { 34.0 });
 
-        let mut stroke = Stroke::begin(brush, &doc, MARGIN, y);
+        let mut stroke = Stroke::begin_with_mirror(brush, &doc, MARGIN, y, Mirror::default());
         for step in 0..=220 {
             let t = step as f32 / 220.0;
             let x = MARGIN + t * (WIDTH as f32 - MARGIN * 2.0);

@@ -430,7 +430,13 @@ impl App {
             Tool::Fill => self.bucket(x, y),
             Tool::Pipette => self.eyedropper(x, y),
             _ => {
-                self.stroke = Some(Stroke::begin(self.brush, &self.doc, x, y));
+                self.stroke = Some(Stroke::begin_with_mirror(
+                    self.brush,
+                    &self.doc,
+                    x,
+                    y,
+                    self.mirror,
+                ));
                 self.flush_stroke();
             }
         }

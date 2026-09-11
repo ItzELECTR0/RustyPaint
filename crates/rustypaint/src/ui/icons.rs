@@ -24,6 +24,7 @@ pub const FIT: &[u8] = ui_icon!("fit");
 pub const PIXEL_GRID: &[u8] = ui_icon!("pixel-grid");
 
 pub const BRUSHES: &[u8] = ui_icon!("brushes");
+pub const SYMMETRY: &[u8] = ui_icon!("symmetry");
 pub const SHAPES_2D: &[u8] = ui_icon!("shapes");
 pub const STICKERS: &[u8] = ui_icon!("stickers");
 pub const TEXT: &[u8] = ui_icon!("text");

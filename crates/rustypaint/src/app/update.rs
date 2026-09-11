@@ -293,11 +293,13 @@ impl App {
             }
 
             Message::TabPicked(tab) => {
-                if tab != Tab::Brushes && self.tab == Tab::Brushes {
+                let brush_tab = matches!(self.tab, Tab::Brushes | Tab::Symmetry);
+                let leaving_brush_tabs = !matches!(tab, Tab::Brushes | Tab::Symmetry);
+                if leaving_brush_tabs && brush_tab {
                     self.stashed_tool = self.brush.tool;
                 }
                 self.brush.tool = match tab {
-                    Tab::Brushes => self.stashed_tool,
+                    Tab::Brushes | Tab::Symmetry => self.stashed_tool,
                     Tab::Shapes => Tool::Shape,
                     Tab::Text => Tool::Text,
                     Tab::Stickers | Tab::Canvas => Tool::Select,
@@ -608,6 +610,8 @@ impl App {
             Message::TextEdited(action) => self.edit_text(action),
             Message::ThicknessChanged(v) => self.brush.set_thickness(v),
             Message::AntialiasingToggled(on) => self.brush.set_antialiased(on),
+            Message::MirrorHorizontalToggled(on) => self.mirror.horizontal = on,
+            Message::MirrorVerticalToggled(on) => self.mirror.vertical = on,
             Message::FieldTyped(field, text) => {
                 let task = match field.parse(&text) {
                     Some(value) => self.dispatch(field.message(value)),

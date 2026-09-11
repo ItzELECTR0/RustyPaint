@@ -59,6 +59,32 @@ fn automatic_pixel_grid_follows_zoom_and_allows_manual_toggling() {
 }
 
 #[test]
+fn brush_mirror_toggles_repeat_the_painted_pixel() {
+    let mut app = app(16, 16);
+    send(&mut app, Message::TabPicked(Tab::Symmetry));
+    send(&mut app, Message::ToolPicked(Tool::PixelPen));
+    app.brush.set_thickness(1.0);
+    send(&mut app, Message::MirrorHorizontalToggled(true));
+    click(&mut app, 3.5, 4.5);
+
+    assert_eq!(pixel(&app, 3, 4), [0, 0, 0, 255]);
+    assert_eq!(pixel(&app, 12, 4), [0, 0, 0, 255]);
+    assert_eq!(
+        pixel(&app, 4, 4),
+        [0, 0, 0, 0],
+        "the pen stays one pixel wide"
+    );
+    assert_eq!(pixel(&app, 3, 11), [0, 0, 0, 0], "vertical mirror is off");
+
+    send(&mut app, Message::MirrorHorizontalToggled(false));
+    send(&mut app, Message::MirrorVerticalToggled(true));
+    click(&mut app, 3.5, 4.5);
+    assert_eq!(pixel(&app, 3, 11), [0, 0, 0, 255]);
+    assert!(app.mirror.vertical);
+    assert!(!app.mirror.horizontal);
+}
+
+#[test]
 fn secondary_tools_cancel_the_previous_frame_mode() {
     let pick = |tool| match tool {
         0 => Message::FreeformToggled(false),
@@ -1054,6 +1080,13 @@ fn each_tab_puts_its_own_tool_in_your_hand() {
         app.brush.tool,
         Tool::Marker,
         "and the brush back on the way home"
+    );
+
+    send(&mut app, Message::TabPicked(Tab::Symmetry));
+    assert_eq!(
+        app.brush.tool,
+        Tool::Marker,
+        "symmetry keeps the brush in hand"
     );
 }
 
@@ -3947,7 +3980,7 @@ fn ink(floating: &Floating) -> usize {
 fn every_tab_in_the_strip_either_opens_a_panel_or_is_inert() {
     let tabs = crate::ui::sidebar::TABS;
     let built: Vec<_> = tabs.iter().filter(|(_, _, t)| t.is_some()).collect();
-    assert_eq!(tabs.len(), 5);
+    assert_eq!(tabs.len(), 6);
     assert_eq!(
         built.len(),
         tabs.len(),
