@@ -191,6 +191,12 @@ is driven off frames instead, holding still for a moment and then climbing to a 
 the point of the keys is to be followed by eye. A stalled frame is clamped rather than paid back. Viewport-only animation such as marching ants and
 the caret stays out of the application update loop unless application state actually changes.
 
+The live object's box is also four numbers. The side panel carries position and size below whatever
+panel the open tab shows, rather than inside one of them, because a lifted selection and a sticker
+are placed exactly like a shape and only the shape has a panel of its own. A typed width refits the
+object from the top-left corner it already has, since a box that was never dragged has no grip to
+anchor to.
+
 ## Dropped files and the clipboard
 
 A dropped image floats over the canvas like a pasted one rather than replacing the document. Paste

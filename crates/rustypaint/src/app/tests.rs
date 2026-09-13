@@ -1927,6 +1927,35 @@ fn opacity_reaches_the_canvas_and_not_only_the_preview() {
 }
 
 #[test]
+fn a_typed_box_puts_the_live_object_exactly_where_it_says() {
+    let mut app = app(200, 200);
+    send(&mut app, Message::TabPicked(Tab::Shapes));
+    send(&mut app, Message::ShapePicked(shapes::ShapeKind::Rectangle));
+    drag_shape(&mut app, (20.0, 20.0), (80.0, 60.0));
+
+    send(&mut app, Message::FloatSideChanged(Side::X, 100.0));
+    send(&mut app, Message::FloatSideChanged(Side::Y, 110.0));
+    send(&mut app, Message::FloatSideChanged(Side::Width, 32.0));
+    send(&mut app, Message::FloatSideChanged(Side::Height, 16.0));
+
+    let placement = app.live_placement().expect("the box should be reported");
+    assert_eq!(
+        (placement.x, placement.y, placement.width, placement.height),
+        (100.0, 110.0, 32.0, 16.0)
+    );
+}
+
+#[test]
+fn a_typed_box_is_read_in_pixels_and_cannot_be_shrunk_to_nothing() {
+    assert_eq!(Field::FloatX.parse("-40px"), Some(-40.0));
+    assert_eq!(Field::FloatWidth.format(32.0), "32px");
+    assert_eq!(
+        Field::FloatHeight.parse("0"),
+        Some(crate::select::xform::MIN_SIDE)
+    );
+}
+
+#[test]
 fn shift_snaps_drawing_direction_without_losing_the_pointer() {
     for kind in [curve::CurveKind::Line, curve::CurveKind::Curve3] {
         let mut app = app(200, 200);

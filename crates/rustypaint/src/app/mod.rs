@@ -161,6 +161,15 @@ struct Typed {
     text: String,
 }
 
+// Which number of a live object's box a field stands for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    X,
+    Y,
+    Width,
+    Height,
+}
+
 // A number the side panel puts in a box as well as on a slider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Field {
@@ -171,6 +180,10 @@ pub enum Field {
     Tolerance,
     ShapeThickness,
     FloatOpacity,
+    FloatX,
+    FloatY,
+    FloatWidth,
+    FloatHeight,
 }
 
 impl Field {
@@ -181,6 +194,10 @@ impl Field {
                 crate::paint::brush::THICKNESS_CEILING,
             ),
             Field::ShapeThickness => (shapes::MIN_THICKNESS, shapes::MAX_THICKNESS),
+            Field::FloatX | Field::FloatY => (-(select::MAX_DRAW as f32), select::MAX_DRAW as f32),
+            Field::FloatWidth | Field::FloatHeight => {
+                (select::xform::MIN_SIDE, select::MAX_DRAW as f32)
+            }
             Field::Hardness
             | Field::Opacity
             | Field::Stabilizer
@@ -190,7 +207,14 @@ impl Field {
     }
 
     fn in_percent(self) -> bool {
-        !matches!(self, Field::Thickness | Field::ShapeThickness)
+        matches!(
+            self,
+            Field::Hardness
+                | Field::Opacity
+                | Field::Stabilizer
+                | Field::Tolerance
+                | Field::FloatOpacity
+        )
     }
 
     pub fn format(self, value: f32) -> String {
@@ -225,6 +249,10 @@ impl Field {
             Field::Tolerance => Message::ToleranceChanged(value),
             Field::ShapeThickness => Message::ShapeThicknessChanged(value),
             Field::FloatOpacity => Message::FloatOpacityChanged(value),
+            Field::FloatX => Message::FloatSideChanged(Side::X, value),
+            Field::FloatY => Message::FloatSideChanged(Side::Y, value),
+            Field::FloatWidth => Message::FloatSideChanged(Side::Width, value),
+            Field::FloatHeight => Message::FloatSideChanged(Side::Height, value),
         }
     }
 }
@@ -242,6 +270,7 @@ impl Message {
                 | Message::ToleranceChanged(_)
                 | Message::ShapeThicknessChanged(_)
                 | Message::FloatOpacityChanged(_)
+                | Message::FloatSideChanged(_, _)
         )
     }
 }
@@ -376,6 +405,7 @@ pub enum Message {
     ShapeLineTypePicked(shapes::Paint),
     ShapeColourTargetPicked(bool),
     FloatOpacityChanged(f32),
+    FloatSideChanged(Side, f32),
     FloatTurned(bool),
     FloatMirrored(bool),
     FreeformToggled(bool),
@@ -879,6 +909,16 @@ impl App {
 
     fn lassoing(&self) -> bool {
         self.freeform && self.brush.tool == Tool::Select
+    }
+
+    fn live_placement(&self) -> Option<sidebar::Placement> {
+        let xform = self.floating.as_ref()?.xform;
+        Some(sidebar::Placement {
+            x: xform.x,
+            y: xform.y,
+            width: xform.width,
+            height: xform.height,
+        })
     }
 
     fn live_drawing(&self) -> Option<sidebar::Live> {

@@ -829,6 +829,7 @@ impl App {
                         metrics::SIDE_PANEL_WIDTH,
                         self.colour_target,
                         self.live_drawing(),
+                        self.live_placement(),
                         &self.config.custom_colours,
                         self.custom_colour_menu,
                         &self.stickers,

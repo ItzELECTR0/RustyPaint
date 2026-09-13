@@ -563,6 +563,30 @@ impl App {
                     self.float_version += 1;
                 }
             }
+            Message::FloatSideChanged(side, value) => {
+                if let Some(floating) = &mut self.floating {
+                    let was = floating.xform;
+                    match side {
+                        Side::X => floating.shift_to(value, was.y),
+                        Side::Y => floating.shift_to(was.x, value),
+                        Side::Width | Side::Height => {
+                            let target = match side {
+                                Side::Width => select::Xform {
+                                    width: value,
+                                    ..was
+                                },
+                                _ => select::Xform {
+                                    height: value,
+                                    ..was
+                                },
+                            };
+                            let points = floating.points().to_vec();
+                            floating.refit(was, target, &points);
+                        }
+                    }
+                    self.float_version += 1;
+                }
+            }
             Message::FloatTurned(clockwise) => {
                 if let Some(floating) = &mut self.floating {
                     floating.turn(clockwise);

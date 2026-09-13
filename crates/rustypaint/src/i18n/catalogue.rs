@@ -151,6 +151,9 @@ catalogue! {
         tolerance => "tolerance",
         opacity => "opacity",
         stabilizer => "stabilizer",
+        position_and_size => "position-and-size",
+        position_x => "position-x",
+        position_y => "position-y",
         sticker_opacity => "sticker-opacity",
 
         // Colours

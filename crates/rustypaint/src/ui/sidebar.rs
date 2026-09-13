@@ -41,6 +41,7 @@ pub fn panel<'a>(
     width: f32,
     colour_target: bool,
     live: Option<Live>,
+    placement: Option<Placement>,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
     history: &'a [crate::app::Sticker],
@@ -62,6 +63,13 @@ pub fn panel<'a>(
         Tab::Stickers => stickers(history),
         Tab::Text => text_panel(text_style, custom, custom_menu),
         Tab::Canvas => canvas_panel(canvas, size, transparent),
+    };
+
+    let body = match placement {
+        Some(placement) => column![body, placement_rows(placement, typed)]
+            .spacing(16)
+            .into(),
+        None => body,
     };
 
     container(body)
@@ -97,6 +105,15 @@ fn shapes_panel<'a>(
         Some(live) => shape_style_panel(style, target, live, typed, custom, custom_menu),
         None => shape_grid(chosen),
     }
+}
+
+// Where the live object sits and how big it is, in canvas pixels.
+#[derive(Debug, Clone, Copy)]
+pub struct Placement {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -680,6 +697,21 @@ fn symmetry_panel<'a>(mirror: Mirror) -> Element<'a, Message> {
             .on_toggle(Message::MirrorVerticalToggled),
     ]
     .spacing(6)
+    .into()
+}
+
+fn placement_rows<'a>(
+    placement: Placement,
+    typed: Option<(Field, &'a str)>,
+) -> Element<'a, Message> {
+    column![
+        section(i18n::position_and_size()),
+        field_row(i18n::position_x(), Field::FloatX, placement.x, typed),
+        field_row(i18n::position_y(), Field::FloatY, placement.y, typed),
+        field_row(i18n::width(), Field::FloatWidth, placement.width, typed),
+        field_row(i18n::height(), Field::FloatHeight, placement.height, typed),
+    ]
+    .spacing(8)
     .into()
 }
 

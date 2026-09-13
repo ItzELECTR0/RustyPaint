@@ -10,7 +10,7 @@ pub struct Xform {
     pub rotation: f32,
 }
 
-const MIN_SIDE: f32 = 2.0;
+pub const MIN_SIDE: f32 = 2.0;
 
 pub fn snap_angle(angle: f32) -> f32 {
     let step = std::f32::consts::PI / 12.0;
