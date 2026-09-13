@@ -160,6 +160,7 @@ catalogue! {
         picker_red => "picker-red",
         picker_green => "picker-green",
         picker_blue => "picker-blue",
+        picker_alpha => "picker-alpha",
         picker_hex => "picker-hex",
         ok => "ok",
         cancel => "cancel",

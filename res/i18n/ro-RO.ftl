@@ -162,6 +162,7 @@ picker-title = Alege o nouă culoare
 picker-red = Roșu
 picker-green = Verde
 picker-blue = Albastru
+picker-alpha = Opacitate
 picker-hex = Hex
 ok = OK
 cancel = Anulează

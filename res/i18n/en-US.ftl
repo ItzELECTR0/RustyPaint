@@ -162,6 +162,7 @@ picker-title = Choose a new color
 picker-red = Red
 picker-green = Green
 picker-blue = Blue
+picker-alpha = Alpha
 picker-hex = Hex
 ok = OK
 cancel = Cancel

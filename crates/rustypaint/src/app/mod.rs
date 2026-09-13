@@ -383,7 +383,7 @@ pub enum Message {
     PickerHuePicked(f32),
     PickerReleased,
     PickerHexEdited(String),
-    PickerRgbEdited(usize, String),
+    PickerChannelEdited(usize, String),
     CustomColourPicked(usize),
     CustomColourMenuOpened(usize),
     CustomColourEditRequested(usize),

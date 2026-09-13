@@ -10,14 +10,17 @@ use std::sync::{LazyLock, Mutex};
 
 pub const FIELD: u16 = 260;
 pub const STRIP: u16 = 32;
+const PREVIEW: u16 = 90;
+const ALPHA: usize = 3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Picker {
     pub hue: f32,
     pub saturation: f32,
     pub value: f32,
+    pub alpha: u8,
     pub typed: Option<String>,
-    channels: [String; 3],
+    channels: [String; 4],
 }
 
 impl Picker {
@@ -27,17 +30,15 @@ impl Picker {
             hue,
             saturation,
             value,
+            alpha: colour[3],
             typed: None,
-            channels: [
-                colour[0].to_string(),
-                colour[1].to_string(),
-                colour[2].to_string(),
-            ],
+            channels: channels_of(colour),
         }
     }
 
     pub fn colour(&self) -> [u8; 4] {
-        from_hsv(self.hue, self.saturation, self.value)
+        let [r, g, b, _] = from_hsv(self.hue, self.saturation, self.value);
+        [r, g, b, self.alpha]
     }
 
     pub fn typed(&mut self, hex: String) {
@@ -46,11 +47,8 @@ impl Picker {
             self.hue = if s > 0.0 { h } else { self.hue };
             self.saturation = s;
             self.value = v;
-            self.channels = [
-                colour[0].to_string(),
-                colour[1].to_string(),
-                colour[2].to_string(),
-            ];
+            self.alpha = colour[3];
+            self.channels = channels_of(colour);
         }
         self.typed = Some(hex);
     }
@@ -61,6 +59,13 @@ impl Picker {
         };
         *typed = value;
         self.typed = None;
+
+        if channel == ALPHA {
+            if let Ok(alpha) = self.channels[ALPHA].parse::<u8>() {
+                self.alpha = alpha;
+            }
+            return;
+        }
 
         let (Ok(red), Ok(green), Ok(blue)) = (
             self.channels[0].parse::<u8>(),
@@ -81,19 +86,25 @@ impl Picker {
 
     pub fn clear_typed(&mut self) {
         self.typed = None;
-        let [r, g, b, _] = self.colour();
-        self.channels = [r.to_string(), g.to_string(), b.to_string()];
+        self.channels = channels_of(self.colour());
     }
 
     pub fn hex(&self) -> String {
         match &self.typed {
             Some(typed) => typed.clone(),
             None => {
-                let [r, g, b, _] = self.colour();
-                format!("#{r:02X}{g:02X}{b:02X}")
+                let [r, g, b, a] = self.colour();
+                match a {
+                    255 => format!("#{r:02X}{g:02X}{b:02X}"),
+                    _ => format!("#{r:02X}{g:02X}{b:02X}{a:02X}"),
+                }
             }
         }
     }
+}
+
+fn channels_of(colour: [u8; 4]) -> [String; 4] {
+    colour.map(|channel| channel.to_string())
 }
 
 pub fn view(picker: &Picker) -> Element<'_, Message> {
@@ -123,24 +134,30 @@ pub fn view(picker: &Picker) -> Element<'_, Message> {
     .on_release(Message::PickerReleased)
     .on_exit(Message::PickerReleased);
 
-    let preview = container(Space::new().width(Length::Fill).height(Length::Fill))
-        .width(Length::Fixed(90.0))
-        .height(Length::Fixed(90.0))
-        .style(move |_theme| container::Style {
-            background: Some(super::sidebar::from_bytes(colour).into()),
-            border: iced::Border {
-                color: theme::colours().border,
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..Default::default()
-        });
+    let preview = iced::widget::stack![
+        image(checkers())
+            .width(PREVIEW as f32)
+            .height(PREVIEW as f32),
+        container(Space::new().width(Length::Fill).height(Length::Fill))
+            .width(Length::Fixed(PREVIEW as f32))
+            .height(Length::Fixed(PREVIEW as f32))
+            .style(move |_theme| container::Style {
+                background: Some(super::sidebar::from_bytes(colour).into()),
+                border: iced::Border {
+                    color: theme::colours().border,
+                    width: 1.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            }),
+    ];
 
     let values = column![
         preview,
         channel_field(picker, i18n::picker_red(), 0),
         channel_field(picker, i18n::picker_green(), 1),
         channel_field(picker, i18n::picker_blue(), 2),
+        channel_field(picker, i18n::picker_alpha(), ALPHA),
         column![
             text(i18n::picker_hex())
                 .size(12)
@@ -155,7 +172,7 @@ pub fn view(picker: &Picker) -> Element<'_, Message> {
         .spacing(3),
     ]
     .spacing(8)
-    .width(Length::Fixed(90.0));
+    .width(Length::Fixed(PREVIEW as f32));
 
     let card = column![
         text(i18n::picker_title())
@@ -215,7 +232,7 @@ fn channel_field<'a>(
         text(label).size(12).color(theme::colours().text),
         text_input("0", picker.channel(channel))
             .style(crate::ui::controls::text_input_style)
-            .on_input(move |value| Message::PickerRgbEdited(channel, value))
+            .on_input(move |value| Message::PickerChannelEdited(channel, value))
             .on_submit(Message::PickerConfirmed)
             .size(13)
             .width(Length::Fill),
@@ -333,6 +350,23 @@ fn square(hue: f32) -> image::Handle {
         .clone()
 }
 
+fn checkers() -> image::Handle {
+    static CHECKERS: LazyLock<image::Handle> = LazyLock::new(|| {
+        const SQUARE: u32 = 9;
+        let side = PREVIEW as u32;
+        let mut pixels = Vec::with_capacity((side * side * 4) as usize);
+        for y in 0..side {
+            for x in 0..side {
+                let light = (x / SQUARE + y / SQUARE).is_multiple_of(2);
+                let shade = if light { 0xCC } else { 0x99 };
+                pixels.extend_from_slice(&[shade, shade, shade, 255]);
+            }
+        }
+        image::Handle::from_rgba(side, side, pixels)
+    });
+    CHECKERS.clone()
+}
+
 fn hues() -> image::Handle {
     static HUES: LazyLock<image::Handle> = LazyLock::new(|| {
         let (w, h) = (FIELD as u32, STRIP as u32);
@@ -358,7 +392,9 @@ pub fn parse_hex(hex: &str) -> Option<[u8; 4]> {
     };
     match digits.len() {
         3 => Some([byte(0, 1)?, byte(1, 1)?, byte(2, 1)?, 255]),
+        4 => Some([byte(0, 1)?, byte(1, 1)?, byte(2, 1)?, byte(3, 1)?]),
         6 => Some([byte(0, 2)?, byte(2, 2)?, byte(4, 2)?, 255]),
+        8 => Some([byte(0, 2)?, byte(2, 2)?, byte(4, 2)?, byte(6, 2)?]),
         _ => None,
     }
 }
@@ -471,6 +507,45 @@ mod tests {
         picker.typed("#00".into());
         assert_eq!(picker.colour(), blue, "still blue while the rest is typed");
         assert_eq!(picker.hex(), "#00", "and the field shows what was typed");
+    }
+
+    #[test]
+    fn alpha_is_typed_as_a_channel_and_survives_a_hue_change() {
+        let mut picker = Picker::on([255, 0, 0, 255]);
+        picker.typed_channel(ALPHA, "128".into());
+        assert_eq!(picker.colour(), [255, 0, 0, 128]);
+
+        picker.hue = 120.0;
+        picker.clear_typed();
+        assert_eq!(picker.colour(), [0, 255, 0, 128]);
+        assert_eq!(picker.channel(ALPHA), "128");
+    }
+
+    #[test]
+    fn a_half_typed_alpha_leaves_the_colour_where_it_was() {
+        let mut picker = Picker::on([255, 0, 0, 200]);
+        picker.typed_channel(ALPHA, "300".into());
+        assert_eq!(picker.colour(), [255, 0, 0, 200]);
+        assert_eq!(picker.channel(ALPHA), "300");
+    }
+
+    #[test]
+    fn hex_carries_alpha_only_when_there_is_some_to_carry() {
+        assert_eq!(parse_hex("#ff000080"), Some([255, 0, 0, 128]));
+        assert_eq!(parse_hex("#f008"), Some([255, 0, 0, 136]));
+        assert_eq!(parse_hex("#ff0000"), Some([255, 0, 0, 255]));
+        assert_eq!(parse_hex("#ff00008"), None);
+
+        assert_eq!(Picker::on([128, 64, 32, 255]).hex(), "#804020");
+        assert_eq!(Picker::on([128, 64, 32, 128]).hex(), "#80402080");
+    }
+
+    #[test]
+    fn typing_a_hex_without_alpha_is_opaque() {
+        let mut picker = Picker::on([255, 0, 0, 16]);
+        picker.typed("#00ff00".into());
+        assert_eq!(picker.colour(), [0, 255, 0, 255]);
+        assert_eq!(picker.channel(ALPHA), "255");
     }
 
     #[test]

@@ -432,7 +432,7 @@ impl App {
                     picker.typed(hex);
                 }
             }
-            Message::PickerRgbEdited(channel, value) => {
+            Message::PickerChannelEdited(channel, value) => {
                 if let Some(picker) = &mut self.picker {
                     picker.typed_channel(channel, value);
                 }
