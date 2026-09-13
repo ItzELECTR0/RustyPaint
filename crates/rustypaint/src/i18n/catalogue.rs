@@ -142,6 +142,7 @@ catalogue! {
         thickness => "thickness",
         hardness => "hardness",
         antialiasing => "antialiasing",
+        pixel_perfect => "pixel-perfect",
         symmetry => "symmetry",
         symmetry_hint => "symmetry-hint",
         symmetry_axes => "symmetry-axes",

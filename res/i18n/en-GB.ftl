@@ -142,6 +142,7 @@ tool-shape = Shape
 thickness = Thickness
 hardness = Hardness
 antialiasing = Anti-aliasing
+pixel-perfect = Pixel-perfect
 symmetry = Symmetry
 symmetry-hint = Repeat brush strokes across the canvas centre.
 symmetry-axes = Mirror axes

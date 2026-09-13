@@ -21,7 +21,10 @@ pub struct Stroke {
     last: Option<(f32, f32)>,
     residue: f32,
     puffs: u64,
+    trail: (Option<Cell>, Option<Cell>),
 }
+
+type Cell = (i64, i64);
 
 impl Stroke {
     pub fn begin_with_mirror(brush: Brush, doc: &Document, x: f32, y: f32, mirror: Mirror) -> Self {
@@ -37,6 +40,7 @@ impl Stroke {
             last: None,
             residue: 0.0,
             puffs: 0,
+            trail: (None, None),
         };
         stroke.stamp(x, y);
         stroke
@@ -73,6 +77,50 @@ impl Stroke {
         };
         self.last = Some((x, y));
 
+        if !self.brush.drops_corners() {
+            self.stamp_mirrored(x, y);
+            return;
+        }
+
+        let cell = (x.floor() as i64, y.floor() as i64);
+        if self.trail.1 == Some(cell) {
+            return;
+        }
+        self.stamp_mirrored(x, y);
+
+        // A corner is only known once the pixel after it arrives, so it is laid down and taken
+        // back rather than held while the pointer waits somewhere else.
+        if let (Some(before), Some(middle)) = self.trail
+            && corners(before, middle, cell)
+        {
+            self.unstamp(middle);
+            self.trail.1 = Some(cell);
+            return;
+        }
+        self.trail = (self.trail.1, Some(cell));
+    }
+
+    fn stamp_mirrored(&mut self, x: f32, y: f32) {
+        let (points, count) = self.mirrors(x, y);
+        for point in points.into_iter().take(count) {
+            self.stamp_at(point.0, point.1);
+        }
+    }
+
+    fn unstamp(&mut self, cell: Cell) {
+        let (points, count) = self.mirrors(cell.0 as f32 + 0.5, cell.1 as f32 + 0.5);
+        for (x, y) in points.into_iter().take(count) {
+            let Some(rect) = Rect::around(x, y, 0.1, self.size.0, self.size.1) else {
+                continue;
+            };
+            let index = rect.y0 as usize * self.size.0 as usize + rect.x0 as usize;
+            if std::mem::replace(&mut self.coverage[index], 0) != 0 {
+                self.dirty.add(rect);
+            }
+        }
+    }
+
+    fn mirrors(&self, x: f32, y: f32) -> ([(f32, f32); 4], usize) {
         let mirrored_x = self.mirror.horizontal.then_some(self.size.0 as f32 - x);
         let mirrored_y = self.mirror.vertical.then_some(self.size.1 as f32 - y);
         let candidates = [
@@ -89,9 +137,7 @@ impl Stroke {
                 count += 1;
             }
         }
-        for point in points.into_iter().take(count) {
-            self.stamp_at(point.0, point.1);
-        }
+        (points, count)
     }
 
     fn stamp_at(&mut self, x: f32, y: f32) {
@@ -193,6 +239,15 @@ impl Stroke {
     }
 }
 
+// A pixel between two that already touch diagonally is the doubled corner of a thin line.
+fn corners(before: Cell, middle: Cell, after: Cell) -> bool {
+    let touches = |a: Cell, b: Cell| (a.0 - b.0).abs() + (a.1 - b.1).abs() == 1;
+    touches(before, middle)
+        && touches(after, middle)
+        && (before.0 - after.0).abs() == 1
+        && (before.1 - after.1).abs() == 1
+}
+
 fn over(under: [u8; 4], src: [u8; 4], alpha: f32) -> [u8; 4] {
     let sa = alpha * (src[3] as f32 / 255.0);
     if sa <= 0.0 {
@@ -280,6 +335,80 @@ mod tests {
         for x in 1..=14 {
             assert_eq!(at(&d, x, 8), [255, 0, 0, 255], "gap at x={x}");
         }
+    }
+
+    #[test]
+    fn a_staircase_keeps_one_pixel_at_every_corner() {
+        let mut d = doc(false);
+        let mut s = Stroke::begin_with_mirror(red(), &d, 2.5, 2.5, Mirror::default());
+        for step in 1..=5 {
+            s.extend(2.5 + step as f32, 1.5 + step as f32);
+            s.extend(2.5 + step as f32, 2.5 + step as f32);
+        }
+        s.flush(&mut d);
+
+        let painted = |x: u32, y: u32| at(&d, x, y) == [255, 0, 0, 255];
+        for step in 0..=5 {
+            assert!(
+                painted(2 + step, 2 + step),
+                "the diagonal itself is missing"
+            );
+        }
+        for step in 1..=5 {
+            assert!(
+                !painted(2 + step, 1 + step),
+                "the corner beside the diagonal was kept"
+            );
+        }
+    }
+
+    #[test]
+    fn a_corner_stays_when_pixel_perfect_is_turned_off() {
+        let mut blunt = red();
+        blunt.set_pixel_perfect(false);
+
+        let mut d = doc(false);
+        let mut s = Stroke::begin_with_mirror(blunt, &d, 2.5, 2.5, Mirror::default());
+        s.extend(3.5, 2.5);
+        s.extend(3.5, 3.5);
+        s.flush(&mut d);
+
+        assert_eq!(at(&d, 3, 2), [255, 0, 0, 255], "the corner should be kept");
+    }
+
+    #[test]
+    fn a_dropped_corner_goes_back_to_what_was_under_it() {
+        let mut d = doc(false);
+        let mut under = Brush {
+            tool: Tool::Marker,
+            colour: [0, 0, 255, 255],
+            ..red()
+        };
+        under.set_thickness(1.0);
+        let mut first = Stroke::begin_with_mirror(under, &d, 3.5, 2.5, Mirror::default());
+        first.flush(&mut d);
+        let blue = at(&d, 3, 2);
+
+        let mut s = Stroke::begin_with_mirror(red(), &d, 2.5, 2.5, Mirror::default());
+        s.extend(3.5, 2.5);
+        s.extend(3.5, 3.5);
+        s.flush(&mut d);
+
+        assert_eq!(at(&d, 3, 2), blue, "the corner was not put back");
+    }
+
+    #[test]
+    fn the_pixel_pen_lays_down_a_square() {
+        let mut d = doc(false);
+        let mut square = red();
+        square.set_thickness(5.0);
+        let mut s = Stroke::begin_with_mirror(square, &d, 8.5, 8.5, Mirror::default());
+        s.flush(&mut d);
+
+        for (x, y) in [(6, 6), (10, 10), (6, 10), (10, 6)] {
+            assert_eq!(at(&d, x, y), [255, 0, 0, 255], "the corner {x},{y} is bare");
+        }
+        assert_eq!(at(&d, 5, 8), [0, 0, 0, 0], "and it stops at its own width");
     }
 
     #[test]

@@ -48,6 +48,7 @@ pub const PANEL_ORDER: [Tool; 10] = [
 pub struct Profile {
     pub aspect: f32,
     pub angle: f32,
+    pub square: bool,
     pub feather: f32,
     pub grain: f32,
     pub scatter: f32,
@@ -62,6 +63,7 @@ impl Profile {
         Self {
             aspect: 1.0,
             angle: 0.0,
+            square: false,
             feather,
             grain: 0.0,
             scatter: 0.0,
@@ -125,7 +127,10 @@ impl Tool {
                 ..Profile::round(2.5, 0.08)
             },
 
-            Tool::PixelPen => Profile::round(0.0, 0.34),
+            Tool::PixelPen => Profile {
+                square: true,
+                ..Profile::round(0.0, 0.34)
+            },
 
             Tool::Pencil => Profile {
                 grain: 0.75,
@@ -180,6 +185,7 @@ pub struct Settings {
     pub opacity: f32,
     pub hardness: f32,
     pub antialiased: bool,
+    pub pixel_perfect: bool,
 }
 
 impl Default for Settings {
@@ -189,6 +195,7 @@ impl Default for Settings {
             opacity: 1.0,
             hardness: 1.0,
             antialiased: false,
+            pixel_perfect: true,
         }
     }
 }
@@ -253,6 +260,20 @@ impl Brush {
         self.current_mut().antialiased = antialiased;
     }
 
+    pub fn pixel_perfect(&self) -> bool {
+        self.current().pixel_perfect
+    }
+
+    pub fn set_pixel_perfect(&mut self, pixel_perfect: bool) {
+        self.current_mut().pixel_perfect = pixel_perfect;
+    }
+
+    // Dropping a corner means dropping a whole stamp, so it only reads as a thin line while the
+    // tip covers one pixel.
+    pub fn drops_corners(&self) -> bool {
+        self.tool.snaps_to_pixels() && self.pixel_perfect() && self.stamp_radius() <= 0.5
+    }
+
     pub fn radius(&self) -> f32 {
         self.thickness().clamp(MIN_THICKNESS, THICKNESS_CEILING) / 2.0
     }
@@ -277,7 +298,11 @@ impl Brush {
         let (dx, dy) = (px - cx, py - cy);
         let rx = dx * cos + dy * sin;
         let ry = (-dx * sin + dy * cos) / profile.aspect.max(0.01);
-        let d = (rx * rx + ry * ry).sqrt();
+        let d = if profile.square {
+            rx.abs().max(ry.abs())
+        } else {
+            (rx * rx + ry * ry).sqrt()
+        };
 
         let mut coverage = self.falloff(profile, r, d);
         if coverage <= 0.0 {

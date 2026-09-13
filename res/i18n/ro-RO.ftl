@@ -141,6 +141,7 @@ tool-shape = Formă
 thickness = Grosime
 hardness = Duritate
 antialiasing = Anti-aliasing
+pixel-perfect = Perfect la pixel
 symmetry = Simetrie
 symmetry-hint = Repetă tușele de pensulă în jurul centrului pânzei.
 symmetry-axes = Axe de oglindire

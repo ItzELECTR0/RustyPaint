@@ -34,6 +34,20 @@ wider than `canvas::MAX_CANVAS` has nowhere left to land, which
 `a_brush_cannot_grow_wider_than_the_largest_canvas` keeps honest. `paint/` cannot name `canvas`
 directly because the examples pull it in on its own.
 
+## The pixel pen
+
+The tip is square rather than round, so a pen wider than one pixel lays down a block. `Profile`
+carries that as `square`, and it swaps the stamp's distance for a Chebyshev one.
+
+Pixel-perfect drops the doubled corner where a thin line turns, so a staircase stays one pixel
+thick. A corner is only known once the pixel after it arrives, so the stamp goes down and is taken
+back rather than held: holding it would leave the pixel under a resting cursor missing. Taking one
+back is zeroing a single coverage slot, which is why `Brush::drops_corners` also asks for a tip that
+covers one pixel. Zeroing restores what was under the stroke, so a stroke that crosses its own
+corner loses that earlier pass; strokes that double back on themselves are rare enough to leave it.
+
+The setting is per tool like the others and starts on, and only tools that snap to pixels show it.
+
 ## Eraser hardness
 
 Paint 3D's eraser is a plain hard disc at every size. Measured off `screenshot24` to `screenshot26`

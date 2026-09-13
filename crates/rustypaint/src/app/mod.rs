@@ -422,6 +422,7 @@ pub enum Message {
     ThicknessChanged(f32),
     HardnessChanged(f32),
     AntialiasingToggled(bool),
+    PixelPerfectToggled(bool),
     MirrorHorizontalToggled(bool),
     MirrorVerticalToggled(bool),
     OpacityChanged(f32),
