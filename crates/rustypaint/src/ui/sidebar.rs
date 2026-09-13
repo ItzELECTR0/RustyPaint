@@ -598,6 +598,24 @@ fn brushes<'a>(
                 );
         }
     }
+    if brush.tool.profile().is_some() && !brush.tool.sprays() {
+        panel = panel
+            .push(field_row(
+                i18n::stabilizer(),
+                Field::Stabilizer,
+                brush.stabilizer(),
+                typed,
+            ))
+            .push(
+                slider(
+                    0.0..=1.0_f32,
+                    brush.stabilizer(),
+                    Message::StabilizerChanged,
+                )
+                .step(0.01_f32)
+                .style(controls::slider_style),
+            );
+    }
     if brush.tool.snaps_to_pixels() {
         panel = panel.push(
             checkbox(brush.pixel_perfect())

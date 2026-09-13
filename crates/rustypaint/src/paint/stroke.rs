@@ -3,6 +3,7 @@ use crate::doc::rect::{Bounds, Rect};
 use crate::doc::{Document, Rgba8, image::CHANNELS};
 
 const DOTS_PER_PUFF: usize = 12;
+const SETTLE_STEPS: usize = 200;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Mirror {
@@ -22,6 +23,8 @@ pub struct Stroke {
     residue: f32,
     puffs: u64,
     trail: (Option<Cell>, Option<Cell>),
+    steady: (f32, f32),
+    aim: Option<(f32, f32)>,
 }
 
 type Cell = (i64, i64);
@@ -41,12 +44,41 @@ impl Stroke {
             residue: 0.0,
             puffs: 0,
             trail: (None, None),
+            steady: (x, y),
+            aim: None,
         };
         stroke.stamp(x, y);
         stroke
     }
 
     pub fn extend(&mut self, x: f32, y: f32) {
+        if self.brush.stabilizer() <= 0.0 {
+            self.reach(x, y);
+            return;
+        }
+        self.aim = Some((x, y));
+        self.steady = eased(self.steady, (x, y), self.brush.follow());
+        self.reach(self.steady.0, self.steady.1);
+    }
+
+    // Nothing more is coming, so the brush walks the rest of the way to where the hand left off.
+    pub fn settle(&mut self) {
+        let Some(aim) = self.aim.take() else {
+            return;
+        };
+        let follow = self.brush.follow();
+        for _ in 0..SETTLE_STEPS {
+            if (aim.0 - self.steady.0).hypot(aim.1 - self.steady.1) <= 0.5 {
+                break;
+            }
+            self.steady = eased(self.steady, aim, follow);
+            self.reach(self.steady.0, self.steady.1);
+        }
+        self.steady = aim;
+        self.reach(aim.0, aim.1);
+    }
+
+    fn reach(&mut self, x: f32, y: f32) {
         let Some((lx, ly)) = self.last else {
             self.stamp(x, y);
             return;
@@ -248,6 +280,13 @@ fn corners(before: Cell, middle: Cell, after: Cell) -> bool {
         && (before.1 - after.1).abs() == 1
 }
 
+fn eased(from: (f32, f32), to: (f32, f32), follow: f32) -> (f32, f32) {
+    (
+        from.0 + (to.0 - from.0) * follow,
+        from.1 + (to.1 - from.1) * follow,
+    )
+}
+
 fn over(under: [u8; 4], src: [u8; 4], alpha: f32) -> [u8; 4] {
     let sa = alpha * (src[3] as f32 / 255.0);
     if sa <= 0.0 {
@@ -409,6 +448,63 @@ mod tests {
             assert_eq!(at(&d, x, y), [255, 0, 0, 255], "the corner {x},{y} is bare");
         }
         assert_eq!(at(&d, 5, 8), [0, 0, 0, 0], "and it stops at its own width");
+    }
+
+    #[test]
+    fn a_stabilised_stroke_lags_the_hand_and_then_catches_up() {
+        let mut steady = Brush {
+            tool: Tool::Marker,
+            colour: [255, 0, 0, 255],
+            ..Default::default()
+        };
+        steady.set_thickness(1.0);
+        steady.set_stabilizer(0.8);
+
+        let mut d = doc(true);
+        let mut s = Stroke::begin_with_mirror(steady, &d, 2.0, 8.0, Mirror::default());
+        s.extend(14.0, 8.0);
+        s.flush(&mut d);
+        let reached = |d: &Document| (0..16).filter(|x| at(d, *x, 8)[3] > 0).max().unwrap();
+        let lagged = reached(&d);
+        assert!(lagged < 13, "a jump straight to the end is no stabiliser");
+
+        s.settle();
+        s.flush(&mut d);
+        assert!(
+            reached(&d) >= 13,
+            "the stroke never caught up with the hand"
+        );
+    }
+
+    #[test]
+    fn a_shaky_hand_comes_out_straighter_than_it_went_in() {
+        let waver = |stabilizer: f32| {
+            let mut brush = Brush {
+                tool: Tool::Marker,
+                colour: [255, 0, 0, 255],
+                ..Default::default()
+            };
+            brush.set_thickness(1.0);
+            brush.set_stabilizer(stabilizer);
+
+            let mut d = doc(true);
+            let mut s = Stroke::begin_with_mirror(brush, &d, 1.0, 8.0, Mirror::default());
+            for step in 1..=14 {
+                let shake = if step % 2 == 0 { 2.0 } else { -2.0 };
+                s.extend(1.0 + step as f32, 8.0 + shake);
+            }
+            s.settle();
+            s.flush(&mut d);
+
+            (0..16)
+                .filter(|y| (0..16).any(|x| at(&d, x, *y)[3] > 0))
+                .count()
+        };
+
+        assert!(
+            waver(0.85) < waver(0.0),
+            "stabilising left the wobble as wide as it was"
+        );
     }
 
     #[test]

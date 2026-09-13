@@ -186,6 +186,7 @@ pub struct Settings {
     pub hardness: f32,
     pub antialiased: bool,
     pub pixel_perfect: bool,
+    pub stabilizer: f32,
 }
 
 impl Default for Settings {
@@ -196,6 +197,7 @@ impl Default for Settings {
             hardness: 1.0,
             antialiased: false,
             pixel_perfect: true,
+            stabilizer: 0.0,
         }
     }
 }
@@ -258,6 +260,20 @@ impl Brush {
 
     pub fn set_antialiased(&mut self, antialiased: bool) {
         self.current_mut().antialiased = antialiased;
+    }
+
+    pub fn stabilizer(&self) -> f32 {
+        self.current().stabilizer
+    }
+
+    pub fn set_stabilizer(&mut self, stabilizer: f32) {
+        self.current_mut().stabilizer = stabilizer.clamp(0.0, 1.0);
+    }
+
+    // How far the brush closes on the pointer with each sample. Full strength still leaves some of
+    // it, so a stroke can always catch up with the hand that drew it.
+    pub fn follow(&self) -> f32 {
+        (1.0 - self.stabilizer()).max(0.05)
     }
 
     pub fn pixel_perfect(&self) -> bool {

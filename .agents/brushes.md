@@ -34,6 +34,19 @@ wider than `canvas::MAX_CANVAS` has nowhere left to land, which
 `a_brush_cannot_grow_wider_than_the_largest_canvas` keeps honest. `paint/` cannot name `canvas`
 directly because the examples pull it in on its own.
 
+## The stabiliser
+
+The brush chases the pointer instead of being it: each sample moves it a fraction of the way there,
+and `Brush::follow` is that fraction. Full strength still leaves five percent of the gap, so the
+line always converges rather than trailing forever behind a fast hand.
+
+Releasing calls `Stroke::settle`, which walks the brush the rest of the way to the last place the
+pointer was and then draws to it exactly, because a stroke that stops short of where the hand
+stopped looks like a dropped input. Only `extend` is smoothed, so the spray can, which puffs at the
+pointer directly, is unaffected and does not show the slider.
+
+It starts at zero. A stabiliser that was on by default would change how every existing brush feels.
+
 ## The pixel pen
 
 The tip is square rather than round, so a pen wider than one pixel lays down a block. `Profile`

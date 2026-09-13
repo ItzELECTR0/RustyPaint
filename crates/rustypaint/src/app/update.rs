@@ -611,6 +611,7 @@ impl App {
             Message::ThicknessChanged(v) => self.brush.set_thickness(v),
             Message::AntialiasingToggled(on) => self.brush.set_antialiased(on),
             Message::PixelPerfectToggled(on) => self.brush.set_pixel_perfect(on),
+            Message::StabilizerChanged(value) => self.brush.set_stabilizer(value),
             Message::MirrorHorizontalToggled(on) => self.mirror.horizontal = on,
             Message::MirrorVerticalToggled(on) => self.mirror.vertical = on,
             Message::FieldTyped(field, text) => {

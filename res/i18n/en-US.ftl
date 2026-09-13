@@ -149,6 +149,7 @@ mirror-horizontal = Mirror horizontally
 mirror-vertical = Mirror vertically
 tolerance = Tolerance
 opacity = Opacity
+stabilizer = Stabilizer
 sticker-opacity = Sticker opacity
 pixels-value = { $value }px
 percent-value = { $value }%

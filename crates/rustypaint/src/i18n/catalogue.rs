@@ -150,6 +150,7 @@ catalogue! {
         mirror_vertical => "mirror-vertical",
         tolerance => "tolerance",
         opacity => "opacity",
+        stabilizer => "stabilizer",
         sticker_opacity => "sticker-opacity",
 
         // Colours

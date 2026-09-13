@@ -167,6 +167,7 @@ pub enum Field {
     Thickness,
     Hardness,
     Opacity,
+    Stabilizer,
     Tolerance,
     ShapeThickness,
     FloatOpacity,
@@ -180,7 +181,11 @@ impl Field {
                 crate::paint::brush::THICKNESS_CEILING,
             ),
             Field::ShapeThickness => (shapes::MIN_THICKNESS, shapes::MAX_THICKNESS),
-            Field::Hardness | Field::Opacity | Field::Tolerance | Field::FloatOpacity => (0.0, 1.0),
+            Field::Hardness
+            | Field::Opacity
+            | Field::Stabilizer
+            | Field::Tolerance
+            | Field::FloatOpacity => (0.0, 1.0),
         }
     }
 
@@ -216,6 +221,7 @@ impl Field {
             Field::Thickness => Message::ThicknessChanged(value),
             Field::Hardness => Message::HardnessChanged(value),
             Field::Opacity => Message::OpacityChanged(value),
+            Field::Stabilizer => Message::StabilizerChanged(value),
             Field::Tolerance => Message::ToleranceChanged(value),
             Field::ShapeThickness => Message::ShapeThicknessChanged(value),
             Field::FloatOpacity => Message::FloatOpacityChanged(value),
@@ -232,6 +238,7 @@ impl Message {
                 | Message::ThicknessNudged(_)
                 | Message::HardnessChanged(_)
                 | Message::OpacityChanged(_)
+                | Message::StabilizerChanged(_)
                 | Message::ToleranceChanged(_)
                 | Message::ShapeThicknessChanged(_)
                 | Message::FloatOpacityChanged(_)
@@ -423,6 +430,7 @@ pub enum Message {
     HardnessChanged(f32),
     AntialiasingToggled(bool),
     PixelPerfectToggled(bool),
+    StabilizerChanged(f32),
     MirrorHorizontalToggled(bool),
     MirrorVerticalToggled(bool),
     OpacityChanged(f32),

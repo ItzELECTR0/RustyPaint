@@ -259,6 +259,9 @@ impl App {
                     self.run_cutout(None);
                     return;
                 }
+                if let Some(stroke) = &mut self.stroke {
+                    stroke.settle();
+                }
                 self.flush_stroke();
                 if let Some(stroke) = self.stroke.take()
                     && let Some(touched) = stroke.touched()
