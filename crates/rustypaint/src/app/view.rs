@@ -779,42 +779,22 @@ impl App {
             row![
                 self.canvas_view(),
                 match (&self.cropping, &self.cutting_out) {
-                    (_, Some(cutting_out)) => container(sidebar::cutout_panel(
-                        cutting_out.refining,
-                        cutting_out.adding,
-                        cutting_out.autofill,
-                    ))
-                    .width(Length::Fixed(metrics::SIDE_PANEL_WIDTH))
-                    .height(Length::Fill)
-                    .padding(iced::Padding {
-                        top: 16.0,
-                        right: 24.0,
-                        bottom: 16.0,
-                        left: 24.0
-                    })
-                    .style(|_theme| container::Style {
-                        background: Some(theme::veiled(theme::colours().side_panel).into()),
-                        ..Default::default()
-                    })
-                    .into(),
-                    (Some(cropping), None) => container(sidebar::crop_panel(
-                        cropping.framing,
-                        cropping.lock,
-                        (&cropping.fields.0, &cropping.fields.1),
-                    ))
-                    .width(Length::Fixed(metrics::SIDE_PANEL_WIDTH))
-                    .height(Length::Fill)
-                    .padding(iced::Padding {
-                        top: 16.0,
-                        right: 24.0,
-                        bottom: 16.0,
-                        left: 24.0,
-                    })
-                    .style(|_theme| container::Style {
-                        background: Some(theme::veiled(theme::colours().side_panel).into()),
-                        ..Default::default()
-                    })
-                    .into(),
+                    (_, Some(cutting_out)) => sidebar::shell(
+                        sidebar::cutout_panel(
+                            cutting_out.refining,
+                            cutting_out.adding,
+                            cutting_out.autofill,
+                        ),
+                        metrics::SIDE_PANEL_WIDTH,
+                    ),
+                    (Some(cropping), None) => sidebar::shell(
+                        sidebar::crop_panel(
+                            cropping.framing,
+                            cropping.lock,
+                            (&cropping.fields.0, &cropping.fields.1),
+                        ),
+                        metrics::SIDE_PANEL_WIDTH,
+                    ),
                     (None, None) => sidebar::panel(
                         self.tab,
                         &self.brush,

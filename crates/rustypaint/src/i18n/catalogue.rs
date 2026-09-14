@@ -139,6 +139,7 @@ catalogue! {
         tool_select => "tool-select",
         tool_text => "tool-text",
         tool_shape => "tool-shape",
+        options => "options",
         thickness => "thickness",
         hardness => "hardness",
         antialiasing => "antialiasing",

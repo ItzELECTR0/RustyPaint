@@ -32,7 +32,7 @@ pub mod metrics {
 
     pub const SIDE_PANEL_WIDTH: f32 = 264.0;
     pub const SIDE_PANEL_VERTICAL_OFFSET: f32 = 100.0;
-    pub const SIDE_PANEL_GUTTER_MARGIN: [f32; 4] = [24.0, 0.0, 24.0, 0.0];
+    pub const SIDE_PANEL_GUTTER_MARGIN: [f32; 4] = [12.0, 0.0, 12.0, 0.0];
 
     pub const SHAPE_WIDTH: f32 = 40.0;
     pub const SHAPE_HEIGHT: f32 = 40.0;
@@ -100,6 +100,7 @@ impl Scheme {
 #[derive(Debug, Clone, Copy)]
 struct Surfaces {
     side_panel: Color,
+    panel_group: Color,
     tool_bar: Color,
     top_bar: Color,
     control: Color,
@@ -131,6 +132,7 @@ struct Accent {
 #[allow(dead_code, reason = "reference table, filled in ahead of the widgets")]
 pub struct Palette {
     pub side_panel: Color,
+    pub panel_group: Color,
     pub tool_bar: Color,
     pub top_bar: Color,
     pub control: Color,
@@ -160,6 +162,7 @@ pub struct Palette {
 
 const LIGHT: Surfaces = Surfaces {
     side_panel: rgb(0xf0f2f3),
+    panel_group: rgb(0xe4e8ea),
     tool_bar: rgb(0xf0f2f3),
     top_bar: rgb(0x363941),
     control: rgb(0xf4f6f7),
@@ -181,6 +184,7 @@ const LIGHT: Surfaces = Surfaces {
 
 const DARK: Surfaces = Surfaces {
     side_panel: rgb(0x2a2d33),
+    panel_group: rgb(0x23262b),
     tool_bar: rgb(0x2a2d33),
     top_bar: rgb(0x1f2126),
     control: rgb(0x34383f),
@@ -235,6 +239,7 @@ const RUSTY_DARK: Accent = Accent {
 const fn merge(s: Surfaces, a: Accent) -> Palette {
     Palette {
         side_panel: s.side_panel,
+        panel_group: s.panel_group,
         tool_bar: s.tool_bar,
         top_bar: s.top_bar,
         control: s.control,

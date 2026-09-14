@@ -138,6 +138,7 @@ tool-select = Selectare
 tool-text = Text
 tool-shape = Formă
 
+options = Opțiuni
 thickness = Grosime
 hardness = Duritate
 antialiasing = Anti-aliasing

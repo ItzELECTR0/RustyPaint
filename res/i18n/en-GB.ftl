@@ -139,6 +139,7 @@ tool-select = Select
 tool-text = Text
 tool-shape = Shape
 
+options = Options
 thickness = Thickness
 hardness = Hardness
 antialiasing = Anti-aliasing

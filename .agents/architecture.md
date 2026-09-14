@@ -203,6 +203,35 @@ The tabs sit between two `Fill` spacers, so they are centred in the slack betwee
 and the undo pair rather than in the window. That is where Paint 3D puts them, and it is why the
 second bar underneath is left aligned instead.
 
+## The side panel
+
+Every panel, tabbed or not, is a `sidebar::Panel`: a title with a stack of cards under it. The
+order is the same throughout, so a new panel has somewhere obvious to put each thing: what is
+selected at the top, its options in the middle, colour at the bottom. Rotate and flip, bones and
+anything else self-contained gets its own card between them.
+
+The title sits above the cards rather than inside the first one, because a title inside a box reads
+as that box's label and leaves the panel itself unnamed. Three text sizes carry the hierarchy:
+`heading` at 20 in the accent for the panel, `label` at 14 for a card, `section` at 13 dim for a
+sub-label inside a card.
+
+`Panel::card` boxes controls under a label, `Panel::plain` boxes controls that need none (the shape
+grid says what it is, and a label there would only repeat the panel title), and `Panel::loose` and
+`Panel::hint` stay outside a card. Prose and the buttons that close a panel are always loose, so no
+card ends up drawn around nothing. That rule is why the first smart cutout step has no card at all:
+there is nothing on it to set.
+
+`panel_group` is its own palette token because text inputs and pick lists are `control` coloured and
+would disappear against a card painted the same.
+
+Card padding and `SIDE_PANEL_GUTTER_MARGIN` are tuned against the brush grid, which is five 40px
+tiles with 4px between them and therefore needs 216px inside the card. Widening either one clips the
+last column.
+
+`sidebar::shell` is the panel surround: the gutter, the scroll area and the veil. Crop and smart
+cutout go through it too, so they cannot drift from the tabs. The padding sits inside the scroll
+area so the bar rides the gutter rather than the cards.
+
 ## Dropped files and the clipboard
 
 A dropped image floats over the canvas like a pasted one rather than replacing the document. Paste
