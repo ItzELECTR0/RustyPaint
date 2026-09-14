@@ -1002,13 +1002,13 @@ fn canvas_panel<'a>(
             .label(i18n::lock_aspect_ratio())
             .text_size(13)
             .on_toggle(Message::LockAspectToggled),
-        field(i18n::width(), &state.width, Message::CanvasWidthEdited),
-        field(i18n::height(), &state.height, Message::CanvasHeightEdited),
         checkbox(state.resize_image)
             .style(controls::checkbox_style)
             .label(i18n::resize_image_with_canvas())
             .text_size(13)
             .on_toggle(Message::ResizeImageToggled),
+        field(i18n::width(), &state.width, Message::CanvasWidthEdited),
+        field(i18n::height(), &state.height, Message::CanvasHeightEdited),
         if state.resize_image {
             column![
                 text(i18n::resampling()).size(13),
