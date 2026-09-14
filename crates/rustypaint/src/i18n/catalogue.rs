@@ -144,6 +144,7 @@ catalogue! {
         hardness => "hardness",
         antialiasing => "antialiasing",
         pixel_perfect => "pixel-perfect",
+        pixel_perfect_hint => "pixel-perfect-hint",
         tip_shape => "tip-shape",
         tip_round => "tip-round",
         tip_square => "tip-square",

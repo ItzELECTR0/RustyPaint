@@ -143,6 +143,7 @@ thickness = Grosime
 hardness = Duritate
 antialiasing = Anti-aliasing
 pixel-perfect = Perfect la pixel
+pixel-perfect-hint = Renunță la pixelul suplimentar din colț acolo unde o linie subțire cotește, așa că diagonala rămâne lată de un pixel.
 tip-shape = Vârf
 tip-round = Rotund
 tip-square = Pătrat

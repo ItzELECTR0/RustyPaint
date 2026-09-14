@@ -62,7 +62,8 @@ back is zeroing a single coverage slot, which is why `Brush::drops_corners` also
 covers one pixel. Zeroing restores what was under the stroke, so a stroke that crosses its own
 corner loses that earlier pass; strokes that double back on themselves are rare enough to leave it.
 
-The setting is per tool like the others and starts on, and only tools that snap to pixels show it.
+Pixel-perfect is per tool too and starts on, and only tools that snap to pixels show it. The
+panel keeps its explanation on a tooltip, because the difference is easy to see and hard to name.
 
 ## Eraser hardness
 

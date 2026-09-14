@@ -143,6 +143,7 @@ thickness = Thickness
 hardness = Hardness
 antialiasing = Anti-aliasing
 pixel-perfect = Pixel-perfect
+pixel-perfect-hint = Drops the extra corner pixel where a thin line turns, so a diagonal stays one pixel wide.
 tip-shape = Tip
 tip-round = Round
 tip-square = Square

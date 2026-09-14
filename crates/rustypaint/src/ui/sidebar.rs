@@ -571,6 +571,18 @@ fn group<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
         .into()
 }
 
+// Left of the panel rather than under it, because the note is wider than the panel is.
+fn note<'a>(control: impl Into<Element<'a, Message>>, label: &'a str) -> Element<'a, Message> {
+    iced::widget::tooltip(
+        control,
+        text(label).size(12).width(Length::Fixed(200.0)),
+        iced::widget::tooltip::Position::Left,
+    )
+    .style(tooltip_style)
+    .padding(6)
+    .into()
+}
+
 fn label<'a>(content: &'a str) -> Element<'a, Message> {
     text(content).size(14).color(theme::colours().text).into()
 }
@@ -732,14 +744,14 @@ fn brushes<'a>(
             brush.square_tip() as usize,
             |index| Message::SquareTipPicked(index == 1),
         ));
-        options.push(
+        options.push(note(
             checkbox(brush.pixel_perfect())
                 .style(controls::checkbox_style)
                 .label(i18n::pixel_perfect())
                 .text_size(13)
-                .on_toggle(Message::PixelPerfectToggled)
-                .into(),
-        );
+                .on_toggle(Message::PixelPerfectToggled),
+            i18n::pixel_perfect_hint(),
+        ));
     }
     if brush.tool == Tool::Fill {
         options.push(field_row(
