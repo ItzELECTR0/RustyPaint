@@ -145,6 +145,7 @@ pub mod dialog;
 pub mod icons;
 pub mod menu;
 pub mod picker;
+pub mod segmented;
 pub mod sidebar;
 pub mod strings;
 pub mod theme;

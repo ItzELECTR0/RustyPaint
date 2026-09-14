@@ -127,10 +127,7 @@ impl Tool {
                 ..Profile::round(2.5, 0.08)
             },
 
-            Tool::PixelPen => Profile {
-                square: true,
-                ..Profile::round(0.0, 0.34)
-            },
+            Tool::PixelPen => Profile::round(0.0, 0.34),
 
             Tool::Pencil => Profile {
                 grain: 0.75,
@@ -185,6 +182,7 @@ pub struct Settings {
     pub opacity: f32,
     pub hardness: f32,
     pub antialiased: bool,
+    pub square_tip: bool,
     pub pixel_perfect: bool,
     pub stabilizer: f32,
 }
@@ -196,6 +194,7 @@ impl Default for Settings {
             opacity: 1.0,
             hardness: 1.0,
             antialiased: false,
+            square_tip: false,
             pixel_perfect: true,
             stabilizer: 0.0,
         }
@@ -276,6 +275,14 @@ impl Brush {
         (1.0 - self.stabilizer()).max(0.05)
     }
 
+    pub fn square_tip(&self) -> bool {
+        self.current().square_tip
+    }
+
+    pub fn set_square_tip(&mut self, square_tip: bool) {
+        self.current_mut().square_tip = square_tip;
+    }
+
     pub fn pixel_perfect(&self) -> bool {
         self.current().pixel_perfect
     }
@@ -299,7 +306,14 @@ impl Brush {
     }
 
     pub fn profile(&self) -> Profile {
-        self.tool.profile().unwrap_or(Profile::round(1.0, 0.1))
+        let profile = self.tool.profile().unwrap_or(Profile::round(1.0, 0.1));
+        match self.tool.snaps_to_pixels() {
+            true => Profile {
+                square: self.square_tip(),
+                ..profile
+            },
+            false => profile,
+        }
     }
 
     pub fn step(&self) -> f32 {

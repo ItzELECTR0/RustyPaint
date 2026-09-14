@@ -6,6 +6,7 @@ use crate::paint::{Brush, Mirror, Tool, brush};
 use crate::text::{Align, TextStyle};
 use crate::ui::controls;
 use crate::ui::icons::{self, icon};
+use crate::ui::segmented;
 use crate::ui::theme::{self, metrics};
 
 use iced::widget::{
@@ -725,6 +726,12 @@ fn brushes<'a>(
         );
     }
     if brush.tool.snaps_to_pixels() {
+        options.push(section(i18n::tip_shape()));
+        options.push(segmented::segmented(
+            [i18n::tip_round(), i18n::tip_square()],
+            brush.square_tip() as usize,
+            |index| Message::SquareTipPicked(index == 1),
+        ));
         options.push(
             checkbox(brush.pixel_perfect())
                 .style(controls::checkbox_style)

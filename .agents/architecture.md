@@ -221,8 +221,8 @@ grid says what it is, and a label there would only repeat the panel title), and 
 card ends up drawn around nothing. That rule is why the first smart cutout step has no card at all:
 there is nothing on it to set.
 
-`panel_group` is its own palette token because text inputs and pick lists are `control` coloured and
-would disappear against a card painted the same.
+`panel_group` is its own palette token because text inputs, pick lists and the segmented track are
+all `control` coloured and would disappear against a card painted the same.
 
 Card padding and `SIDE_PANEL_GUTTER_MARGIN` are tuned against the brush grid, which is five 40px
 tiles with 4px between them and therefore needs 216px inside the card. Widening either one clips the
@@ -231,6 +231,10 @@ last column.
 `sidebar::shell` is the panel surround: the gutter, the scroll area and the veil. Crop and smart
 cutout go through it too, so they cannot drift from the tabs. The padding sits inside the scroll
 area so the bar rides the gutter rather than the cards.
+
+`ui::segmented` is a canvas `Program` rather than a widget, so the pill's slide keeps its state and
+asks for its own redraws instead of going through the application update loop. The first frame
+places the pill where the choice already is, so opening a tab never plays a slide nobody asked for.
 
 ## Dropped files and the clipboard
 

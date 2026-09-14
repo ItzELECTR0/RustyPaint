@@ -638,6 +638,7 @@ impl App {
             Message::TextEdited(action) => self.edit_text(action),
             Message::ThicknessChanged(v) => self.brush.set_thickness(v),
             Message::AntialiasingToggled(on) => self.brush.set_antialiased(on),
+            Message::SquareTipPicked(square) => self.brush.set_square_tip(square),
             Message::PixelPerfectToggled(on) => self.brush.set_pixel_perfect(on),
             Message::StabilizerChanged(value) => self.brush.set_stabilizer(value),
             Message::MirrorHorizontalToggled(on) => self.mirror.horizontal = on,

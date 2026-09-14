@@ -49,8 +49,11 @@ It starts at zero. A stabiliser that was on by default would change how every ex
 
 ## The pixel pen
 
-The tip is square rather than round, so a pen wider than one pixel lays down a block. `Profile`
-carries that as `square`, and it swaps the stamp's distance for a Chebyshev one.
+The tip is round by default, which is what Paint 3D does, and a square one is on a picker beside it.
+`Profile` carries the choice as `square`, and it swaps the stamp's distance for a Chebyshev one so a
+pen wider than one pixel lays down a block instead of a dot. `Settings::square_tip` is per tool like
+the rest, and `Brush::profile` only lets it reach a profile when the tool snaps to pixels, so it
+cannot leak into the round brushes.
 
 Pixel-perfect drops the doubled corner where a thin line turns, so a staircase stays one pixel
 thick. A corner is only known once the pixel after it arrives, so the stamp goes down and is taken

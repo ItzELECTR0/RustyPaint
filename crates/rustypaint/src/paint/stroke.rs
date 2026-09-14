@@ -437,10 +437,11 @@ mod tests {
     }
 
     #[test]
-    fn the_pixel_pen_lays_down_a_square() {
+    fn the_pixel_pen_lays_down_a_square_when_asked_to() {
         let mut d = doc(false);
         let mut square = red();
         square.set_thickness(5.0);
+        square.set_square_tip(true);
         let mut s = Stroke::begin_with_mirror(square, &d, 8.5, 8.5, Mirror::default());
         s.flush(&mut d);
 
@@ -448,6 +449,18 @@ mod tests {
             assert_eq!(at(&d, x, y), [255, 0, 0, 255], "the corner {x},{y} is bare");
         }
         assert_eq!(at(&d, 5, 8), [0, 0, 0, 0], "and it stops at its own width");
+    }
+
+    #[test]
+    fn the_pixel_pen_is_round_until_then() {
+        let mut d = doc(false);
+        let mut round = red();
+        round.set_thickness(5.0);
+        let mut s = Stroke::begin_with_mirror(round, &d, 8.5, 8.5, Mirror::default());
+        s.flush(&mut d);
+
+        assert_eq!(at(&d, 8, 6), [255, 0, 0, 255], "the top of the dot is bare");
+        assert_eq!(at(&d, 6, 6), [0, 0, 0, 0], "a round tip has no corners");
     }
 
     #[test]
