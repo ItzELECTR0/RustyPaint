@@ -197,6 +197,12 @@ are placed exactly like a shape and only the shape has a panel of its own. A typ
 object from the top-left corner it already has, since a box that was never dragged has no grip to
 anchor to.
 
+## The tab strip
+
+The tabs sit between two `Fill` spacers, so they are centred in the slack between the Menu button
+and the undo pair rather than in the window. That is where Paint 3D puts them, and it is why the
+second bar underneath is left aligned instead.
+
 ## Dropped files and the clipboard
 
 A dropped image floats over the canvas like a pasted one rather than replacing the document. Paste

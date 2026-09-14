@@ -7,7 +7,7 @@ Run `cargo test --workspace` after changes. Use `cargo fmt --all -- --check` and
 `cargo clippy --workspace --all-targets -- -D warnings` before release work.
 
 Read `.agents/architecture.md` when changing documents, image file I/O, undo, floating objects,
-coordinates, input handling, dropped files, or the clipboard.
+coordinates, input handling, dropped files, the clipboard, or the tab strip.
 
 Read `.agents/brushes.md` when changing brush settings, thickness limits, the eraser, or stamp
 coverage.

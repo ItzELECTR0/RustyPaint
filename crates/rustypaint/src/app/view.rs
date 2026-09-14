@@ -860,9 +860,11 @@ impl App {
             .style(|_theme, _status| tab_style(false))
             .on_press(Message::MenuOpened);
 
+        // Equal slack either side leaves the tabs centred between the menu and the undo pair,
+        // which is where Paint 3D puts them.
         let bar = row![
             menu_button,
-            Space::new().width(Length::Fixed(8.0)),
+            Space::new().width(Length::Fill),
             tabs,
             Space::new().width(Length::Fill),
             hint(
