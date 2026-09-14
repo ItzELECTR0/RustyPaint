@@ -378,30 +378,34 @@ impl App {
                 return iced::window::latest().and_then(iced::window::toggle_maximize);
             }
             Message::WindowClosed => return self.discarding(Pending::Close),
-            Message::PickerOpened => {
+            Message::PickerOpened(picking) => {
                 self.picker = Some(Picker::on(self.brush.colour));
-                self.editing_custom_colour = None;
+                self.picking_colour = Some(picking);
                 self.custom_colour_menu = None;
             }
             Message::PickerClosed => {
                 self.picker = None;
-                self.editing_custom_colour = None;
+                self.picking_colour = None;
                 self.picking_field = None;
             }
             Message::PickerConfirmed => {
                 if let Some(picker) = self.picker.take() {
                     let colour = picker.colour();
-                    if let Some(index) = self.editing_custom_colour.take() {
-                        if let Some(custom) = self.config.custom_colours.get_mut(index) {
-                            *custom = colour;
+                    match self.picking_colour.take() {
+                        Some(Picking::Editing(index)) => {
+                            if let Some(custom) = self.config.custom_colours.get_mut(index) {
+                                *custom = colour;
+                                self.save_config();
+                            }
+                        }
+                        Some(Picking::Adding) if !self.config.custom_colours.contains(&colour) => {
+                            self.config.custom_colours.push(colour);
+                            while self.config.custom_colours.len() > 6 {
+                                self.config.custom_colours.remove(0);
+                            }
                             self.save_config();
                         }
-                    } else if !self.config.custom_colours.contains(&colour) {
-                        self.config.custom_colours.push(colour);
-                        while self.config.custom_colours.len() > 6 {
-                            self.config.custom_colours.remove(0);
-                        }
-                        self.save_config();
+                        _ => {}
                     }
                     self.take_colour(colour);
                 }
@@ -449,7 +453,7 @@ impl App {
             Message::CustomColourEditRequested(i) => {
                 if let Some(colour) = self.config.custom_colours.get(i).copied() {
                     self.picker = Some(Picker::on(colour));
-                    self.editing_custom_colour = Some(i);
+                    self.picking_colour = Some(Picking::Editing(i));
                 }
                 self.custom_colour_menu = None;
             }

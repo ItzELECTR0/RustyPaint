@@ -3212,7 +3212,7 @@ fn the_picker_opens_on_the_colour_in_hand_and_adds_what_it_gives() {
     send(&mut app, Message::ColourPicked(5));
     let had = app.brush.colour;
 
-    send(&mut app, Message::PickerOpened);
+    send(&mut app, Message::PickerOpened(Picking::Adding));
     assert_eq!(
         app.picker.as_ref().expect("open").colour(),
         had,
@@ -3235,10 +3235,28 @@ fn the_picker_opens_on_the_colour_in_hand_and_adds_what_it_gives() {
 }
 
 #[test]
+fn the_colour_in_hand_can_be_changed_without_keeping_it() {
+    let mut app = app(60, 60);
+    send(&mut app, Message::PickerOpened(Picking::Current));
+    send(&mut app, Message::PickerHexEdited("#abcdef".into()));
+    send(&mut app, Message::PickerConfirmed);
+
+    assert_eq!(
+        app.brush.colour,
+        [0xab, 0xcd, 0xef, 255],
+        "the colour is taken"
+    );
+    assert!(
+        app.config.custom_colours.is_empty(),
+        "and the palette is left alone"
+    );
+}
+
+#[test]
 fn cancelling_the_picker_changes_nothing() {
     let mut app = app(60, 60);
     let had = app.brush.colour;
-    send(&mut app, Message::PickerOpened);
+    send(&mut app, Message::PickerOpened(Picking::Adding));
     send(&mut app, Message::PickerHexEdited("#ff00ff".into()));
     send(&mut app, Message::PickerClosed);
     assert_eq!(app.brush.colour, had);
@@ -3248,7 +3266,7 @@ fn cancelling_the_picker_changes_nothing() {
 #[test]
 fn the_gradients_only_move_while_they_are_being_dragged() {
     let mut app = app(60, 60);
-    send(&mut app, Message::PickerOpened);
+    send(&mut app, Message::PickerOpened(Picking::Adding));
     let before = app.picker.as_ref().unwrap().clone();
 
     send(&mut app, Message::PickerFieldPicked(0.5, 0.5));
@@ -3283,7 +3301,7 @@ fn the_custom_row_holds_one_row_and_no_duplicates() {
     for hex in [
         "#111111", "#222222", "#333333", "#444444", "#555555", "#666666", "#777777",
     ] {
-        send(&mut app, Message::PickerOpened);
+        send(&mut app, Message::PickerOpened(Picking::Adding));
         send(&mut app, Message::PickerHexEdited(hex.into()));
         send(&mut app, Message::PickerConfirmed);
     }
@@ -3299,7 +3317,7 @@ fn the_custom_row_holds_one_row_and_no_duplicates() {
     );
     assert_eq!(app.config.custom_colours[5], [0x77, 0x77, 0x77, 255]);
 
-    send(&mut app, Message::PickerOpened);
+    send(&mut app, Message::PickerOpened(Picking::Adding));
     send(&mut app, Message::PickerHexEdited("#777777".into()));
     send(&mut app, Message::PickerConfirmed);
     assert_eq!(app.config.custom_colours.len(), 6);
@@ -3308,7 +3326,7 @@ fn the_custom_row_holds_one_row_and_no_duplicates() {
 #[test]
 fn a_custom_colour_can_be_picked_again_from_the_row() {
     let mut app = app(60, 60);
-    send(&mut app, Message::PickerOpened);
+    send(&mut app, Message::PickerOpened(Picking::Adding));
     send(&mut app, Message::PickerHexEdited("#0064b6".into()));
     send(&mut app, Message::PickerConfirmed);
     send(&mut app, Message::ColourPicked(0));
@@ -3322,7 +3340,7 @@ fn a_custom_colour_can_be_picked_again_from_the_row() {
 fn a_custom_colour_can_be_edited_in_place() {
     let mut app = app(60, 60);
     for hex in ["#112233", "#445566"] {
-        send(&mut app, Message::PickerOpened);
+        send(&mut app, Message::PickerOpened(Picking::Adding));
         send(&mut app, Message::PickerHexEdited(hex.into()));
         send(&mut app, Message::PickerConfirmed);
     }
@@ -3348,7 +3366,7 @@ fn a_custom_colour_can_be_edited_in_place() {
 fn a_custom_colour_can_be_removed_from_its_menu() {
     let mut app = app(60, 60);
     for hex in ["#112233", "#445566"] {
-        send(&mut app, Message::PickerOpened);
+        send(&mut app, Message::PickerOpened(Picking::Adding));
         send(&mut app, Message::PickerHexEdited(hex.into()));
         send(&mut app, Message::PickerConfirmed);
     }

@@ -275,6 +275,14 @@ impl Message {
     }
 }
 
+// What the open picker does with the colour it gives back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Picking {
+    Current,
+    Adding,
+    Editing(usize),
+}
+
 pub struct App {
     doc: Document,
     view: View,
@@ -295,7 +303,7 @@ pub struct App {
     shape_style: shapes::ShapeStyle,
     colour_target: bool,
     picker: Option<Picker>,
-    editing_custom_colour: Option<usize>,
+    picking_colour: Option<Picking>,
     custom_colour_menu: Option<usize>,
     picking_field: Option<bool>,
     text_style: TextStyle,
@@ -411,7 +419,7 @@ pub enum Message {
     FreeformToggled(bool),
     DeleteFloating,
     ThicknessNudged(f32),
-    PickerOpened,
+    PickerOpened(Picking),
     PickerClosed,
     PickerConfirmed,
     PickerFieldPressed,
@@ -630,7 +638,7 @@ impl App {
             shape_style: shapes::ShapeStyle::default(),
             colour_target: false,
             picker: None,
-            editing_custom_colour: None,
+            picking_colour: None,
             custom_colour_menu: None,
             picking_field: None,
             float_version: 0,

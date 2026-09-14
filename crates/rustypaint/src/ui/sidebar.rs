@@ -1,4 +1,4 @@
-use crate::app::{CanvasPanel, Drawing, Field, Message, Tab};
+use crate::app::{CanvasPanel, Drawing, Field, Message, Picking, Tab};
 use crate::i18n;
 use crate::paint::curve::{self, CurveKind};
 use crate::paint::shapes::{self, ShapeKind, ShapeStyle};
@@ -390,7 +390,7 @@ fn text_panel<'a>(
         },
         ..Default::default()
     })
-    .on_press(Message::PickerOpened);
+    .on_press(Message::PickerOpened(Picking::Current));
 
     let weight = row![
         letter(i18n::text_bold(), style.bold, Message::TextBoldToggled),
@@ -745,17 +745,22 @@ fn current_colour<'a>(brush: &Brush) -> Element<'a, Message> {
     let picking = brush.tool == Tool::Pipette;
 
     row![
-        container(Space::new().width(Length::Fill).height(Length::Fixed(40.0)))
+        button(Space::new().width(Length::Fill).height(Length::Fixed(40.0)))
             .width(Length::Fill)
-            .style(move |_theme| container::Style {
+            .style(move |_theme, status| button::Style {
                 background: Some(colour.into()),
                 border: iced::Border {
-                    color: theme::colours().border,
+                    color: if matches!(status, button::Status::Hovered) {
+                        theme::colours().accent
+                    } else {
+                        theme::colours().border
+                    },
                     width: 1.0,
                     radius: 0.0.into()
                 },
                 ..Default::default()
-            }),
+            })
+            .on_press(Message::PickerOpened(Picking::Current)),
         button(crate::ui::centred(icon(
             icons::PIPETTE,
             16.0,
@@ -843,9 +848,12 @@ fn swatches<'a>(
         );
     }
 
-    column![grid, wide_button(i18n::add_colour(), Message::PickerOpened)]
-        .spacing(6)
-        .into()
+    column![
+        grid,
+        wide_button(i18n::add_colour(), Message::PickerOpened(Picking::Adding))
+    ]
+    .spacing(6)
+    .into()
 }
 
 fn custom_menu_view<'a>(index: usize) -> Element<'a, Message> {
