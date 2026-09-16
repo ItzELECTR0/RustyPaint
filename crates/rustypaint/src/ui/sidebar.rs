@@ -599,12 +599,13 @@ const THUMBNAIL: u32 = 28;
 
 type Thumbnails = std::sync::Arc<Vec<Option<iced::widget::image::Handle>>>;
 
-type ThumbnailCache = std::collections::HashMap<(theme::Mode, theme::Scheme, bool), Thumbnails>;
+type ThumbnailCache =
+    std::collections::HashMap<(theme::Mode, theme::Scheme, theme::CustomAccent, bool), Thumbnails>;
 
 static THUMBNAILS: std::sync::LazyLock<std::sync::Mutex<ThumbnailCache>> =
     std::sync::LazyLock::new(Default::default);
 
-fn ink_of(palette: &theme::Palette, active: bool) -> iced::Color {
+fn ink_of(palette: theme::Palette, active: bool) -> iced::Color {
     if active {
         palette.selection_text
     } else {
@@ -639,11 +640,16 @@ fn thumbnails(mode: theme::Mode, scheme: theme::Scheme, active: bool) -> Thumbna
 }
 
 fn thumbnail_set(active: bool) -> Thumbnails {
-    let key = (theme::mode(), theme::scheme(), active);
+    let key = (
+        theme::mode(),
+        theme::scheme(),
+        theme::custom_accent(),
+        active,
+    );
     let mut cache = THUMBNAILS.lock().expect("thumbnails");
     cache
         .entry(key)
-        .or_insert_with(|| thumbnails(key.0, key.1, key.2))
+        .or_insert_with(|| thumbnails(key.0, key.1, key.3))
         .clone()
 }
 

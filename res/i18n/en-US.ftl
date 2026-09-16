@@ -84,6 +84,10 @@ theme-system-unknown = No system preference found, using light.
 
 accent-classic = Classic
 accent-rusty = Rusty
+accent-custom = Custom
+settings-accent-fill = Accent
+settings-gradient-from = Gradient start
+settings-gradient-to = Gradient end
 
 language-auto = Automatic
 

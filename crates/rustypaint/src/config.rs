@@ -1,7 +1,7 @@
 use crate::canvas::NewCanvas;
 use crate::i18n;
 use crate::i18n::Language;
-use crate::ui::theme::{Choice, Scheme};
+use crate::ui::theme::{Choice, CustomAccent, Scheme};
 
 use std::path::PathBuf;
 
@@ -30,6 +30,8 @@ impl OpenIn {
 pub struct Config {
     pub theme: Choice,
     pub accent: Scheme,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_accent: Option<CustomAccent>,
     pub language: Language,
     pub new_canvas: NewCanvas,
     pub acrylic: bool,
@@ -47,6 +49,7 @@ impl Default for Config {
         Self {
             theme: Choice::default(),
             accent: Scheme::default(),
+            custom_accent: None,
             language: Language::default(),
             new_canvas: NewCanvas::default(),
             acrylic: true,
@@ -151,6 +154,11 @@ mod tests {
         let config = Config {
             theme: Choice::Dark,
             accent: Scheme::Classic,
+            custom_accent: Some(CustomAccent {
+                fill: [18, 52, 86, 255],
+                from: [35, 69, 103, 255],
+                to: [52, 86, 120, 255],
+            }),
             language: Language::EnUs,
             new_canvas: NewCanvas::Fixed(1920, 1080),
             acrylic: false,
@@ -171,6 +179,7 @@ mod tests {
         let config: Config = toml::from_str("theme = \"dark\"\n").unwrap();
         assert_eq!(config.theme, Choice::Dark);
         assert_eq!(config.accent, Scheme::Rusty);
+        assert_eq!(config.custom_accent, None);
         assert!(config.acrylic);
         assert!(!config.pixel_grid);
         assert!(!config.auto_pixel_grid);
@@ -202,6 +211,7 @@ mod tests {
         let text = toml::to_string_pretty(&Config::default()).unwrap();
         assert!(text.contains("theme = \"auto\""), "{text}");
         assert!(text.contains("accent = \"rusty\""), "{text}");
+        assert!(!text.contains("custom_accent"), "{text}");
         assert!(text.contains("open_in = \"tab\""), "{text}");
     }
 

@@ -84,6 +84,10 @@ theme-system-unknown = Nu s-a găsit o preferință. Folosind Luminos.
 
 accent-classic = Clasic
 accent-rusty = Rusty
+accent-custom = Custom
+settings-accent-fill = Accent
+settings-gradient-from = Început gradient
+settings-gradient-to = Sfârșit gradient
 
 language-auto = Automatic
 

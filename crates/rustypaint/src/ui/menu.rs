@@ -1,4 +1,4 @@
-use crate::app::Message;
+use crate::app::{Message, Picking};
 use crate::canvas::{self, NewCanvas, Ratio};
 use crate::config::{Config, OpenIn};
 use crate::doc::io::SaveFormat;
@@ -6,7 +6,7 @@ use crate::i18n;
 use crate::i18n::Language;
 use crate::ui::controls;
 use crate::ui::icons::{self, icon};
-use crate::ui::theme::{self, Choice, Mode, Scheme};
+use crate::ui::theme::{self, AccentColour, Choice, CustomAccent, Mode, Scheme};
 
 use iced::widget::{
     Space, button, column, container, pick_list, row, scrollable, text, text_input, toggler,
@@ -33,6 +33,8 @@ pub fn view<'a>(
     title: &'a str,
     modified: bool,
     config: &Config,
+    accent: Scheme,
+    custom_accent: CustomAccent,
     viewport: Size,
     custom: (&'a str, &'a str),
     save_format: SaveFormat,
@@ -113,7 +115,7 @@ pub fn view<'a>(
         Page::About => pane_about(),
         Page::Open => pane_open(),
         Page::SaveAs => pane_save_as(save_format),
-        Page::Settings => pane_settings(config, viewport, custom),
+        Page::Settings => pane_settings(config, accent, custom_accent, viewport, custom),
     };
 
     row![
@@ -241,6 +243,8 @@ fn pane_save_as<'a>(format: SaveFormat) -> Element<'a, Message> {
 
 fn pane_settings<'a>(
     config: &Config,
+    accent: Scheme,
+    custom_accent: CustomAccent,
     viewport: Size,
     custom: (&'a str, &'a str),
 ) -> Element<'a, Message> {
@@ -264,7 +268,8 @@ fn pane_settings<'a>(
         resolved(config.theme),
         Space::new().height(Length::Fixed(6.0)),
         note(i18n::settings_accent()),
-        row(Scheme::ALL.map(|s| accent_tile(s, config.accent))).spacing(8),
+        row(Scheme::ALL.map(|s| accent_tile(s, accent, config.custom_accent.is_some()))).spacing(8),
+        custom_accent_choice(accent, custom_accent),
         divider(),
         subheading(i18n::settings_acrylic()),
         note(i18n::settings_acrylic_note()),
@@ -536,13 +541,8 @@ fn pill<'a>(label: &'a str, active: bool, press: Message) -> Element<'a, Message
         .into()
 }
 
-fn accent_tile<'a>(scheme: Scheme, chosen: Scheme) -> Element<'a, Message> {
-    let colours = theme::palette_for(theme::mode(), scheme);
-    let wash = iced::Background::Gradient(iced::Gradient::Linear(
-        iced::gradient::Linear::new(std::f32::consts::FRAC_PI_2)
-            .add_stop(0.0, colours.selection_from)
-            .add_stop(1.0, colours.selection_to),
-    ));
+fn accent_tile<'a>(scheme: Scheme, chosen: Scheme, custom_saved: bool) -> Element<'a, Message> {
+    let wash = accent_preview(scheme, custom_saved);
     let active = scheme == chosen;
 
     button(
@@ -580,6 +580,103 @@ fn accent_tile<'a>(scheme: Scheme, chosen: Scheme) -> Element<'a, Message> {
         }
     })
     .on_press(Message::AccentPicked(scheme))
+    .into()
+}
+
+fn accent_preview(scheme: Scheme, custom_saved: bool) -> iced::Background {
+    let gradient = iced::gradient::Linear::new(std::f32::consts::FRAC_PI_2);
+    let gradient = if scheme == Scheme::Custom && !custom_saved {
+        gradient
+            .add_stop(0.0, iced::Color::from_rgb8(0x9a, 0x9a, 0x9a))
+            .add_stop(1.0, iced::Color::from_rgb8(0x19, 0x19, 0x19))
+    } else {
+        let colours = theme::palette_for(theme::mode(), scheme);
+        gradient
+            .add_stop(0.0, colours.selection_from)
+            .add_stop(1.0, colours.selection_to)
+    };
+    iced::Background::Gradient(iced::Gradient::Linear(gradient))
+}
+
+fn custom_accent_choice<'a>(scheme: Scheme, custom: CustomAccent) -> Element<'a, Message> {
+    if scheme != Scheme::Custom {
+        return Space::new().into();
+    }
+    column![
+        accent_colour(
+            i18n::settings_accent_fill(),
+            custom.fill,
+            AccentColour::Fill,
+        ),
+        accent_colour(
+            i18n::settings_gradient_from(),
+            custom.from,
+            AccentColour::From,
+        ),
+        accent_colour(i18n::settings_gradient_to(), custom.to, AccentColour::To,),
+    ]
+    .spacing(6)
+    .into()
+}
+
+fn accent_colour<'a>(label: &'a str, colour: [u8; 4], part: AccentColour) -> Element<'a, Message> {
+    let [r, g, b, a] = colour;
+    let hex = if a == 255 {
+        format!("#{r:02X}{g:02X}{b:02X}")
+    } else {
+        format!("#{r:02X}{g:02X}{b:02X}{a:02X}")
+    };
+    let fill = iced::Color::from_rgba8(r, g, b, a as f32 / 255.0);
+    row![
+        text(label)
+            .size(13)
+            .color(theme::colours().text)
+            .width(Length::Fixed(120.0)),
+        button(
+            row![
+                container(Space::new())
+                    .width(Length::Fixed(38.0))
+                    .height(Length::Fixed(20.0))
+                    .style(move |_theme| container::Style {
+                        background: Some(fill.into()),
+                        border: iced::Border {
+                            color: theme::colours().border,
+                            width: 1.0,
+                            radius: 2.0.into(),
+                        },
+                        ..Default::default()
+                    }),
+                text(hex).size(12),
+            ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center),
+        )
+        .height(Length::Fixed(30.0))
+        .padding(iced::Padding::default().left(6).right(10))
+        .style(|_theme, status| {
+            let c = theme::colours();
+            button::Style {
+                background: Some(
+                    if matches!(status, button::Status::Hovered) {
+                        c.control_hover
+                    } else {
+                        c.control
+                    }
+                    .into(),
+                ),
+                text_color: c.text,
+                border: iced::Border {
+                    color: c.border,
+                    width: 1.0,
+                    radius: 2.0.into(),
+                },
+                ..Default::default()
+            }
+        })
+        .on_press(Message::PickerOpened(Picking::Accent(part))),
+    ]
+    .spacing(8)
+    .align_y(iced::Alignment::Center)
     .into()
 }
 

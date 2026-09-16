@@ -379,7 +379,11 @@ impl App {
             }
             Message::WindowClosed => return self.discarding(Pending::Close),
             Message::PickerOpened(picking) => {
-                self.picker = Some(Picker::on(self.brush.colour));
+                let colour = match picking {
+                    Picking::Accent(part) => self.custom_accent.colour(part),
+                    _ => self.brush.colour,
+                };
+                self.picker = Some(Picker::on(colour));
                 self.picking_colour = Some(picking);
                 self.custom_colour_menu = None;
             }
@@ -391,6 +395,7 @@ impl App {
             Message::PickerConfirmed => {
                 if let Some(picker) = self.picker.take() {
                     let colour = picker.colour();
+                    let mut paint_colour = true;
                     match self.picking_colour.take() {
                         Some(Picking::Editing(index)) => {
                             if let Some(custom) = self.config.custom_colours.get_mut(index) {
@@ -405,9 +410,21 @@ impl App {
                             }
                             self.save_config();
                         }
+                        Some(Picking::Accent(part)) => {
+                            self.custom_accent.set(part, colour);
+                            self.config.custom_accent = Some(self.custom_accent);
+                            self.config.accent = Scheme::Custom;
+                            self.accent = Scheme::Custom;
+                            theme::set_custom_accent(self.custom_accent);
+                            self.apply_theme();
+                            self.save_config();
+                            paint_colour = false;
+                        }
                         _ => {}
                     }
-                    self.take_colour(colour);
+                    if paint_colour {
+                        self.take_colour(colour);
+                    }
                 }
                 self.picking_field = None;
             }
@@ -806,12 +823,30 @@ impl App {
             }
             Message::ThemePicked(choice) => {
                 self.config.theme = choice;
+                if self.config.custom_accent.is_some() {
+                    theme::set_theme(choice.resolve(), self.accent);
+                    theme::set_custom_accent(self.custom_accent);
+                }
                 self.apply_theme();
                 self.save_config();
             }
             Message::AccentPicked(scheme) => {
+                if scheme == Scheme::Custom && self.config.custom_accent.is_none() {
+                    let palette = theme::colours();
+                    self.custom_accent = CustomAccent::from_palette(palette);
+                    theme::seed_custom_accent(palette);
+                    self.accent = Scheme::Custom;
+                    self.apply_theme();
+                    return Task::none();
+                }
+                self.accent = scheme;
                 self.config.accent = scheme;
                 self.apply_theme();
+                if self.config.custom_accent.is_none() {
+                    let palette = theme::colours();
+                    self.custom_accent = CustomAccent::from_palette(palette);
+                    theme::seed_custom_accent(palette);
+                }
                 self.save_config();
             }
             Message::LanguagePicked(language) => {

@@ -28,7 +28,7 @@ fn main() {
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::env::temp_dir().join("theme.png"));
 
-    let width = (PANEL.0 * 2.0 + GAP * 3.0) as u32;
+    let width = (PANEL.0 * Scheme::ALL.len() as f32 + GAP * (Scheme::ALL.len() + 1) as f32) as u32;
     let height = (PANEL.1 * 2.0 + GAP * 3.0 + 28.0) as u32;
     let mut sheet = Pixmap::new(width, height).expect("sheet");
     sheet.fill(Color::from_rgba8(120, 120, 120, 255));
@@ -39,13 +39,13 @@ fn main() {
             let y = GAP + row as f32 * (PANEL.1 + GAP);
             panel(
                 &mut sheet,
-                theme::palette_for(mode, scheme),
+                &theme::palette_for(mode, scheme),
                 mode,
                 scheme,
                 x,
                 y,
             );
-            report(theme::palette_for(mode, scheme), mode, scheme);
+            report(&theme::palette_for(mode, scheme), mode, scheme);
         }
     }
 

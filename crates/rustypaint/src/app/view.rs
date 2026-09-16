@@ -768,6 +768,8 @@ impl App {
                 self.document_name(),
                 self.doc.modified(),
                 &self.config,
+                self.accent,
+                self.custom_accent,
                 self.viewport,
                 (&self.custom_canvas.0, &self.custom_canvas.1),
                 self.save_format,

@@ -84,17 +84,59 @@ pub enum Scheme {
     Classic,
     #[default]
     Rusty,
+    Custom,
 }
 
 impl Scheme {
-    pub const ALL: [Scheme; 2] = [Scheme::Classic, Scheme::Rusty];
+    pub const ALL: [Scheme; 3] = [Scheme::Classic, Scheme::Rusty, Scheme::Custom];
 
     pub fn name(self) -> &'static str {
         match self {
             Scheme::Classic => crate::i18n::accent_classic(),
             Scheme::Rusty => crate::i18n::accent_rusty(),
+            Scheme::Custom => crate::i18n::accent_custom(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct CustomAccent {
+    pub fill: [u8; 4],
+    pub from: [u8; 4],
+    pub to: [u8; 4],
+}
+
+impl CustomAccent {
+    pub fn from_palette(palette: Palette) -> Self {
+        Self {
+            fill: bytes(palette.accent),
+            from: bytes(palette.selection_from),
+            to: bytes(palette.selection_to),
+        }
+    }
+
+    pub fn colour(self, part: AccentColour) -> [u8; 4] {
+        match part {
+            AccentColour::Fill => self.fill,
+            AccentColour::From => self.from,
+            AccentColour::To => self.to,
+        }
+    }
+
+    pub fn set(&mut self, part: AccentColour, colour: [u8; 4]) {
+        match part {
+            AccentColour::Fill => self.fill = colour,
+            AccentColour::From => self.from = colour,
+            AccentColour::To => self.to = colour,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccentColour {
+    Fill,
+    From,
+    To,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -129,6 +171,7 @@ struct Accent {
     on: Color,
 }
 
+#[derive(Debug, Clone, Copy)]
 #[allow(dead_code, reason = "reference table, filled in ahead of the widgets")]
 pub struct Palette {
     pub side_panel: Color,
@@ -273,6 +316,16 @@ static PALETTES: [[Palette; 2]; 2] = [
 
 static MODE: AtomicU8 = AtomicU8::new(Mode::Light as u8);
 static SCHEME: AtomicU8 = AtomicU8::new(Scheme::Rusty as u8);
+static CUSTOM_FILL: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::from_be_bytes([0xfe, 0xa8, 0x45, 0xff]));
+static CUSTOM_LABEL: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::from_be_bytes([0xa8, 0x5a, 0x0a, 0xff]));
+static CUSTOM_FROM: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::from_be_bytes([0xfe, 0xa8, 0x45, 0xff]));
+static CUSTOM_TO: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::from_be_bytes([0xff, 0xc2, 0x1a, 0xff]));
+static CUSTOM_ON: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::from_be_bytes([0x1a, 0x1a, 0x1a, 0xff]));
 static ACRYLIC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 const VEIL: f32 = 0.85;
@@ -289,12 +342,19 @@ pub fn veiled(colour: Color) -> Color {
     }
 }
 
-pub fn colours() -> &'static Palette {
+pub fn colours() -> Palette {
     palette_for(mode(), scheme())
 }
 
-pub fn palette_for(mode: Mode, scheme: Scheme) -> &'static Palette {
-    &PALETTES[mode as usize][scheme as usize]
+pub fn palette_for(mode: Mode, scheme: Scheme) -> Palette {
+    match scheme {
+        Scheme::Classic => PALETTES[mode as usize][0],
+        Scheme::Rusty => PALETTES[mode as usize][1],
+        Scheme::Custom => {
+            let surfaces = if mode == Mode::Dark { DARK } else { LIGHT };
+            merge(surfaces, stored_custom_palette())
+        }
+    }
 }
 
 pub fn mode() -> Mode {
@@ -306,16 +366,108 @@ pub fn mode() -> Mode {
 }
 
 pub fn scheme() -> Scheme {
-    if SCHEME.load(Ordering::Relaxed) == Scheme::Classic as u8 {
-        Scheme::Classic
-    } else {
-        Scheme::Rusty
+    match SCHEME.load(Ordering::Relaxed) {
+        value if value == Scheme::Classic as u8 => Scheme::Classic,
+        value if value == Scheme::Custom as u8 => Scheme::Custom,
+        _ => Scheme::Rusty,
     }
 }
 
 pub fn set_theme(mode: Mode, scheme: Scheme) {
     MODE.store(mode as u8, Ordering::Relaxed);
     SCHEME.store(scheme as u8, Ordering::Relaxed);
+}
+
+pub fn custom_accent() -> CustomAccent {
+    CustomAccent {
+        fill: CUSTOM_FILL.load(Ordering::Relaxed).to_be_bytes(),
+        from: CUSTOM_FROM.load(Ordering::Relaxed).to_be_bytes(),
+        to: CUSTOM_TO.load(Ordering::Relaxed).to_be_bytes(),
+    }
+}
+
+pub fn set_custom_accent(accent: CustomAccent) {
+    let surfaces = if mode() == Mode::Dark { DARK } else { LIGHT };
+    store_custom_palette(custom_palette(surfaces, accent));
+}
+
+pub fn seed_custom_accent(palette: Palette) {
+    store_custom_palette(Accent {
+        fill: palette.accent,
+        label: palette.accent_text,
+        from: palette.selection_from,
+        to: palette.selection_to,
+        on: palette.selection_text,
+    });
+}
+
+fn store_custom_palette(accent: Accent) {
+    CUSTOM_FILL.store(u32::from_be_bytes(bytes(accent.fill)), Ordering::Relaxed);
+    CUSTOM_LABEL.store(u32::from_be_bytes(bytes(accent.label)), Ordering::Relaxed);
+    CUSTOM_FROM.store(u32::from_be_bytes(bytes(accent.from)), Ordering::Relaxed);
+    CUSTOM_TO.store(u32::from_be_bytes(bytes(accent.to)), Ordering::Relaxed);
+    CUSTOM_ON.store(u32::from_be_bytes(bytes(accent.on)), Ordering::Relaxed);
+}
+
+fn stored_custom_palette() -> Accent {
+    Accent {
+        fill: colour(CUSTOM_FILL.load(Ordering::Relaxed).to_be_bytes()),
+        label: colour(CUSTOM_LABEL.load(Ordering::Relaxed).to_be_bytes()),
+        from: colour(CUSTOM_FROM.load(Ordering::Relaxed).to_be_bytes()),
+        to: colour(CUSTOM_TO.load(Ordering::Relaxed).to_be_bytes()),
+        on: colour(CUSTOM_ON.load(Ordering::Relaxed).to_be_bytes()),
+    }
+}
+
+fn custom_palette(surfaces: Surfaces, custom: CustomAccent) -> Accent {
+    let fill = colour(custom.fill);
+    let from = colour(custom.from);
+    let to = colour(custom.to);
+    Accent {
+        fill,
+        label: if contrast(fill, surfaces.side_panel) >= 4.5 {
+            fill
+        } else {
+            surfaces.text
+        },
+        from,
+        to,
+        on: readable_over(from, to),
+    }
+}
+
+fn colour([r, g, b, a]: [u8; 4]) -> Color {
+    Color::from_rgba8(r, g, b, a as f32 / 255.0)
+}
+
+fn bytes(colour: Color) -> [u8; 4] {
+    [colour.r, colour.g, colour.b, colour.a]
+        .map(|channel| (channel * 255.0).round().clamp(0.0, 255.0) as u8)
+}
+
+fn readable_over(from: Color, to: Color) -> Color {
+    let black = contrast(Color::BLACK, from).min(contrast(Color::BLACK, to));
+    let white = contrast(Color::WHITE, from).min(contrast(Color::WHITE, to));
+    if black >= white {
+        Color::BLACK
+    } else {
+        Color::WHITE
+    }
+}
+
+fn contrast(a: Color, b: Color) -> f32 {
+    let luminance = |c: Color| {
+        let channel = |v: f32| {
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+    };
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
 }
 
 #[rustfmt::skip]
@@ -359,7 +511,7 @@ mod tests {
     #[test]
     fn every_label_reads_against_what_it_sits_on() {
         for mode in [Mode::Light, Mode::Dark] {
-            for scheme in Scheme::ALL {
+            for scheme in [Scheme::Classic, Scheme::Rusty] {
                 let c = palette_for(mode, scheme);
                 for (name, fg, bg) in [
                     ("text on panel", c.text, c.side_panel),

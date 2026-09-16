@@ -3546,6 +3546,74 @@ fn the_theme_choice_is_kept_and_resolved() {
 }
 
 #[test]
+fn untouched_custom_colours_are_seeded_without_being_saved() {
+    let root = std::env::temp_dir().join(format!(
+        "rustypaint-custom-accent-{}",
+        crate::doc::recovery::id()
+    ));
+    let path = root.join("config.toml");
+    let config = Config {
+        theme: Choice::Light,
+        ..Config::default()
+    };
+    let (mut app, _) = App::boot(config, Some(path.clone()), None, None);
+    let rusty = theme::colours();
+
+    send(&mut app, Message::AccentPicked(Scheme::Custom));
+    assert_eq!(app.accent, Scheme::Custom);
+    assert_eq!(app.config.accent, Scheme::Rusty);
+    assert_eq!(app.config.custom_accent, None);
+    assert!(!path.exists());
+    let custom = theme::colours();
+    assert_eq!(custom.accent, rusty.accent);
+    assert_eq!(custom.accent_text, rusty.accent_text);
+    assert_eq!(custom.selection_from, rusty.selection_from);
+    assert_eq!(custom.selection_to, rusty.selection_to);
+    assert_eq!(custom.selection_text, rusty.selection_text);
+
+    send(&mut app, Message::AccentPicked(Scheme::Classic));
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("accent = \"classic\""), "{saved}");
+    assert!(!saved.contains("custom_accent"), "{saved}");
+    let classic = theme::colours();
+
+    send(&mut app, Message::AccentPicked(Scheme::Custom));
+    assert_eq!(theme::colours().accent, classic.accent);
+    assert_eq!(app.config.custom_accent, None);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn changing_a_custom_colour_saves_and_reuses_the_whole_scheme() {
+    let mut app = app(64, 48);
+    send(&mut app, Message::AccentPicked(Scheme::Custom));
+    send(
+        &mut app,
+        Message::PickerOpened(Picking::Accent(AccentColour::Fill)),
+    );
+    send(&mut app, Message::PickerHexEdited("#123456".into()));
+    send(&mut app, Message::PickerConfirmed);
+
+    let custom = app
+        .config
+        .custom_accent
+        .expect("the custom scheme was saved");
+    assert_eq!(custom.fill, [0x12, 0x34, 0x56, 0xff]);
+    assert_eq!(app.config.accent, Scheme::Custom);
+    assert_eq!(app.accent, Scheme::Custom);
+
+    send(&mut app, Message::AccentPicked(Scheme::Classic));
+    send(&mut app, Message::AccentPicked(Scheme::Custom));
+    assert_eq!(app.custom_accent, custom);
+    assert_eq!(app.config.custom_accent, Some(custom));
+    assert_eq!(
+        theme::colours().accent,
+        iced::Color::from_rgb8(0x12, 0x34, 0x56)
+    );
+}
+
+#[test]
 fn a_test_can_never_reach_the_real_settings_file() {
     let mut app = app(64, 48);
     assert!(app.config_path.is_none());

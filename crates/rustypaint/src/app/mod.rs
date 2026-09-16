@@ -10,7 +10,7 @@ use crate::text::{Align, TextStyle};
 use crate::ui::menu::Page as MenuPage;
 use crate::ui::picker::Picker;
 use crate::ui::sidebar;
-use crate::ui::theme::{self, Choice, Scheme, metrics};
+use crate::ui::theme::{self, AccentColour, Choice, CustomAccent, Scheme, metrics};
 use crate::ui::titlebar;
 
 use iced::time::Instant;
@@ -281,6 +281,7 @@ pub enum Picking {
     Current,
     Adding,
     Editing(usize),
+    Accent(AccentColour),
 }
 
 pub struct App {
@@ -320,6 +321,8 @@ pub struct App {
     menu: Option<MenuPage>,
     save_format: doc::io::SaveFormat,
     config: Config,
+    accent: Scheme,
+    custom_accent: CustomAccent,
     config_path: Option<PathBuf>,
     custom_canvas: (String, String),
     mods: iced::keyboard::Modifiers,
@@ -599,7 +602,25 @@ impl App {
         recovery: Option<PathBuf>,
         complaint: Option<String>,
     ) -> (Self, Task<Message>) {
-        theme::set_theme(config.theme.resolve(), config.accent);
+        let mode = config.theme.resolve();
+        let accent = config.accent;
+        let seed_scheme = if accent == Scheme::Custom {
+            Scheme::Rusty
+        } else {
+            accent
+        };
+        theme::set_theme(mode, accent);
+        let custom_accent = match config.custom_accent {
+            Some(custom) => {
+                theme::set_custom_accent(custom);
+                custom
+            }
+            None => {
+                let palette = theme::palette_for(mode, seed_scheme);
+                theme::seed_custom_accent(palette);
+                CustomAccent::from_palette(palette)
+            }
+        };
         let recovered = recovery
             .as_deref()
             .map(doc::recovery::abandoned)
@@ -680,6 +701,8 @@ impl App {
             active: 0,
             tab_menu: None,
             config,
+            accent,
+            custom_accent,
             config_path,
             dirty: None,
         };
@@ -957,7 +980,7 @@ impl App {
     }
 
     fn apply_theme(&mut self) {
-        theme::set_theme(self.config.theme.resolve(), self.config.accent);
+        theme::set_theme(self.config.theme.resolve(), self.accent);
     }
 
     fn save_config(&mut self) {
