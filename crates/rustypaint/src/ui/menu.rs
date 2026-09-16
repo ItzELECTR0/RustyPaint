@@ -117,6 +117,7 @@ pub fn view<'a>(
         Page::SaveAs => pane_save_as(save_format),
         Page::Settings => pane_settings(config, accent, custom_accent, viewport, custom),
     };
+    let pane_right_padding = if page == Page::Settings { 8.0 } else { 40.0 };
 
     row![
         container(rail)
@@ -131,7 +132,7 @@ pub fn view<'a>(
             .height(Length::Fill)
             .padding(iced::Padding {
                 top: 30.0,
-                right: 40.0,
+                right: pane_right_padding,
                 bottom: 40.0,
                 left: 46.0
             })
@@ -350,7 +351,23 @@ fn pane_settings<'a>(
     .spacing(8)
     .max_width(760.0);
 
-    scrollable(options).height(Length::Fill).into()
+    let options = container(options)
+        .width(Length::Fill)
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 32.0,
+            bottom: 0.0,
+            left: 0.0,
+        });
+
+    scrollable(options)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .direction(scrollable::Direction::Vertical(
+            scrollable::Scrollbar::new().width(8).scroller_width(8),
+        ))
+        .style(controls::scrollable_style)
+        .into()
 }
 
 fn pane_about<'a>() -> Element<'a, Message> {

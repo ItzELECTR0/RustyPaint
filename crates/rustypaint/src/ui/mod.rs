@@ -8,7 +8,7 @@ pub fn centred<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> Ele
 pub mod controls {
     use super::theme;
     use iced::widget::overlay::menu;
-    use iced::widget::{checkbox, pick_list, slider, text_input, toggler};
+    use iced::widget::{checkbox, pick_list, scrollable, slider, text_input, toggler};
     use iced::{Background, Border};
 
     pub fn slider_style(_theme: &iced::Theme, status: slider::Status) -> slider::Style {
@@ -28,6 +28,22 @@ pub mod controls {
                 border_width: 0.0,
                 border_color: iced::Color::TRANSPARENT,
             },
+        }
+    }
+
+    pub fn scrollable_style(theme: &iced::Theme, status: scrollable::Status) -> scrollable::Style {
+        let rail = scrollable::Rail {
+            background: None,
+            border: Border::default(),
+            scroller: scrollable::Scroller {
+                background: super::theme::colours().accent.into(),
+                border: iced::border::rounded(4),
+            },
+        };
+        scrollable::Style {
+            vertical_rail: rail,
+            horizontal_rail: rail,
+            ..scrollable::default(theme, status)
         }
     }
 
