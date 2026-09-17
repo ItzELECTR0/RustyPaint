@@ -49,11 +49,6 @@ pub const WINDOW_CLOSE_SVG: &[u8] = include_bytes!(concat!(
     "/../../res/window-close.svg"
 ));
 
-pub const STICKER_SLOT_SVG: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../res/sticker-slot.svg"
-));
-
 pub mod tool_icons {
     macro_rules! tool_icon {
         ($name:literal) => {

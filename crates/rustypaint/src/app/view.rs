@@ -807,6 +807,7 @@ impl App {
                         self.doc.transparent,
                         self.drawing,
                         self.shape_style,
+                        self.blur_settings,
                         &self.text_style,
                         metrics::SIDE_PANEL_WIDTH,
                         self.colour_target,
@@ -987,6 +988,7 @@ impl App {
                     text_empty: f.text_is_empty(),
                     opacity: f.opacity(),
                     masked: f.masked(),
+                    blur: f.blur_settings(),
                     grips: true,
                 })
             }),
@@ -1028,6 +1030,7 @@ impl App {
             text_empty: false,
             opacity: 1.0,
             masked: true,
+            blur: None,
             grips: false,
         })
     }
@@ -1037,7 +1040,10 @@ impl App {
             frame: self.frame(),
             cursor: iced::mouse::Interaction::Crosshair,
             selecting: !self.refining()
-                && matches!(self.brush.tool, Tool::Select | Tool::Text | Tool::Shape),
+                && matches!(
+                    self.brush.tool,
+                    Tool::Select | Tool::Text | Tool::Shape | Tool::Blur
+                ),
             brush: if self.refining() {
                 Some(CuttingOut::BRUSH * 2.0 / self.view.zoom.max(0.01))
             } else {

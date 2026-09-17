@@ -31,6 +31,7 @@ struct Uniforms {
     accent: vec4<f32>,
     float_masked: f32,
     pixel_grid: f32,
+    float_blur: f32,
     brush_ring: vec4<f32>,
     crop: vec4<f32>,
     marquee: vec4<f32>,
@@ -40,6 +41,7 @@ struct Uniforms {
 @group(0) @binding(1) var canvas_tex: texture_2d<f32>;
 @group(0) @binding(2) var canvas_sampler: sampler;
 @group(0) @binding(3) var float_tex: texture_2d<f32>;
+@group(0) @binding(4) var blur_tex: texture_2d<f32>;
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -204,6 +206,13 @@ fn float_local(local: vec2<f32>) -> vec2<f32> {
     return r / max(u.float_half * 2.0, vec2<f32>(0.001)) + vec2<f32>(0.5);
 }
 
+fn canvas_backdrop(local: vec2<f32>) -> vec3<f32> {
+    let square = (local - u.canvas_pos) / u.checker_size;
+    let parity = (floor(square.x) + floor(square.y)) % 2.0;
+    let checker = select(u.checker_light.rgb, u.checker_dark.rgb, parity >= 1.0);
+    return select(checker, vec3<f32>(1.0), u.backing > 0.5);
+}
+
 fn draw_crop(base: vec3<f32>, local: vec2<f32>) -> vec3<f32> {
     var colour = base;
     let pos = u.crop.xy;
@@ -334,10 +343,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
     let inside = sd_box(local - centre, half_size);
     if (inside <= 0.0 && u.show_canvas > 0.5) {
-        let square = (local - u.canvas_pos) / u.checker_size;
-        let parity = (floor(square.x) + floor(square.y)) % 2.0;
-        let checker = select(u.checker_light.rgb, u.checker_dark.rgb, parity >= 1.0);
-        let behind = select(checker, vec3<f32>(1.0), u.backing > 0.5);
+        let behind = canvas_backdrop(local);
 
         var uv = (local - u.canvas_pos) / u.canvas_size;
         if (u.zoom >= 1.0) {
@@ -348,10 +354,20 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
 
     if (u.float_present > 0.5) {
-        let uv = float_local(canvas_probe(local));
+        let precise_uv = float_local(local);
+        let uv = select(float_local(canvas_probe(local)), precise_uv, u.float_blur > 0.0);
         if (uv.x >= 0.0 && uv.x < 1.0 && uv.y >= 0.0 && uv.y < 1.0) {
-            let texel = textureSampleLevel(float_tex, canvas_sampler, float_texel(uv), 0.0);
-            colour = mix(colour, texel.rgb, texel.a * u.float_opacity);
+            if (u.float_blur > 0.0 && inside <= 0.0) {
+                var canvas_uv = (local - u.canvas_pos) / u.canvas_size;
+                if (u.zoom >= 1.0) {
+                    canvas_uv = (floor(canvas_uv * u.texture_size) + 0.5) / u.texture_size;
+                }
+                let blurred = textureSample(blur_tex, canvas_sampler, canvas_uv);
+                colour = mix(canvas_backdrop(local), blurred.rgb, blurred.a);
+            } else {
+                let texel = textureSampleLevel(float_tex, canvas_sampler, float_texel(uv), 0.0);
+                colour = mix(colour, texel.rgb, texel.a * u.float_opacity);
+            }
         }
     }
 

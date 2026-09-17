@@ -1,3 +1,4 @@
+pub mod blur;
 pub mod brush;
 pub mod curve;
 pub mod fill;

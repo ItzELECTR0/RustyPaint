@@ -32,22 +32,52 @@ pub struct Uniforms {
     pub accent: [f32; 4],
     pub float_masked: f32,
     pub pixel_grid: f32,
-    pub _pad3: [f32; 2],
+    pub float_blur: f32,
+    pub _pad3: f32,
     pub brush_ring: [f32; 4],
     pub crop: [f32; 4],
     pub marquee: [f32; 4],
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct BlurPass {
+    size: [u32; 2],
+    mode: u32,
+    horizontal: u32,
+    strength: f32,
+    angle: f32,
+    detail: f32,
+    passes: u32,
+    blades: u32,
+    pass_index: u32,
+}
+
 pub struct Viewport {
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
+    box_blur_pipeline: wgpu::ComputePipeline,
+    effect_blur_pipeline: wgpu::ComputePipeline,
+    blur_layout: wgpu::BindGroupLayout,
+    blur_params: wgpu::Buffer,
+    blur_stride: u32,
     uniforms: wgpu::Buffer,
     sampler: wgpu::Sampler,
     srgb_target: bool,
     canvas: Option<Texture>,
     floating: Option<Texture>,
+    blur: Option<BlurTextures>,
     blank: Option<wgpu::Texture>,
     bind_group: Option<wgpu::BindGroup>,
+}
+
+struct BlurTextures {
+    a: wgpu::Texture,
+    b: wgpu::Texture,
+    size: (u32, u32),
+    canvas_version: u64,
+    settings: [u32; 6],
+    final_is_b: bool,
 }
 
 struct Texture {
@@ -61,6 +91,10 @@ impl iced::widget::shader::Pipeline for Viewport {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("rustypaint viewport"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/viewport.wgsl").into()),
+        });
+        let blur_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("rustypaint blur"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/blur.wgsl").into()),
         });
 
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -102,6 +136,54 @@ impl iced::widget::shader::Pipeline for Viewport {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let blur_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("rustypaint blur bind group layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: std::num::NonZeroU64::new(
+                            std::mem::size_of::<BlurPass>() as u64,
+                        ),
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -136,10 +218,39 @@ impl iced::widget::shader::Pipeline for Viewport {
             multiview: None,
             cache: None,
         });
+        let blur_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("rustypaint blur pipeline layout"),
+            bind_group_layouts: &[&blur_layout],
+            push_constant_ranges: &[],
+        });
+        let box_blur_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("rustypaint box blur pipeline"),
+            layout: Some(&blur_pipeline_layout),
+            module: &blur_shader,
+            entry_point: Some("box_blur"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        let effect_blur_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("rustypaint effect blur pipeline"),
+                layout: Some(&blur_pipeline_layout),
+                module: &blur_shader,
+                entry_point: Some("effect_blur"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
 
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("rustypaint viewport uniforms"),
             size: std::mem::size_of::<Uniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let blur_stride = device.limits().min_uniform_buffer_offset_alignment.max(16);
+        let blur_params = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("rustypaint blur passes"),
+            size: u64::from(blur_stride) * 8,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -156,11 +267,17 @@ impl iced::widget::shader::Pipeline for Viewport {
         Self {
             pipeline,
             layout,
+            box_blur_pipeline,
+            effect_blur_pipeline,
+            blur_layout,
+            blur_params,
+            blur_stride,
             uniforms,
             sampler,
             srgb_target: format.is_srgb(),
             canvas: None,
             floating: None,
+            blur: None,
             blank: None,
             bind_group: None,
         }
@@ -236,6 +353,170 @@ impl Viewport {
             }
             None => Self::upload(queue, &texture.handle, wgpu::Origin3d::ZERO, size, pixels),
         }
+    }
+
+    pub fn sync_blur(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        size: (u32, u32),
+        canvas_version: u64,
+        settings: Option<crate::paint::blur::Settings>,
+    ) {
+        let Some(settings) = settings.map(crate::paint::blur::Settings::normalised) else {
+            return;
+        };
+        if size.0 == 0 || size.1 == 0 {
+            return;
+        }
+        let Some(canvas) = &self.canvas else { return };
+        let settings_key = settings.cache_key();
+        let stale_size = self.blur.as_ref().is_none_or(|blur| blur.size != size);
+        if stale_size {
+            self.blur = Some(BlurTextures {
+                a: Self::allocate_blur(device, size, "rustypaint blur a"),
+                b: Self::allocate_blur(device, size, "rustypaint blur b"),
+                size,
+                canvas_version: u64::MAX,
+                settings: [0; 6],
+                final_is_b: true,
+            });
+            self.bind_group = None;
+        }
+
+        let Some(blur) = &mut self.blur else { return };
+        if blur.canvas_version == canvas_version && blur.settings == settings_key {
+            return;
+        }
+
+        let effect = |mode, pass_index| BlurPass {
+            size: [size.0, size.1],
+            mode,
+            horizontal: 0,
+            strength: settings.strength,
+            angle: settings.angle,
+            detail: settings.detail,
+            passes: settings.passes,
+            blades: settings.blades,
+            pass_index,
+        };
+        let box_pass = |radius, horizontal| BlurPass {
+            size: [size.0, size.1],
+            mode: 0,
+            horizontal: u32::from(horizontal),
+            strength: radius as f32,
+            angle: 0.0,
+            detail: 0.0,
+            passes: 0,
+            blades: 0,
+            pass_index: 0,
+        };
+        let plans: Vec<BlurPass> = match settings.algorithm {
+            crate::paint::blur::Algorithm::Box => {
+                let radius = settings.strength.round() as u32;
+                vec![box_pass(radius, true), box_pass(radius, false)]
+            }
+            crate::paint::blur::Algorithm::Gaussian => crate::paint::blur::radii(settings.strength)
+                .into_iter()
+                .flat_map(|radius| [box_pass(radius, true), box_pass(radius, false)])
+                .collect(),
+            crate::paint::blur::Algorithm::Median => {
+                let mut passes: Vec<_> = (0..settings.passes).map(|pass| effect(1, pass)).collect();
+                let radius = settings.strength.round() as u32;
+                passes.extend([box_pass(radius, true), box_pass(radius, false)]);
+                passes
+            }
+            crate::paint::blur::Algorithm::Motion => vec![effect(2, 0)],
+            crate::paint::blur::Algorithm::Bilateral => {
+                let mut passes = vec![effect(3, 0)];
+                let radius = crate::paint::blur::bilateral_softening_radius(settings);
+                if radius > 0 {
+                    passes.extend([box_pass(radius, true), box_pass(radius, false)]);
+                }
+                passes
+            }
+            crate::paint::blur::Algorithm::Directional => vec![effect(4, 0)],
+            crate::paint::blur::Algorithm::Defocus => vec![effect(5, 0)],
+            crate::paint::blur::Algorithm::Kawase => {
+                (0..settings.passes).map(|pass| effect(6, pass)).collect()
+            }
+        };
+        let final_is_b = plans.len().is_multiple_of(2);
+        if blur.final_is_b != final_is_b {
+            self.bind_group = None;
+        }
+        blur.final_is_b = final_is_b;
+
+        let mut params = vec![0; self.blur_stride as usize * plans.len()];
+        for (pass, value) in plans.iter().enumerate() {
+            let start = pass * self.blur_stride as usize;
+            let bytes = bytemuck::bytes_of(value);
+            params[start..start + bytes.len()].copy_from_slice(bytes);
+        }
+        queue.write_buffer(&self.blur_params, 0, &params);
+
+        let canvas_view = canvas.handle.create_view(&Default::default());
+        let a_view = blur.a.create_view(&Default::default());
+        let b_view = blur.b.create_view(&Default::default());
+        let bind = |label, source: &wgpu::TextureView, target: &wgpu::TextureView| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(label),
+                layout: &self.blur_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(source),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(target),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &self.blur_params,
+                            offset: 0,
+                            size: std::num::NonZeroU64::new(std::mem::size_of::<BlurPass>() as u64),
+                        }),
+                    },
+                ],
+            })
+        };
+        let canvas_to_a = bind("rustypaint blur canvas to a", &canvas_view, &a_view);
+        let a_to_b = bind("rustypaint blur a to b", &a_view, &b_view);
+        let b_to_a = bind("rustypaint blur b to a", &b_view, &a_view);
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("rustypaint blur"),
+        });
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("rustypaint blur"),
+                timestamp_writes: None,
+            });
+            for (step, plan) in plans.iter().enumerate() {
+                if plan.mode == 0 {
+                    pass.set_pipeline(&self.box_blur_pipeline);
+                } else {
+                    pass.set_pipeline(&self.effect_blur_pipeline);
+                }
+                let bind_group = match step {
+                    0 => &canvas_to_a,
+                    step if step % 2 == 1 => &a_to_b,
+                    _ => &b_to_a,
+                };
+                pass.set_bind_group(0, bind_group, &[step as u32 * self.blur_stride]);
+                if plan.mode == 0 {
+                    let lines = if plan.horizontal != 0 { size.1 } else { size.0 };
+                    pass.dispatch_workgroups(lines.div_ceil(64), 1, 1);
+                } else {
+                    pass.dispatch_workgroups(size.0.div_ceil(8), size.1.div_ceil(8), 1);
+                }
+            }
+        }
+        queue.submit([encoder.finish()]);
+        blur.canvas_version = canvas_version;
+        blur.settings = settings_key;
     }
 
     fn upload(
@@ -327,6 +608,17 @@ impl Viewport {
 
         let canvas_view = canvas.handle.create_view(&Default::default());
         let float_view = floating.create_view(&Default::default());
+        let blur_view = self
+            .blur
+            .as_ref()
+            .map(|blur| {
+                if blur.final_is_b {
+                    blur.b.create_view(&Default::default())
+                } else {
+                    blur.a.create_view(&Default::default())
+                }
+            })
+            .unwrap_or_else(|| canvas.handle.create_view(&Default::default()));
         self.bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("rustypaint viewport bind group"),
             layout: &self.layout,
@@ -346,6 +638,10 @@ impl Viewport {
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: wgpu::BindingResource::TextureView(&float_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&blur_view),
                 },
             ],
         }));
@@ -372,6 +668,23 @@ impl Viewport {
             size,
             uploaded: u64::MAX,
         }
+    }
+
+    fn allocate_blur(device: &wgpu::Device, size: (u32, u32), label: &str) -> wgpu::Texture {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+            view_formats: &[],
+        })
     }
 
     pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) -> bool {
@@ -468,6 +781,7 @@ mod tests {
             ("accent", std::mem::offset_of!(Uniforms, accent)),
             ("float_masked", std::mem::offset_of!(Uniforms, float_masked)),
             ("pixel_grid", std::mem::offset_of!(Uniforms, pixel_grid)),
+            ("float_blur", std::mem::offset_of!(Uniforms, float_blur)),
             ("brush_ring", std::mem::offset_of!(Uniforms, brush_ring)),
             ("crop", std::mem::offset_of!(Uniforms, crop)),
             ("marquee", std::mem::offset_of!(Uniforms, marquee)),

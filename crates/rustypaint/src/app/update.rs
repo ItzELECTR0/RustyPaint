@@ -302,7 +302,8 @@ impl App {
                     Tab::Brushes | Tab::Symmetry => self.stashed_tool,
                     Tab::Shapes => Tool::Shape,
                     Tab::Text => Tool::Text,
-                    Tab::Stickers | Tab::Canvas => Tool::Select,
+                    Tab::Stickers => self.insert_tool,
+                    Tab::Canvas => Tool::Select,
                 };
                 self.tab = tab;
             }
@@ -329,6 +330,21 @@ impl App {
                     Some(select::Source::Curve { .. }) => self.commit_floating(),
                     _ => {}
                 }
+            }
+            Message::BlurPicked => {
+                if !self
+                    .floating
+                    .as_ref()
+                    .is_some_and(|floating| matches!(floating.source, select::Source::Blur { .. }))
+                {
+                    self.commit_floating();
+                }
+                self.insert_tool = Tool::Blur;
+                self.brush.tool = Tool::Blur;
+            }
+            Message::BlurAlgorithmPicked(algorithm) => {
+                self.blur_settings = crate::paint::blur::Settings::for_algorithm(algorithm);
+                self.restyle_blur();
             }
             Message::CurvePicked(kind) => {
                 self.brush.tool = Tool::Shape;
@@ -623,6 +639,26 @@ impl App {
             Message::ShapeThicknessChanged(v) => {
                 self.shape_style.thickness = v;
                 self.restyle_shape();
+            }
+            Message::BlurStrengthChanged(v) => {
+                self.blur_settings.strength = v;
+                self.restyle_blur();
+            }
+            Message::BlurAngleChanged(v) => {
+                self.blur_settings.angle = v;
+                self.restyle_blur();
+            }
+            Message::BlurDetailChanged(v) => {
+                self.blur_settings.detail = v;
+                self.restyle_blur();
+            }
+            Message::BlurPassesChanged(v) => {
+                self.blur_settings.passes = v.round() as u32;
+                self.restyle_blur();
+            }
+            Message::BlurBladesChanged(v) => {
+                self.blur_settings.blades = v.round() as u32;
+                self.restyle_blur();
             }
             Message::TextFontPicked(name) => {
                 self.text_style.family = name;
@@ -969,5 +1005,15 @@ impl App {
             self.viewport,
             self.doc.size(),
         );
+    }
+
+    fn restyle_blur(&mut self) {
+        self.blur_settings = self.blur_settings.normalised();
+        if let Some(floating) = &mut self.floating
+            && matches!(floating.source, select::Source::Blur { .. })
+        {
+            floating.set_blur_settings(self.blur_settings);
+            self.float_version += 1;
+        }
     }
 }

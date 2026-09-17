@@ -19,6 +19,9 @@ pub const MAX_DRAW: u32 = 8192;
 
 pub enum Source {
     Bitmap,
+    Blur {
+        settings: crate::paint::blur::Settings,
+    },
     Shape {
         kind: ShapeKind,
         style: ShapeStyle,
@@ -162,6 +165,24 @@ impl Floating {
         };
         floating.redraw();
         floating
+    }
+
+    pub fn blur(doc: &Document, settings: crate::paint::blur::Settings, rect: Rect) -> Self {
+        Self {
+            pixels: Rgba8::transparent(1, 1),
+            source: Source::Blur { settings },
+            lifted_from: None,
+            xform: Xform::from_rect(rect),
+            editing: false,
+            caret: false,
+            opacity: 1.0,
+            turns: 0,
+            flip: (false, false),
+            masked: false,
+            stretched: None,
+            backup: doc.pixels().clone(),
+            backup_touched: doc.touched(),
+        }
     }
 
     pub fn curve(
@@ -415,6 +436,7 @@ impl Floating {
         }
         match &self.source {
             Source::Bitmap | Source::Text(_) => {}
+            Source::Blur { .. } => {}
             Source::Shape { kind, style } => {
                 let (w, h) = (side(self.xform.width), side(self.xform.height));
                 let (w, h) = if self.turns % 2 == 1 { (h, w) } else { (w, h) };
@@ -478,6 +500,20 @@ impl Floating {
 
     pub fn set_opacity(&mut self, opacity: f32) {
         self.opacity = opacity.clamp(0.0, 1.0);
+    }
+
+    pub fn set_blur_settings(&mut self, settings: crate::paint::blur::Settings) {
+        let Source::Blur { settings: current } = &mut self.source else {
+            return;
+        };
+        *current = settings.normalised();
+    }
+
+    pub fn blur_settings(&self) -> Option<crate::paint::blur::Settings> {
+        match self.source {
+            Source::Blur { settings } => Some(settings),
+            _ => None,
+        }
     }
 
     pub fn turn(&mut self, clockwise: bool) {
@@ -568,7 +604,7 @@ impl Floating {
     pub fn restyle(&mut self, new: ShapeStyle) {
         match &mut self.source {
             Source::Shape { style, .. } | Source::Curve { style, .. } => *style = new,
-            Source::Bitmap | Source::Text(_) => return,
+            Source::Bitmap | Source::Blur { .. } | Source::Text(_) => return,
         }
         self.redraw();
     }
@@ -615,6 +651,7 @@ impl Floating {
             (Source::Shape { kind, .. }, _) => kind.name(),
             (Source::Curve { kind, .. }, _) => kind.name(),
             (Source::Text(_), _) => "Text",
+            (Source::Blur { .. }, _) => "Blur",
             (Source::Bitmap, Some(_)) => "Move selection",
             (Source::Bitmap, None) => "Paste",
         }
@@ -623,6 +660,25 @@ impl Floating {
     pub fn commit(&self, doc: &mut Document) -> Option<Rect> {
         let size = doc.size();
         let rect = self.xform.bounds(size)?;
+
+        if let Source::Blur { settings } = self.source {
+            let drawn = crate::paint::blur::render(&self.backup, rect, settings)?;
+            let stride = size.0 as usize * CHANNELS;
+            let canvas = doc.edit().pixels_mut();
+            for (row, y) in rect.rows().enumerate() {
+                for (column, x) in rect.cols().enumerate() {
+                    let (u, v) = self.xform.to_local(x as f32 + 0.5, y as f32 + 0.5);
+                    if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
+                        continue;
+                    }
+                    let source = (row * rect.width() as usize + column) * CHANNELS;
+                    let target = y as usize * stride + x as usize * CHANNELS;
+                    canvas[target..target + CHANNELS]
+                        .copy_from_slice(&drawn.as_bytes()[source..source + CHANNELS]);
+                }
+            }
+            return Some(rect);
+        }
 
         if let Source::Curve {
             style,

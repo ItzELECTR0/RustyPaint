@@ -288,10 +288,12 @@ impl App {
                 if let Some(lasso) = &mut self.lasso {
                     lasso.push(x, y);
                 }
-                if let Some((a, b)) = self.selecting
-                    && self.brush.tool == Tool::Shape
-                {
-                    self.draw_drawing(a, b);
+                if let Some((a, b)) = self.selecting {
+                    match self.brush.tool {
+                        Tool::Shape => self.draw_drawing(a, b),
+                        Tool::Blur => self.draw_blur(a, b),
+                        _ => {}
+                    }
                 }
             }
             gpu::Interaction::SelectEnded => {
@@ -311,13 +313,14 @@ impl App {
                     return self.end_text(a, b, tiny);
                 }
                 if tiny {
-                    if self.brush.tool == Tool::Shape {
+                    if matches!(self.brush.tool, Tool::Shape | Tool::Blur) {
                         self.floating = None;
                     }
                     return;
                 }
                 match self.brush.tool {
                     Tool::Shape => self.draw_drawing(a, b),
+                    Tool::Blur => self.draw_blur(a, b),
                     _ => {
                         if let Some(rect) = drag_rect(a, b, self.doc.size()) {
                             self.begin_float_from(rect, None);

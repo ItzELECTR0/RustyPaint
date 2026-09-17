@@ -47,6 +47,7 @@ pub const SETTINGS: &[u8] = ui_icon!("settings");
 pub const ABOUT: &[u8] = ui_icon!("about");
 pub const LINK: &[u8] = ui_icon!("link");
 pub const IMAGE: &[u8] = ui_icon!("image");
+pub const BLUR: &[u8] = ui_icon!("blur");
 
 pub fn for_tool(tool: crate::paint::Tool) -> &'static [u8] {
     use crate::assets::tool_icons as art;
@@ -64,7 +65,7 @@ pub fn for_tool(tool: crate::paint::Tool) -> &'static [u8] {
         Tool::Fill => art::FILL,
         Tool::Pipette => PIPETTE,
         Tool::Text => TEXT,
-        Tool::Select | Tool::Shape => SELECT,
+        Tool::Select | Tool::Shape | Tool::Blur => SELECT,
     }
 }
 

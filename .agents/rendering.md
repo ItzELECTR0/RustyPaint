@@ -17,6 +17,12 @@ The Rust uniform struct and `src/gpu/shaders/viewport.wgsl` must agree on every 
 total size. The pipeline tests intentionally verify both. Floating previews render at canvas
 resolution so zoomed pixels and the object about to be committed match.
 
+The live blur box is the exception to the floating texture path. Compute shaders cache the selected
+algorithm over the canvas, keyed by canvas version and every blur setting; their kernels and
+per-pass rounding mirror the CPU commit path. Moving, resizing, and rotating only change the box
+uniforms and reveal that cached texture; never rebuild or upload a blurred floating bitmap during
+pointer movement.
+
 Selection outlines use physical-pixel metrics. Their phase comes from elapsed time, and dash edges
 blend across fractional pixels so movement remains smooth on high-refresh displays. The rectangular
 marquee and the alpha-edge outline share the same renderer but have different geometry.

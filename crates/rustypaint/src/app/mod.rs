@@ -179,6 +179,11 @@ pub enum Field {
     Stabilizer,
     Tolerance,
     ShapeThickness,
+    BlurStrength,
+    BlurAngle,
+    BlurDetail,
+    BlurPasses,
+    BlurBlades,
     FloatOpacity,
     FloatX,
     FloatY,
@@ -194,6 +199,23 @@ impl Field {
                 crate::paint::brush::THICKNESS_CEILING,
             ),
             Field::ShapeThickness => (shapes::MIN_THICKNESS, shapes::MAX_THICKNESS),
+            Field::BlurStrength => (
+                crate::paint::blur::MIN_STRENGTH,
+                crate::paint::blur::MAX_STRENGTH,
+            ),
+            Field::BlurAngle => (crate::paint::blur::MIN_ANGLE, crate::paint::blur::MAX_ANGLE),
+            Field::BlurDetail => (
+                crate::paint::blur::MIN_DETAIL,
+                crate::paint::blur::MAX_DETAIL,
+            ),
+            Field::BlurPasses => (
+                crate::paint::blur::MIN_PASSES,
+                crate::paint::blur::MAX_PASSES,
+            ),
+            Field::BlurBlades => (
+                crate::paint::blur::MIN_BLADES,
+                crate::paint::blur::MAX_BLADES,
+            ),
             Field::FloatX | Field::FloatY => (-(select::MAX_DRAW as f32), select::MAX_DRAW as f32),
             Field::FloatWidth | Field::FloatHeight => {
                 (select::xform::MIN_SIDE, select::MAX_DRAW as f32)
@@ -213,12 +235,42 @@ impl Field {
                 | Field::Opacity
                 | Field::Stabilizer
                 | Field::Tolerance
+                | Field::BlurDetail
                 | Field::FloatOpacity
         )
     }
 
+    pub fn unit(self) -> &'static str {
+        if self == Field::BlurAngle {
+            "°"
+        } else if self.in_percent() {
+            "%"
+        } else if matches!(self, Field::BlurPasses | Field::BlurBlades) {
+            ""
+        } else {
+            "px"
+        }
+    }
+
+    pub fn slider_step(self) -> f32 {
+        if self.in_percent() { 0.01 } else { 1.0 }
+    }
+
+    pub fn editable(self, text: &str) -> String {
+        let unit = self.unit();
+        if unit.is_empty() {
+            text.to_owned()
+        } else {
+            text.trim_end_matches(unit).to_owned()
+        }
+    }
+
     pub fn format(self, value: f32) -> String {
-        if self.in_percent() {
+        if self == Field::BlurAngle {
+            crate::i18n::degrees_value(value)
+        } else if matches!(self, Field::BlurPasses | Field::BlurBlades) {
+            format!("{value:.0}")
+        } else if self.in_percent() {
             crate::i18n::percent_value(value)
         } else {
             crate::i18n::pixels_value(value)
@@ -226,8 +278,12 @@ impl Field {
     }
 
     pub fn parse(self, text: &str) -> Option<f32> {
-        let suffix = if self.in_percent() { "%" } else { "px" };
-        let typed: f32 = text.trim().trim_end_matches(suffix).trim().parse().ok()?;
+        let typed: f32 = text
+            .trim()
+            .trim_end_matches(self.unit())
+            .trim()
+            .parse()
+            .ok()?;
         if !typed.is_finite() {
             return None;
         }
@@ -248,6 +304,11 @@ impl Field {
             Field::Stabilizer => Message::StabilizerChanged(value),
             Field::Tolerance => Message::ToleranceChanged(value),
             Field::ShapeThickness => Message::ShapeThicknessChanged(value),
+            Field::BlurStrength => Message::BlurStrengthChanged(value),
+            Field::BlurAngle => Message::BlurAngleChanged(value),
+            Field::BlurDetail => Message::BlurDetailChanged(value),
+            Field::BlurPasses => Message::BlurPassesChanged(value),
+            Field::BlurBlades => Message::BlurBladesChanged(value),
             Field::FloatOpacity => Message::FloatOpacityChanged(value),
             Field::FloatX => Message::FloatSideChanged(Side::X, value),
             Field::FloatY => Message::FloatSideChanged(Side::Y, value),
@@ -269,6 +330,11 @@ impl Message {
                 | Message::StabilizerChanged(_)
                 | Message::ToleranceChanged(_)
                 | Message::ShapeThicknessChanged(_)
+                | Message::BlurStrengthChanged(_)
+                | Message::BlurAngleChanged(_)
+                | Message::BlurDetailChanged(_)
+                | Message::BlurPassesChanged(_)
+                | Message::BlurBladesChanged(_)
                 | Message::FloatOpacityChanged(_)
                 | Message::FloatSideChanged(_, _)
         )
@@ -302,6 +368,8 @@ pub struct App {
     live_redo: Option<LiveRedo>,
     drawing: Drawing,
     shape_style: shapes::ShapeStyle,
+    blur_settings: crate::paint::blur::Settings,
+    insert_tool: Tool,
     colour_target: bool,
     picker: Option<Picker>,
     picking_colour: Option<Picking>,
@@ -407,6 +475,8 @@ pub enum Message {
     Deselect,
     FileDropped(PathBuf),
     StickerRequested,
+    BlurPicked,
+    BlurAlgorithmPicked(crate::paint::blur::Algorithm),
     Dropped(Result<(PathBuf, Rgba8), String>),
     TabPicked(Tab),
     ToolPicked(Tool),
@@ -459,6 +529,11 @@ pub enum Message {
     WindowMaximiseToggled,
     WindowClosed,
     ShapeThicknessChanged(f32),
+    BlurStrengthChanged(f32),
+    BlurAngleChanged(f32),
+    BlurDetailChanged(f32),
+    BlurPassesChanged(f32),
+    BlurBladesChanged(f32),
     TextFontPicked(String),
     TextSizePicked(u32),
     TextBoldToggled,
@@ -658,6 +733,8 @@ impl App {
             text_style: TextStyle::default(),
             caret_on: true,
             shape_style: shapes::ShapeStyle::default(),
+            blur_settings: crate::paint::blur::Settings::default(),
+            insert_tool: Tool::Select,
             colour_target: false,
             picker: None,
             picking_colour: None,

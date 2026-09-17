@@ -247,8 +247,29 @@ text-hint = Trage pe canvas pentru a creea text.
 ## Stickers
 
 stickers-heading = Stickere
-stickers-hint = Trage sau lipește o imagine în fereastră, sau alege una aici.
-add-sticker = Adaugă sticker
+stickers-hint = Adaugă o imagine sau desenează un efect peste imagine.
+insert = Inserare
+add-image = Adaugă imagine
+blur-box = Casetă de blurare
+blur-algorithm = Algoritm
+blur-algorithm-box = Box
+blur-algorithm-gaussian = Gaussian
+blur-algorithm-median = Median
+blur-algorithm-motion = Mișcare
+blur-algorithm-bilateral = Bilateral
+blur-algorithm-directional = Direcțional / Anizotropic
+blur-algorithm-defocus = Defocalizare / Lentilă
+blur-algorithm-kawase = Kawase
+blur-strength = Intensitate
+blur-radius = Rază
+blur-distance = Distanță
+blur-angle = Unghi
+blur-edge-preservation = Păstrarea marginilor
+blur-directionality = Direcționalitate
+blur-passes = Treceri
+blur-blades = Lamele diafragmei
+blur-rotation = Rotație
+blur-hint = Trage o casetă peste partea imaginii pe care vrei să o blurezi.
 stickers-added = Adăugat
 
 ## Canvas panel

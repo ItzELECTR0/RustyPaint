@@ -247,8 +247,29 @@ text-hint = Drag on the canvas to make a text box.
 ## Stickers
 
 stickers-heading = Stickers
-stickers-hint = Drop an image on the window, paste one, or pick one here.
-add-sticker = Add sticker
+stickers-hint = Add an image or draw an effect onto the picture.
+insert = Insert
+add-image = Add image
+blur-box = Blur box
+blur-algorithm = Algorithm
+blur-algorithm-box = Box
+blur-algorithm-gaussian = Gaussian
+blur-algorithm-median = Median
+blur-algorithm-motion = Motion
+blur-algorithm-bilateral = Bilateral
+blur-algorithm-directional = Directional / Anisotropic
+blur-algorithm-defocus = Defocus / Lens
+blur-algorithm-kawase = Kawase
+blur-strength = Strength
+blur-radius = Radius
+blur-distance = Distance
+blur-angle = Angle
+blur-edge-preservation = Edge preservation
+blur-directionality = Directionality
+blur-passes = Passes
+blur-blades = Aperture blades
+blur-rotation = Rotation
+blur-hint = Drag a box over the part of the picture you want to blur.
 stickers-added = Added
 
 ## Canvas panel

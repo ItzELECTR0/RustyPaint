@@ -118,6 +118,7 @@ pub struct FloatingFrame {
     pub text_empty: bool,
     pub opacity: f32,
     pub masked: bool,
+    pub blur: Option<crate::paint::blur::Settings>,
     pub grips: bool,
 }
 
@@ -143,6 +144,7 @@ struct Floated {
     count: f32,
     opacity: f32,
     masked: f32,
+    blur: f32,
     points: [[f32; 4]; 12],
 }
 
@@ -188,6 +190,7 @@ impl Primitive {
             count: floating.points.len().min(curve::MAX_POINTS) as f32,
             opacity: floating.opacity,
             masked: if floating.masked { 1.0 } else { 0.0 },
+            blur: if floating.blur.is_some() { 1.0 } else { 0.0 },
             points,
         }
     }
@@ -262,12 +265,20 @@ impl shader::Primitive for Primitive {
             self.frame.dirty,
             &self.frame.pixels,
         );
+        pipeline.sync_blur(
+            device,
+            queue,
+            self.frame.size,
+            self.frame.version,
+            self.frame.floating.as_ref().and_then(|f| f.blur),
+        );
         pipeline.sync_floating(
             device,
             queue,
             self.frame
                 .floating
                 .as_ref()
+                .filter(|f| f.blur.is_none())
                 .map(|f| (f.size.0, f.size.1, f.version, f.pixels.as_slice())),
         );
         pipeline.rebind(device);
@@ -315,7 +326,8 @@ impl shader::Primitive for Primitive {
                 marquee: self.marquee_rect(canvas, scale),
                 float_masked: float.masked,
                 pixel_grid: if self.frame.pixel_grid { 1.0 } else { 0.0 },
-                _pad3: [0.0; 2],
+                float_blur: float.blur,
+                _pad3: 0.0,
             },
         );
     }
@@ -840,6 +852,7 @@ mod tests {
                     opacity: 1.0,
                     grips: true,
                     masked: false,
+                    blur: None,
                 }),
                 ants: 0.0,
                 frame: None,
@@ -1183,6 +1196,143 @@ mod tests {
 
         let (mx, my) = to_screen((xform.x + xform.width * 0.25, xform.y + 8.0));
         assert_eq!(at(mx, my), [255, 0, 0, 255], "a grip leaked along the edge");
+    }
+
+    #[test]
+    fn a_rotated_blur_samples_the_canvas_only_inside_its_box() {
+        let (w, h) = (600u32, 500u32);
+        let mut program = floating_program(Vec::new());
+        program.frame.size = (400, 300);
+        let mut canvas = vec![0u8; 400 * 300 * 4];
+        for y in 0..300 {
+            for x in 0..400 {
+                let i = (y * 400 + x) * 4;
+                let value = if x < 200 { 0 } else { 255 };
+                canvas[i..i + 4].copy_from_slice(&[value, value, value, 255]);
+            }
+        }
+        let committed = image::imageops::fast_blur(
+            &image::RgbaImage::from_raw(400, 300, canvas.clone()).unwrap(),
+            20.0,
+        );
+        program.frame.pixels = Arc::new(canvas);
+        let floating = program.frame.floating.as_mut().unwrap();
+        floating.xform = Xform {
+            x: 150.0,
+            y: 100.0,
+            width: 100.0,
+            height: 100.0,
+            rotation: std::f32::consts::FRAC_PI_4,
+        };
+        floating.blur = Some(crate::paint::blur::Settings {
+            strength: 20.0,
+            ..crate::paint::blur::Settings::default()
+        });
+        floating.grips = false;
+
+        let Some(rendered) =
+            render_offscreen(&program, (w, h), "rotated-blur", mouse::Cursor::Unavailable)
+        else {
+            return;
+        };
+        let at = |x: u32, y: u32| -> [u8; 4] {
+            let i = (y * w + x) as usize * 4;
+            rendered[i..i + 4].try_into().unwrap()
+        };
+
+        let centre = at(300, 250);
+        assert!(
+            centre[0] > 20 && centre[0] < 235,
+            "the split was not blurred: {centre:?}"
+        );
+        assert_eq!(at(240, 190)[0], 0, "blur escaped the rotated box");
+        for x in (170..=230).step_by(5) {
+            let preview = at(100 + x, 250)[0];
+            let landed = committed.get_pixel(x, 150)[0];
+            assert!(
+                preview.abs_diff(landed) <= 1,
+                "preview {preview} did not match committed {landed} at x={x}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_blur_preview_matches_what_is_committed() {
+        let (canvas_width, canvas_height) = (160u32, 120u32);
+        let (view_width, view_height) = (360u32, 320u32);
+        let mut canvas = Vec::with_capacity((canvas_width * canvas_height * 4) as usize);
+        for y in 0..canvas_height {
+            for x in 0..canvas_width {
+                canvas.extend_from_slice(&[
+                    (x * 13 + y * 7) as u8,
+                    (x * 3 + y * 17) as u8,
+                    (x * 19 + y * 5) as u8,
+                    255,
+                ]);
+            }
+        }
+
+        let mut cases = crate::paint::blur::ALGORITHMS
+            .map(crate::paint::blur::Settings::for_algorithm)
+            .to_vec();
+        for algorithm in [
+            crate::paint::blur::Algorithm::Median,
+            crate::paint::blur::Algorithm::Bilateral,
+        ] {
+            cases.push(crate::paint::blur::Settings {
+                strength: crate::paint::blur::MAX_STRENGTH,
+                detail: crate::paint::blur::MIN_DETAIL,
+                passes: crate::paint::blur::MAX_PASSES as u32,
+                ..crate::paint::blur::Settings::for_algorithm(algorithm)
+            });
+        }
+        for settings in cases {
+            let algorithm = settings.algorithm;
+            let expected = crate::paint::blur::render(
+                &crate::doc::Rgba8::from_raw(canvas_width, canvas_height, canvas.clone()).unwrap(),
+                Rect::new(0, 0, canvas_width, canvas_height),
+                settings,
+            )
+            .unwrap();
+            let mut program = floating_program(Vec::new());
+            program.frame.size = (canvas_width, canvas_height);
+            program.frame.pixels = Arc::new(canvas.clone());
+            let floating = program.frame.floating.as_mut().unwrap();
+            floating.xform = Xform {
+                x: 20.0,
+                y: 15.0,
+                width: 120.0,
+                height: 90.0,
+                rotation: 0.0,
+            };
+            floating.blur = Some(settings);
+            floating.grips = false;
+
+            let Some(rendered) = render_offscreen(
+                &program,
+                (view_width, view_height),
+                &format!("blur-{algorithm:?}"),
+                mouse::Cursor::Unavailable,
+            ) else {
+                return;
+            };
+            let origin = (
+                (view_width - canvas_width) / 2,
+                (view_height - canvas_height) / 2,
+            );
+            for (x, y) in [(40, 30), (65, 45), (90, 70), (120, 90)] {
+                let shown = ((origin.1 + y) * view_width + origin.0 + x) as usize * 4;
+                let landed = (y * canvas_width + x) as usize * 4;
+                for channel in 0..3 {
+                    let preview = rendered[shown + channel];
+                    let committed = expected.as_bytes()[landed + channel];
+                    assert!(
+                        preview.abs_diff(committed) <= 2,
+                        "{algorithm:?} preview {preview} did not match committed {committed} at ({x}, {y}) channel {channel}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

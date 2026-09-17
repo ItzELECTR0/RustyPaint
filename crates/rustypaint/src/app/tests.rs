@@ -1051,6 +1051,131 @@ fn the_stickers_tab_remembers_what_has_been_put_on() {
 }
 
 #[test]
+fn a_blur_box_stays_live_until_it_is_put_down() {
+    let mut app = app(32, 16);
+    for y in 0..16 {
+        for x in 16..32 {
+            let i = (y * 32 + x) as usize * 4;
+            app.doc.edit().pixels_mut()[i..i + 4].copy_from_slice(&[255, 255, 255, 255]);
+        }
+    }
+    app.doc.mark_saved();
+    let before = app.doc.pixels().clone();
+
+    send(&mut app, Message::TabPicked(Tab::Stickers));
+    send(&mut app, Message::BlurPicked);
+    drag_selection(&mut app, (8.0, 2.0), (24.0, 14.0));
+
+    let preview = app.floating.as_ref().expect("a live blur preview");
+    assert!(matches!(preview.source, select::Source::Blur { .. }));
+    assert_eq!(app.doc.pixels(), &before, "the canvas is still untouched");
+    let preview_storage = preview.pixels.bytes_arc();
+
+    send(&mut app, Message::Undo);
+    assert!(app.floating.is_none(), "undo dismisses the live preview");
+    assert_eq!(app.doc.pixels(), &before);
+    send(&mut app, Message::Redo);
+    assert!(app.floating.is_some(), "redo restores the live preview");
+
+    let centre = app.floating.as_ref().unwrap().xform.centre();
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatGrabbed(
+            gpu::Grab::Move,
+            centre.0,
+            centre.1,
+        )),
+    );
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::FloatDragged(
+            centre.0 + 2.0,
+            centre.1 + 2.0,
+        )),
+    );
+    send(&mut app, Message::Canvas(gpu::Interaction::FloatReleased));
+    assert!(
+        std::sync::Arc::ptr_eq(
+            &preview_storage,
+            &app.floating.as_ref().unwrap().pixels.bytes_arc(),
+        ),
+        "moving the GPU preview does not rebuild a bitmap"
+    );
+
+    send(&mut app, Message::BlurStrengthChanged(30.0));
+    let preview = app.floating.as_ref().unwrap();
+    assert_eq!(preview.blur_settings().unwrap().strength, 30.0);
+    assert!(
+        std::sync::Arc::ptr_eq(&preview_storage, &preview.pixels.bytes_arc()),
+        "the GPU preview changes without rebuilding a bitmap"
+    );
+
+    send(
+        &mut app,
+        Message::BlurAlgorithmPicked(crate::paint::blur::Algorithm::Defocus),
+    );
+    send(&mut app, Message::BlurBladesChanged(7.0));
+    send(&mut app, Message::BlurAngleChanged(25.0));
+    let settings = app.floating.as_ref().unwrap().blur_settings().unwrap();
+    assert_eq!(settings.algorithm, crate::paint::blur::Algorithm::Defocus);
+    assert_eq!(settings.blades, 7);
+    assert_eq!(settings.angle, 25.0);
+    assert!(
+        std::sync::Arc::ptr_eq(
+            &preview_storage,
+            &app.floating.as_ref().unwrap().pixels.bytes_arc(),
+        ),
+        "changing algorithms still keeps the preview on the GPU"
+    );
+
+    send(&mut app, Message::Deselect);
+    assert!(app.floating.is_none(), "putting it down ends the preview");
+    assert_ne!(app.doc.pixels(), &before);
+    assert!(app.doc.can_undo(), "the blur is one history step");
+
+    send(&mut app, Message::Undo);
+    assert_eq!(app.doc.pixels(), &before);
+}
+
+#[test]
+fn a_rotated_blur_only_lands_inside_its_rotated_box() {
+    let mut app = app(32, 32);
+    for y in 0..32 {
+        for x in 16..32 {
+            let i = (y * 32 + x) as usize * 4;
+            app.doc.edit().pixels_mut()[i..i + 4].copy_from_slice(&[255, 255, 255, 255]);
+        }
+    }
+    app.doc.mark_saved();
+    let before = app.doc.pixels().clone();
+
+    send(&mut app, Message::TabPicked(Tab::Stickers));
+    send(&mut app, Message::BlurPicked);
+    drag_selection(&mut app, (8.0, 8.0), (24.0, 24.0));
+    let floating = app.floating.as_mut().unwrap();
+    floating.xform.rotation = std::f32::consts::FRAC_PI_4;
+    let xform = floating.xform;
+    let bounds = xform.bounds(app.doc.size()).unwrap();
+
+    send(&mut app, Message::Deselect);
+
+    let mut changed_inside = false;
+    for y in bounds.rows() {
+        for x in bounds.cols() {
+            let i = (y * 32 + x) as usize * 4;
+            let was: [u8; 4] = before.as_bytes()[i..i + 4].try_into().unwrap();
+            let changed = pixel(&app, x, y) != was;
+            if xform.contains(x as f32 + 0.5, y as f32 + 0.5) {
+                changed_inside |= changed;
+            } else {
+                assert!(!changed, "blur escaped its rotated box at {x}, {y}");
+            }
+        }
+    }
+    assert!(changed_inside, "the rotated blur changed nothing");
+}
+
+#[test]
 fn each_tab_puts_its_own_tool_in_your_hand() {
     let mut app = app(32, 32);
     app.brush.tool = Tool::Marker;
@@ -1061,6 +1186,8 @@ fn each_tab_puts_its_own_tool_in_your_hand() {
         Tool::Select,
         "the select tool on the stickers tab"
     );
+    send(&mut app, Message::BlurPicked);
+    assert_eq!(app.brush.tool, Tool::Blur);
 
     send(&mut app, Message::TabPicked(Tab::Canvas));
     assert_eq!(app.brush.tool, Tool::Select, "and on the canvas tab");
@@ -1798,6 +1925,22 @@ fn every_field_reads_and_writes_in_its_own_unit() {
         "clamped, not refused"
     );
     assert_eq!(Field::Opacity.format(0.4), "40%");
+    assert_eq!(Field::BlurAngle.parse("-45°"), Some(-45.0));
+    assert_eq!(Field::BlurAngle.format(30.0), "30°");
+    assert_eq!(Field::BlurDetail.parse("75%"), Some(0.75));
+    assert_eq!(Field::BlurPasses.parse("20"), Some(4.0));
+    assert_eq!(Field::BlurBlades.format(6.0), "6");
+    assert_eq!(Field::Thickness.unit(), "px");
+    assert_eq!(Field::Opacity.unit(), "%");
+    assert_eq!(Field::BlurAngle.unit(), "°");
+    assert_eq!(Field::BlurPasses.unit(), "");
+    assert_eq!(Field::Thickness.editable("360px"), "360");
+    assert_eq!(Field::Opacity.editable("40%"), "40");
+    assert_eq!(Field::BlurAngle.editable("30°"), "30");
+    assert_eq!(Field::BlurPasses.editable("6"), "6");
+    assert_eq!(Field::Opacity.slider_step(), 0.01);
+    assert_eq!(Field::BlurDetail.slider_step(), 0.01);
+    assert_eq!(Field::Thickness.slider_step(), 1.0);
 
     for field in [Field::Thickness, Field::Opacity] {
         assert_eq!(field.parse(""), None);
@@ -1845,6 +1988,23 @@ fn every_slider_in_the_panel_can_be_typed_into() {
         Message::FieldTyped(Field::ShapeThickness, "45".into()),
     );
     assert_eq!(app.shape_style.thickness, 45.0);
+
+    send(&mut app, Message::TabPicked(Tab::Stickers));
+    send(&mut app, Message::BlurPicked);
+    send(
+        &mut app,
+        Message::BlurAlgorithmPicked(crate::paint::blur::Algorithm::Directional),
+    );
+    send(
+        &mut app,
+        Message::FieldTyped(Field::BlurAngle, "35°".into()),
+    );
+    send(
+        &mut app,
+        Message::FieldTyped(Field::BlurDetail, "60%".into()),
+    );
+    assert_eq!(app.blur_settings.angle, 35.0);
+    assert_eq!(app.blur_settings.detail, 0.6);
 }
 
 #[test]

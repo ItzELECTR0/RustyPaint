@@ -2,7 +2,7 @@ use crate::app::{CanvasPanel, Drawing, Field, Message, Picking, Tab};
 use crate::i18n;
 use crate::paint::curve::{self, CurveKind};
 use crate::paint::shapes::{self, ShapeKind, ShapeStyle};
-use crate::paint::{Brush, Mirror, Tool, brush};
+use crate::paint::{Brush, Mirror, Tool, blur, brush};
 use crate::text::{Align, TextStyle};
 use crate::ui::controls;
 use crate::ui::icons::{self, icon};
@@ -39,6 +39,7 @@ pub fn panel<'a>(
     transparent: bool,
     drawing: Drawing,
     style: ShapeStyle,
+    blur_settings: blur::Settings,
     text_style: &'a TextStyle,
     width: f32,
     colour_target: bool,
@@ -60,7 +61,7 @@ pub fn panel<'a>(
             custom,
             custom_menu,
         ),
-        Tab::Stickers => stickers(history),
+        Tab::Stickers => stickers(history, brush.tool == Tool::Blur, blur_settings, typed),
         Tab::Text => text_panel(text_style, custom, custom_menu),
         Tab::Canvas => canvas_panel(canvas, size, transparent),
     };
@@ -851,21 +852,50 @@ fn field_row<'a>(
     typed: Option<(Field, &'a str)>,
 ) -> Element<'a, Message> {
     let shown = match typed {
-        Some((typed, text)) if typed == field => text.to_owned(),
-        _ => field.format(value),
+        Some((typed, text)) if typed == field => field.editable(text),
+        _ => field.editable(&field.format(value)),
+    };
+    let unit = field.unit();
+    let input = text_input("", &shown)
+        .style(controls::text_input_style)
+        .on_input(move |text| Message::FieldTyped(field, text))
+        .on_submit(Message::FieldSubmitted)
+        .size(13)
+        .width(Length::Fixed(if unit.is_empty() { 72.0 } else { 50.0 }));
+    let control: Element<'a, Message> = if unit.is_empty() {
+        input.into()
+    } else {
+        row![input, text(unit).size(13)]
+            .spacing(4)
+            .align_y(iced::Alignment::Center)
+            .width(Length::Fixed(72.0))
+            .into()
     };
 
     row![
         text(label).size(13),
         Space::new().width(Length::Fill),
-        text_input("", &shown)
-            .style(controls::text_input_style)
-            .on_input(move |text| Message::FieldTyped(field, text))
-            .on_submit(Message::FieldSubmitted)
-            .size(13)
-            .width(Length::Fixed(72.0)),
+        control,
     ]
     .align_y(iced::Alignment::Center)
+    .into()
+}
+
+fn blur_slider<'a>(
+    label: &'a str,
+    field: Field,
+    value: f32,
+    range: std::ops::RangeInclusive<f32>,
+    changed: fn(f32) -> Message,
+    typed: Option<(Field, &'a str)>,
+) -> Element<'a, Message> {
+    column![
+        field_row(label, field, value, typed),
+        slider(range, value, changed)
+            .step(field.slider_step())
+            .style(controls::slider_style),
+    ]
+    .spacing(8)
     .into()
 }
 
@@ -1031,27 +1061,199 @@ fn swatch<'a>(colour: Color, current: [u8; 4], press: Message) -> Element<'a, Me
         .into()
 }
 
-fn stickers<'a>(history: &'a [crate::app::Sticker]) -> Element<'a, Message> {
+fn stickers<'a>(
+    history: &'a [crate::app::Sticker],
+    blur_active: bool,
+    settings: blur::Settings,
+    typed: Option<(Field, &'a str)>,
+) -> Element<'a, Message> {
     let mut panel = Panel::new(i18n::stickers_heading())
         .hint(i18n::stickers_hint())
-        .plain(
-            button(
-                column![
-                    icons::art(
-                        crate::assets::STICKER_SLOT_SVG,
-                        48.0,
-                        Some(theme::colours().text)
-                    ),
-                    text(i18n::add_sticker()).size(12),
-                ]
-                .spacing(6)
-                .align_x(iced::Alignment::Center),
-            )
-            .width(Length::Fill)
-            .padding(12)
-            .style(|_theme, _status| tile_style(false))
-            .on_press(Message::StickerRequested),
+        .card(
+            i18n::insert(),
+            row![
+                tile(
+                    icons::art(icons::IMAGE, THUMBNAIL as f32, Some(tile_ink(false))),
+                    i18n::add_image(),
+                    false,
+                    Message::StickerRequested,
+                ),
+                tile(
+                    icons::art(icons::BLUR, THUMBNAIL as f32, Some(tile_ink(blur_active)),),
+                    i18n::blur_box(),
+                    blur_active,
+                    Message::BlurPicked,
+                ),
+            ]
+            .spacing(4),
         );
+
+    if blur_active {
+        let algorithm = iced::widget::pick_list(
+            blur::ALGORITHMS,
+            Some(settings.algorithm),
+            Message::BlurAlgorithmPicked,
+        )
+        .style(controls::pick_list_style)
+        .menu_style(controls::menu_style)
+        .text_size(13)
+        .width(Length::Fill);
+        let mut options = column![text(i18n::blur_algorithm()).size(13), algorithm,].spacing(8);
+
+        match settings.algorithm {
+            blur::Algorithm::Box => {
+                options = options.push(blur_slider(
+                    i18n::blur_radius(),
+                    Field::BlurStrength,
+                    settings.strength,
+                    blur::MIN_STRENGTH..=blur::MAX_STRENGTH,
+                    Message::BlurStrengthChanged,
+                    typed,
+                ));
+            }
+            blur::Algorithm::Gaussian => {
+                options = options.push(blur_slider(
+                    i18n::blur_strength(),
+                    Field::BlurStrength,
+                    settings.strength,
+                    blur::MIN_STRENGTH..=blur::MAX_STRENGTH,
+                    Message::BlurStrengthChanged,
+                    typed,
+                ));
+            }
+            blur::Algorithm::Median => {
+                options = options
+                    .push(blur_slider(
+                        i18n::blur_radius(),
+                        Field::BlurStrength,
+                        settings.strength,
+                        blur::MIN_STRENGTH..=blur::MAX_STRENGTH,
+                        Message::BlurStrengthChanged,
+                        typed,
+                    ))
+                    .push(blur_slider(
+                        i18n::blur_passes(),
+                        Field::BlurPasses,
+                        settings.passes as f32,
+                        blur::MIN_PASSES..=blur::MAX_PASSES,
+                        Message::BlurPassesChanged,
+                        typed,
+                    ));
+            }
+            blur::Algorithm::Motion => {
+                options = options
+                    .push(blur_slider(
+                        i18n::blur_distance(),
+                        Field::BlurStrength,
+                        settings.strength,
+                        blur::MIN_STRENGTH..=blur::MAX_STRENGTH,
+                        Message::BlurStrengthChanged,
+                        typed,
+                    ))
+                    .push(blur_slider(
+                        i18n::blur_angle(),
+                        Field::BlurAngle,
+                        settings.angle,
+                        blur::MIN_ANGLE..=blur::MAX_ANGLE,
+                        Message::BlurAngleChanged,
+                        typed,
+                    ));
+            }
+            blur::Algorithm::Bilateral => {
+                options = options
+                    .push(blur_slider(
+                        i18n::blur_radius(),
+                        Field::BlurStrength,
+                        settings.strength,
+                        blur::MIN_STRENGTH..=blur::MAX_STRENGTH,
+                        Message::BlurStrengthChanged,
+                        typed,
+                    ))
+                    .push(blur_slider(
+                        i18n::blur_edge_preservation(),
+                        Field::BlurDetail,
+                        settings.detail,
+                        blur::MIN_DETAIL..=blur::MAX_DETAIL,
+                        Message::BlurDetailChanged,
+                        typed,
+                    ));
+            }
+            blur::Algorithm::Directional => {
+                options = options
+                    .push(blur_slider(
+                        i18n::blur_strength(),
+                        Field::BlurStrength,
+                        settings.strength,
+                        blur::MIN_STRENGTH..=blur::MAX_STRENGTH,
+                        Message::BlurStrengthChanged,
+                        typed,
+                    ))
+                    .push(blur_slider(
+                        i18n::blur_angle(),
+                        Field::BlurAngle,
+                        settings.angle,
+                        blur::MIN_ANGLE..=blur::MAX_ANGLE,
+                        Message::BlurAngleChanged,
+                        typed,
+                    ))
+                    .push(blur_slider(
+                        i18n::blur_directionality(),
+                        Field::BlurDetail,
+                        settings.detail,
+                        blur::MIN_DETAIL..=blur::MAX_DETAIL,
+                        Message::BlurDetailChanged,
+                        typed,
+                    ));
+            }
+            blur::Algorithm::Defocus => {
+                options = options
+                    .push(blur_slider(
+                        i18n::blur_radius(),
+                        Field::BlurStrength,
+                        settings.strength,
+                        blur::MIN_STRENGTH..=blur::MAX_STRENGTH,
+                        Message::BlurStrengthChanged,
+                        typed,
+                    ))
+                    .push(blur_slider(
+                        i18n::blur_blades(),
+                        Field::BlurBlades,
+                        settings.blades as f32,
+                        blur::MIN_BLADES..=blur::MAX_BLADES,
+                        Message::BlurBladesChanged,
+                        typed,
+                    ))
+                    .push(blur_slider(
+                        i18n::blur_rotation(),
+                        Field::BlurAngle,
+                        settings.angle,
+                        blur::MIN_ANGLE..=blur::MAX_ANGLE,
+                        Message::BlurAngleChanged,
+                        typed,
+                    ));
+            }
+            blur::Algorithm::Kawase => {
+                options = options
+                    .push(blur_slider(
+                        i18n::blur_radius(),
+                        Field::BlurStrength,
+                        settings.strength,
+                        blur::MIN_STRENGTH..=blur::MAX_STRENGTH,
+                        Message::BlurStrengthChanged,
+                        typed,
+                    ))
+                    .push(blur_slider(
+                        i18n::blur_passes(),
+                        Field::BlurPasses,
+                        settings.passes as f32,
+                        blur::MIN_PASSES..=blur::MAX_PASSES,
+                        Message::BlurPassesChanged,
+                        typed,
+                    ));
+            }
+        }
+        panel = panel.card(i18n::options(), options).hint(i18n::blur_hint());
+    }
 
     if !history.is_empty() {
         let mut grid = column![].spacing(6);

@@ -311,6 +311,22 @@ impl App {
         self.dirty = None;
     }
 
+    pub(super) fn draw_blur(&mut self, from: (f32, f32), to: (f32, f32)) {
+        let Some(rect) = drag_rect(from, to, self.doc.size()) else {
+            return;
+        };
+        match &mut self.floating {
+            Some(floating) if matches!(floating.source, select::Source::Blur { .. }) => {
+                floating.xform = Xform::from_rect(rect);
+            }
+            _ => {
+                self.floating = Some(Floating::blur(&self.doc, self.blur_settings, rect));
+            }
+        }
+        self.float_version += 1;
+        self.dirty = None;
+    }
+
     pub(super) fn draw_curve(&mut self, kind: curve::CurveKind, from: (f32, f32), to: (f32, f32)) {
         match &mut self.floating {
             Some(floating) if matches!(floating.source, select::Source::Curve { .. }) => {

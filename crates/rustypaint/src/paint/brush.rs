@@ -29,6 +29,7 @@ pub enum Tool {
     Select,
     Text,
     Shape,
+    Blur,
 }
 
 pub const PANEL_ORDER: [Tool; 10] = [
@@ -76,7 +77,7 @@ impl Profile {
 }
 
 impl Tool {
-    pub const COUNT: usize = Tool::Shape as usize + 1;
+    pub const COUNT: usize = Tool::Blur as usize + 1;
 
     pub fn name(self) -> &'static str {
         match self {
@@ -94,6 +95,7 @@ impl Tool {
             Tool::Select => i18n::tool_select(),
             Tool::Text => i18n::tool_text(),
             Tool::Shape => i18n::tool_shape(),
+            Tool::Blur => i18n::blur_box(),
         }
     }
 
@@ -152,7 +154,9 @@ impl Tool {
                 ..Profile::round(1.0, 0.5)
             },
 
-            Tool::Fill | Tool::Pipette | Tool::Select | Tool::Text | Tool::Shape => return None,
+            Tool::Fill | Tool::Pipette | Tool::Select | Tool::Text | Tool::Shape | Tool::Blur => {
+                return None;
+            }
         })
     }
 
