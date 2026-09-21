@@ -22,6 +22,21 @@ It also has some QoL features like dark mode, editable curve and shape points, s
 
 It detects image types from their contents, opens several icon and obscure bitmap formats, and Save as can convert between the formats it writes.
 
+## How do I cut something out?
+
+Open Smart cutout, draw a box around what you want, and choose Next. You can keep the subject, keep
+the background instead, or keep one colour you click out of the picture. Add and Remove then correct
+the selection, and each stroke only changes what it reaches: follow the edge to nudge it, or paint
+further in to take the whole area. Edges come out on whole pixels, so what you see is what you lift.
+Preview it on the shaded original, a checkerboard or any colour you like, adjust the edge, then
+choose Done. Undo also works while refining.
+
+I bundle a replaceable MobileSAM model under GPLv3-compatible MIT and Apache-2.0 licences.
+It runs entirely on your computer, without downloads or image uploads. Settings has a Smart Cutout
+section: turn object recognition off to select by colour alone, or point it at a folder of your own.
+Replacement folders need the compatible encoder and decoder described in the
+[model notice](res/models/mobile-sam/NOTICE.md).
+
 ## Screenshots
 
 | Classic Light | Rusty Dark |
@@ -72,6 +87,13 @@ Windows and macOS packages are not code-signed yet, so those systems will warn b
 
 Rust 1.95 or newer is required. Linux also needs a working Vulkan driver. Windows uses Direct3D 12 and macOS uses Metal.
 
+The default build needs a native ONNX runtime and a C++ toolchain. On Windows, first run
+`./packaging/windows/build-cutout-runtime.ps1` in PowerShell 7 with Python 3.12+, CMake 3.28+
+and Visual Studio 2022 C++ tools installed (`-Architecture aarch64` for ARM64).
+Other supported native targets download a prebuilt runtime during compilation. Use
+`--no-default-features` for the slower, pure-Rust inference backend. Alpine and Intel macOS
+currently use that portable backend automatically; the bundled model works with either one.
+
 For an optimized build:
 ```sh
 cargo build --release -p rustypaint
@@ -104,7 +126,8 @@ All options are available in the settings menu in the app and written to these f
 
 ## Where do the assets come from?
 
-No assets that are owned by Microsoft are used in this project. The icons were made for this program specifically and the bundled font is Urbanist under the SIL Open Font License. The interface resemblance is intended for familiarity with the discontinued program.
+No Paint3D assets are used. I made the icons for this program; Urbanist uses the SIL Open Font
+License. The bundled model and ONNX runtime have their own notices, available under About.
 
 ## Disclosure
 

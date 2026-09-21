@@ -5,7 +5,8 @@
 `app/` splits the editor by concern rather than by type. `mod.rs` owns `App`, `Message`, and the
 state that has no better home; `update.rs` handles messages; `input.rs` turns pointer, key, and
 shortcut events into them; `live.rs` owns the live object's whole life from creation to commit,
-including crop and Smart cutout; `document.rs` covers saving, history, and whole-canvas pixel work;
+including crop and Smart cutout; `cutout.rs` owns asynchronous analysis and refinement history;
+`document.rs` covers saving, history, and whole-canvas pixel work;
 `view.rs` builds the widget tree.
 
 Methods on `App` are spread across those files, so anything used outside the file it lives in needs
@@ -218,8 +219,9 @@ sub-label inside a card.
 `Panel::card` boxes controls under a label, `Panel::plain` boxes controls that need none (the shape
 grid says what it is, and a label there would only repeat the panel title), and `Panel::loose` and
 `Panel::hint` stay outside a card. Prose and the buttons that close a panel are always loose, so no
-card ends up drawn around nothing. That rule is why the first smart cutout step has no card at all:
-there is nothing on it to set.
+card ends up drawn around nothing. The first Smart cutout step groups what to cut out in a
+card, with box guidance and navigation outside it. Which model recognises objects, and whether one
+does at all, belongs to the application settings instead: it outlives any one cutout.
 
 `panel_group` is its own palette token because text inputs, pick lists and the segmented track are
 all `control` coloured and would disappear against a card painted the same.
