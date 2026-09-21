@@ -20,7 +20,10 @@ modules:
       env:
         CARGO_HOME: /run/build/rustypaint/cargo
         CARGO_NET_OFFLINE: 'true'
+        ORT_LIB_PATH: /run/build/rustypaint/onnxruntime
     build-commands:
+      - mkdir -p onnxruntime
+      - xz --decompress --stdout --format=raw --lzma2=dict=64MiB onnxruntime.tar.lzma2 | tar -xf - -C onnxruntime
       - cargo build --offline --profile dist -p rustypaint
       - install -Dm755 target/dist/rustypaint /app/bin/rustypaint
       - install -Dm644 packaging/net.electris.RustyPaint.desktop /app/share/applications/net.electris.RustyPaint.desktop
@@ -37,3 +40,13 @@ modules:
           - .git
           - target
       - cargo-sources.json
+      - type: file
+        url: https://cdn.pyke.io/0/pyke:ort-rs/ms@1.28.0/x86_64-unknown-linux-gnu.tar.lzma2
+        sha256: e454f710f8a49f53aa5b4ff51e3454ae1835777e431c6c35c5255ce6f205fd68
+        dest-filename: onnxruntime.tar.lzma2
+        only-arches: [x86_64]
+      - type: file
+        url: https://cdn.pyke.io/0/pyke:ort-rs/ms@1.28.0/aarch64-unknown-linux-gnu.tar.lzma2
+        sha256: 06a050ab9137ccb32421d0cb49e9ccf72d9e18ab0aeb8f8d038d1b5cc844b35a
+        dest-filename: onnxruntime.tar.lzma2
+        only-arches: [aarch64]

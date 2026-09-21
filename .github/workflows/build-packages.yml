@@ -20,8 +20,14 @@ jobs:
     container: almalinux:9
     steps:
       - name: Install build tools
-        run: dnf install -y gcc make file findutils which binutils desktop-file-utils git tar
+        run: dnf install -y gcc gcc-c++ make file findutils which binutils gcc-toolset-14-binutils cmake python3.12 patch desktop-file-utils git tar
       - uses: actions/checkout@v6
+      - name: Build the native cutout runtime for the Linux baseline
+        env:
+          COMPILER_PATH: /opt/rh/gcc-toolset-14/root/usr/bin
+        run: |
+          bash packaging/build-cutout-runtime.sh "$GITHUB_WORKSPACE/target/cutout-runtime"
+          echo "ORT_LIB_PATH=$GITHUB_WORKSPACE/target/cutout-runtime/lib" >> "$GITHUB_ENV"
       - name: Install Rust
         run: |
           curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
@@ -156,6 +162,9 @@ jobs:
           rustup target add ${{ matrix.triple }}
       - name: Install cargo-packager
         run: cargo install cargo-packager --version 0.11.8 --locked
+      - name: Build the CPU-only native cutout runtime
+        shell: pwsh
+        run: ./packaging/windows/build-cutout-runtime.ps1 -Architecture ${{ matrix.arch }}
       - name: Build installers
         # The packager hands its build hook no arguments of ours, and cargo reads the target from
         # the environment, so this is what makes that hook cross-compile.
