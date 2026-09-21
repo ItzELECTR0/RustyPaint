@@ -69,6 +69,15 @@ settings-new-canvas-note = What size a new picture starts at.
 settings-title-bar = Title bar
 settings-title-bar-note = Whether to use to program's own title bar or the system's.
 settings-native-decorations = Use native decorations
+settings-cutout = Smart Cutout
+settings-cutout-note = Smart Cutout can recognize what is in a picture. The model runs on your computer and nothing is uploaded.
+settings-cutout-recognition = Recognize objects
+settings-cutout-recognition-note = With this off, Smart Cutout goes by color alone. That is quicker, but it only works where the subject and its surroundings look different.
+settings-cutout-model = Model
+settings-cutout-bundled = Bundled (MobileSAM, 45 MB)
+settings-cutout-folder = From a folder
+settings-cutout-choose = Choose a folder
+settings-cutout-model-note = A folder of your own needs an encoder and a decoder in the MobileSAM format.
 settings-language = Language
 settings-language-note = What language to display RustyPaint in. Automatic follows your desktop.
 
@@ -310,14 +319,36 @@ done = Done
 
 cutout-choose = Choose an area to cut out
 cutout-choose-hint = Drag the corners or sides of the box to choose what to focus on.
+cutout-target = What to cut out
+cutout-subject = Subject
+cutout-background = Background
+cutout-colour = Color
+cutout-colour-hint = Click the picture to pick the color you want, then set how far the match spreads.
+cutout-target-hint = Keep what is in the box, or keep everything around it instead.
 cutout-next = Next
 cutout-refine = Refine your cutout
 cutout-add = Add
 cutout-remove = Remove
-cutout-add-hint = Missing something? Paint over it to add it.
-cutout-remove-hint = Too much? Paint over it to remove it.
+cutout-add-hint = Missing something? Paint over it to add it. Trace the edge to nudge it, or paint further in to take the whole area.
+cutout-remove-hint = Too much? Paint over it to remove it. Trace the edge to nudge it, or paint further in to drop the whole area.
 cutout-autofill = Autofill background
 cutout-back = Go back
+cutout-options = Options
+cutout-edges = Edges
+cutout-radius = Detail radius
+cutout-brush-radius = Brush radius
+cutout-fallback = Object detection was uncertain. A color-based cut is ready to refine.
+cutout-feather = Feather
+cutout-smooth = Smooth
+cutout-shift = Expand / contract
+cutout-licences = Smart Cutout model licences
+cutout-decontaminate = Remove background colour spill
+cutout-preview = Preview background
+cutout-overlay = Shaded original
+cutout-checkerboard = Checkerboard
+cutout-working = Finding your cutout... You can keep correcting or cancel.
+cutout-failed = Could not run Smart Cutout. Check the model in Settings, or turn object recognition off there.
+cutout-undo-hint = Undo and redo work on your corrections until you press Done.
 
 ## Dialogs
 

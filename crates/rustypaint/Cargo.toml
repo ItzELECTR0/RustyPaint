@@ -7,7 +7,12 @@ license.workspace = true
 description = "Paint 3D's 2D editor, without the 3D"
 authors = ["ELECTRO <electro@electris.net>"]
 
+[features]
+default = ["native-cutout"]
+native-cutout = ["dep:ort"]
+
 [dependencies]
+anyhow = "1.0"
 arboard = { version = "3.6.1", default-features = false, features = ["image-data", "wayland-data-control"] }
 bytemuck = { version = "1.25.2", features = ["derive"] }
 dark-light = "3.0.0"
@@ -25,14 +30,25 @@ cosmic-text = "0.15"
 
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.4"
+tract-onnx = "0.23.7"
+tract-linalg = { version = "0.23.7", features = ["multithread-mm"] }
 
 sys-locale = "0.3.2"
 unic-langid = "0.9.6"
+
+[target.'cfg(not(any(windows, target_env = "musl", all(target_os = "macos", target_arch = "x86_64"))))'.dependencies]
+ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["std", "download-binaries", "tls-rustls", "api-27"] }
+
+[target.'cfg(windows)'.dependencies]
+ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["std", "api-27"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSURL", "NSString"] }
+
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["coreml"] }
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 wayland-client = { version = "0.31.15", features = ["system"] }
@@ -225,7 +241,7 @@ role = "viewer"
 [package.metadata.packager.deb]
 package-name = "rustypaint"
 desktop-template = "../../packaging/net.electris.RustyPaint.desktop"
-depends = ["libfontconfig1", "libvulkan1", "libxkbcommon0"]
+depends = ["libfontconfig1", "libvulkan1", "libxkbcommon0", "libstdc++6"]
 
 [package.metadata.packager.deb.files]
 "../../LICENSE" = "/usr/share/doc/rustypaint/copyright"
@@ -254,9 +270,10 @@ assets = [
     { source = "LICENSE", dest = "/usr/share/licenses/rustypaint/LICENSE", mode = "644", doc = true },
 ]
 # Sonames rather than package names: RPM distributions disagree on the names, not on the sonames.
-requires = { "libfontconfig.so.1()(64bit)" = "*", "libxkbcommon.so.0()(64bit)" = "*", "libvulkan.so.1()(64bit)" = "*" }
+requires = { "libfontconfig.so.1()(64bit)" = "*", "libxkbcommon.so.0()(64bit)" = "*", "libvulkan.so.1()(64bit)" = "*", "libstdc++.so.6()(64bit)" = "*" }
 
 [dev-dependencies]
+iced_runtime = "0.14.0"
 naga = { version = "27", features = ["wgsl-in"] }
 pollster = "1.0.1"
 ttf-parser = "0.25.1"

@@ -202,16 +202,18 @@ impl App {
     }
 
     pub(super) fn add_sheet(&mut self, sheet: Sheet) -> Task<Message> {
+        let cutout = self.finish_cutout_stroke();
         let mut sheets = self.collapse();
         let leaving = self.snapshot_parked(&sheets[self.active.min(sheets.len() - 1)]);
         let at = sheets.len();
         sheets.push(sheet);
         self.expand(sheets, at);
         self.record_session();
-        leaving
+        Task::batch([leaving, cutout])
     }
 
     pub(super) fn adopt_document(&mut self, doc: Document) {
+        self.cutting_out = None;
         self.doc = doc;
         self.floating = None;
         self.live_redo = None;
@@ -229,11 +231,24 @@ impl App {
         if tab == self.active || tab >= self.sheets() {
             return Task::none();
         }
+        let cutout = self.finish_cutout_stroke();
         let sheets = self.collapse();
         let leaving = self.snapshot_parked(&sheets[self.active.min(sheets.len() - 1)]);
         self.expand(sheets, tab);
         self.record_session();
-        leaving
+        Task::batch([leaving, cutout, self.resume_cutout()])
+    }
+
+    fn finish_cutout_stroke(&mut self) -> Task<Message> {
+        if self.cutting_out.as_ref().is_some_and(|c| c.painting) {
+            if let Some(c) = &mut self.cutting_out {
+                c.painting = false;
+                c.previous = None;
+            }
+            self.run_cutout()
+        } else {
+            Task::none()
+        }
     }
 
     pub(super) fn close_tab(&mut self) -> Task<Message> {
@@ -246,7 +261,7 @@ impl App {
         let next = self.active.min(sheets.len() - 1);
         self.expand(sheets, next);
         self.record_session();
-        Task::none()
+        self.resume_cutout()
     }
 
     pub(super) fn elsewhere(&self, path: Option<&std::path::Path>) -> Task<Message> {
@@ -392,10 +407,16 @@ impl App {
     }
 
     pub(super) fn can_undo(&self) -> bool {
+        if let Some(c) = &self.cutting_out {
+            return !c.history.is_empty();
+        }
         self.floating.is_some() || self.doc.can_undo()
     }
 
     pub(super) fn can_redo(&self) -> bool {
+        if let Some(c) = &self.cutting_out {
+            return !c.redo.is_empty();
+        }
         match &self.floating {
             Some(floating) => floating.can_redo_text(),
             None => {

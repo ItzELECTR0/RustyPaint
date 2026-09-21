@@ -17,17 +17,21 @@ use iced::time::Instant;
 use iced::{Size, Task};
 use std::path::PathBuf;
 
+mod cutout;
 mod document;
 mod input;
 mod live;
 mod update;
 mod view;
 
+use cutout::*;
 use document::*;
 use input::*;
 use live::*;
 use view::*;
 
+pub(crate) use cutout::CutoutPreview;
+pub(crate) use live::CuttingOut;
 pub(crate) use live::Sticker;
 
 #[cfg(test)]
@@ -189,11 +193,22 @@ pub enum Field {
     FloatY,
     FloatWidth,
     FloatHeight,
+    CutoutRadius,
+    CutoutFeather,
+    CutoutSmooth,
+    CutoutShift,
+    CutoutBrush,
+    CutoutTolerance,
 }
 
 impl Field {
     fn bounds(self) -> (f32, f32) {
         match self {
+            Field::CutoutRadius => (0.0, 32.0),
+            Field::CutoutFeather | Field::CutoutSmooth => (0.0, 20.0),
+            Field::CutoutShift => (-20.0, 20.0),
+            Field::CutoutBrush => (1.0, 200.0),
+            Field::CutoutTolerance => (0.0, 1.0),
             Field::Thickness => (
                 crate::paint::brush::MIN_THICKNESS,
                 crate::paint::brush::THICKNESS_CEILING,
@@ -233,6 +248,7 @@ impl Field {
             self,
             Field::Hardness
                 | Field::Opacity
+                | Field::CutoutTolerance
                 | Field::Stabilizer
                 | Field::Tolerance
                 | Field::BlurDetail
@@ -298,6 +314,12 @@ impl Field {
 
     fn message(self, value: f32) -> Message {
         match self {
+            Field::CutoutRadius
+            | Field::CutoutFeather
+            | Field::CutoutSmooth
+            | Field::CutoutShift
+            | Field::CutoutBrush
+            | Field::CutoutTolerance => Message::CutoutFieldChanged(self, value),
             Field::Thickness => Message::ThicknessChanged(value),
             Field::Hardness => Message::HardnessChanged(value),
             Field::Opacity => Message::OpacityChanged(value),
@@ -324,6 +346,7 @@ impl Message {
         matches!(
             self,
             Message::ThicknessChanged(_)
+                | Message::CutoutFieldChanged(_, _)
                 | Message::ThicknessNudged(_)
                 | Message::HardnessChanged(_)
                 | Message::OpacityChanged(_)
@@ -348,6 +371,7 @@ pub enum Picking {
     Adding,
     Editing(usize),
     Accent(AccentColour),
+    CutoutGround,
 }
 
 pub struct App {
@@ -523,6 +547,21 @@ pub enum Message {
     CutoutDone,
     CutoutBrushPicked(bool),
     CutoutAutofillToggled(bool),
+    CutoutObjectToggled(bool),
+    CutoutTargetPicked(crate::select::cutout::workflow::Target),
+    CutoutToneSampled(f32, f32),
+    CutoutModelRequested,
+    CutoutModelPicked(Option<PathBuf>),
+    CutoutModelReset,
+    CutoutFieldChanged(Field, f32),
+    CutoutDecontaminateToggled(bool),
+    CutoutPreviewPicked(CutoutPreview),
+    CutoutFinished(
+        u64,
+        u64,
+        Version,
+        Result<std::sync::Arc<crate::select::cutout::workflow::ResultMask>, String>,
+    ),
     WindowDragged,
     WindowResizeDragged(iced::window::Direction),
     WindowMinimised,

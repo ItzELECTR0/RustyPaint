@@ -2,7 +2,10 @@ use crate::doc::image::CHANNELS;
 use crate::doc::{self, Rect, Rgba8, Version};
 use crate::gpu::Handle;
 use crate::paint::{Tool, curve, shapes};
-use crate::select::cutout::Cutout;
+use crate::select::cutout::{
+    refine::{Dab, Settings},
+    workflow::{self, ResultMask},
+};
 use crate::select::{self, Floating, Xform};
 use crate::ui::sidebar;
 
@@ -156,13 +159,34 @@ impl Cropping {
 pub struct CuttingOut {
     pub refining: bool,
     pub rect: Rect,
-    pub(super) cutout: Option<Cutout>,
+    pub(crate) result: Option<std::sync::Arc<ResultMask>>,
     pub(super) mask: Option<Vec<u8>>,
     pub(super) overlay: Option<std::sync::Arc<Vec<u8>>>,
     pub adding: bool,
     pub autofill: bool,
     pub(super) grabbed: Option<(Rect, Handle)>,
     pub(super) painting: bool,
+    pub(super) id: u64,
+    pub(super) revision: u64,
+    pub(super) applied_revision: u64,
+    pub(crate) failed: bool,
+    pub(crate) object: bool,
+    pub(crate) model_path: Option<std::path::PathBuf>,
+    pub(crate) busy: bool,
+    pub(super) cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub(super) strokes: Vec<Dab>,
+    pub(super) edit_field: Option<Field>,
+    pub(crate) settings: Settings,
+    pub(super) history: Vec<CutoutEdit>,
+    pub(super) redo: Vec<CutoutEdit>,
+    pub(crate) brush: f32,
+    pub(super) previous: Option<(f32, f32)>,
+    pub(super) stroke: u32,
+    pub(crate) aim: workflow::Aim,
+    pub(super) sampled: bool,
+    pub(crate) preview: CutoutPreview,
+    // What the colour preview sits the cut on, kept here so choosing it never touches the paint.
+    pub(crate) ground: [u8; 4],
 }
 
 impl CuttingOut {
@@ -172,22 +196,68 @@ impl CuttingOut {
         Self {
             refining: false,
             rect: Rect::new(0, 0, canvas.0, canvas.1),
-            cutout: None,
+            result: None,
             mask: None,
             overlay: None,
             adding: true,
             autofill: true,
             grabbed: None,
             painting: false,
+            id: next_cutout_id(),
+            revision: 0,
+            applied_revision: 0,
+            failed: false,
+            object: true,
+            model_path: None,
+            busy: false,
+            cancelled: Default::default(),
+            strokes: Vec::new(),
+            edit_field: None,
+            settings: Settings::default(),
+            history: Vec::new(),
+            redo: Vec::new(),
+            brush: Self::BRUSH,
+            previous: None,
+            stroke: 0,
+            aim: workflow::Aim::default(),
+            sampled: false,
+            preview: CutoutPreview::Overlay,
+            ground: [255, 255, 255, 255],
         }
     }
 
-    pub(super) fn build_overlay(&mut self, canvas: (u32, u32)) {
+    pub(super) fn build_overlay(&mut self, pixels: &Rgba8) {
         let Some(mask) = &self.mask else { return };
+        let pixels = self
+            .result
+            .as_ref()
+            .and_then(|r| r.foreground.as_ref())
+            .unwrap_or(pixels);
+        let canvas = pixels.size();
         let mut out = vec![0u8; canvas.0 as usize * canvas.1 as usize * CHANNELS];
         for (i, pixel) in out.as_chunks_mut::<CHANNELS>().0.iter_mut().enumerate() {
-            if mask.get(i).copied().unwrap_or(0) <= 128 {
-                *pixel = [0, 0, 0, 150];
+            let alpha = mask.get(i).copied().unwrap_or(0) as u32;
+            if self.preview == CutoutPreview::Overlay {
+                *pixel = [0, 0, 0, ((255 - alpha) * 150 / 255) as u8];
+            } else {
+                let checker = if ((i % canvas.0 as usize) / 12 + (i / canvas.0 as usize) / 12)
+                    .is_multiple_of(2)
+                {
+                    180
+                } else {
+                    225
+                };
+                let alpha = alpha * pixels.as_bytes()[i * 4 + 3] as u32 / 255;
+                for (c, value) in pixel[..3].iter_mut().enumerate() {
+                    let ground = match self.preview {
+                        CutoutPreview::Colour => self.ground[c] as u32,
+                        _ => checker,
+                    };
+                    *value = ((pixels.as_bytes()[i * 4 + c] as u32 * alpha
+                        + ground * (255 - alpha))
+                        / 255) as u8;
+                }
+                pixel[3] = 255;
             }
         }
         self.overlay = Some(std::sync::Arc::new(out));
@@ -197,10 +267,10 @@ impl CuttingOut {
         let adding = self.adding;
         if let Some(mask) = &mut self.mask {
             let value = if adding { 255 } else { 0 };
-            let x0 = (at.0 - radius).floor().max(0.0) as u32;
-            let y0 = (at.1 - radius).floor().max(0.0) as u32;
-            let x1 = ((at.0 + radius).ceil().max(0.0) as u32).min(canvas.0);
-            let y1 = ((at.1 + radius).ceil().max(0.0) as u32).min(canvas.1);
+            let x0 = (at.0 - radius).floor().max(self.rect.x0 as f32) as u32;
+            let y0 = (at.1 - radius).floor().max(self.rect.y0 as f32) as u32;
+            let x1 = ((at.0 + radius).ceil().max(0.0) as u32).min(self.rect.x1);
+            let y1 = ((at.1 + radius).ceil().max(0.0) as u32).min(self.rect.y1);
             for y in y0..y1 {
                 for x in x0..x1 {
                     let d = (x as f32 + 0.5 - at.0).powi(2) + (y as f32 + 0.5 - at.1).powi(2);
@@ -210,9 +280,12 @@ impl CuttingOut {
                 }
             }
         }
-        if let Some(cutout) = &mut self.cutout {
-            cutout.paint(at, radius, adding);
-        }
+        self.strokes.push(Dab {
+            at,
+            radius,
+            foreground: adding,
+            stroke: self.stroke,
+        });
     }
 
     pub(super) fn bounds(&self, canvas: (u32, u32)) -> Option<Rect> {
@@ -221,7 +294,7 @@ impl CuttingOut {
         let (mut x1, mut y1) = (0u32, 0u32);
         for y in 0..canvas.1 {
             for x in 0..canvas.0 {
-                if mask[y as usize * canvas.0 as usize + x as usize] > 128 {
+                if mask[y as usize * canvas.0 as usize + x as usize] > 0 {
                     x0 = x0.min(x);
                     y0 = y0.min(y);
                     x1 = x1.max(x + 1);
@@ -578,42 +651,62 @@ impl App {
         self.cutting_out.as_ref().is_some_and(|m| m.refining)
     }
 
+    // Picking a colour out of the picture is what the colour target is steered by.
+    pub(super) fn sample_cutout_tone(&mut self, x: f32, y: f32) {
+        let Some(tone) =
+            crate::paint::fill::pick(self.doc.pixels(), x.floor() as i64, y.floor() as i64)
+        else {
+            return;
+        };
+        if let Some(cutting_out) = &mut self.cutting_out
+            && cutting_out.aim.target == workflow::Target::Colour
+        {
+            cutting_out.aim.tone = tone;
+            cutting_out.sampled = true;
+        }
+    }
+
     pub(super) fn cutout_dab(&mut self, x: f32, y: f32, first: bool) {
         let canvas = self.doc.size();
-        let radius = CuttingOut::BRUSH / self.view.zoom.max(0.01);
         let Some(cutting_out) = &mut self.cutting_out else {
             return;
         };
         if first {
+            cutting_out.checkpoint();
             cutting_out.painting = true;
+            cutting_out.previous = None;
+            cutting_out.stroke += 1;
         }
-        cutting_out.dab((x, y), radius, canvas);
-        cutting_out.build_overlay(canvas);
-        self.float_version += 1;
-    }
-
-    pub(super) fn run_cutout(&mut self, passes: Option<usize>) {
-        let pixels = self.doc.pixels().clone();
-        let canvas = self.doc.size();
-        let Some(cutting_out) = &mut self.cutting_out else {
+        if !cutting_out.painting {
             return;
-        };
-
-        let cutout = cutting_out
-            .cutout
-            .get_or_insert_with(|| Cutout::new(&pixels, cutting_out.rect));
-        match passes {
-            Some(passes) => cutout.run(passes),
-            None => cutout.recut(),
         }
-        cutting_out.mask = Some(cutout.refined_mask(&pixels));
-        cutting_out.refining = true;
-        cutting_out.build_overlay(canvas);
+        let radius = cutting_out.brush / self.view.zoom.max(0.01);
+        let end = (x.clamp(0.0, canvas.0 as f32), y.clamp(0.0, canvas.1 as f32));
+        let from = cutting_out.previous.unwrap_or(end);
+        let steps = (((end.0 - from.0).hypot(end.1 - from.1) / (radius * 0.4).max(0.5)).ceil()
+            as usize)
+            .max(1);
+        for step in 1..=steps {
+            let t = step as f32 / steps as f32;
+            cutting_out.dab(
+                (from.0 + (end.0 - from.0) * t, from.1 + (end.1 - from.1) * t),
+                radius,
+                canvas,
+            );
+        }
+        cutting_out.previous = Some(end);
+        cutting_out.build_overlay(self.doc.pixels());
         self.float_version += 1;
-        self.dirty = None;
     }
 
     pub(super) fn cutout_done(&mut self) {
+        if self
+            .cutting_out
+            .as_ref()
+            .is_some_and(|c| c.busy || c.painting || c.failed || c.revision != c.applied_revision)
+        {
+            return;
+        }
         let canvas = self.doc.size();
         let Some(cutting_out) = self.cutting_out.take() else {
             return;
@@ -626,6 +719,24 @@ impl App {
         };
 
         self.begin_float_from(rect, Some(&mask));
+        if let Some(foreground) = cutting_out
+            .result
+            .as_ref()
+            .and_then(|r| r.foreground.as_ref())
+            && let Some(floating) = &mut self.floating
+        {
+            let mut corrected = crate::doc::transform::crop(foreground, rect);
+            for (pixel, cover) in corrected
+                .pixels_mut()
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(&mask)
+            {
+                pixel[3] = (u16::from(pixel[3]) * u16::from(*cover) / 255) as u8;
+            }
+            floating.pixels = corrected;
+        }
         if cutting_out.autofill {
             let filled = crate::select::cutout::fill_behind(self.doc.pixels(), &mask, rect);
             *self.doc.edit() = filled;

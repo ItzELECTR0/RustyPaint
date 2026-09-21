@@ -69,6 +69,15 @@ settings-new-canvas-note = Cu ce mărime să înceapă un canvas nou.
 settings-title-bar = Bara de titlu
 settings-title-bar-note = Dacă să se folosească bara de titlu a programului sau a sistemului.
 settings-native-decorations = Folosește decorațiuni native
+settings-cutout = Decupare inteligentă
+settings-cutout-note = Decuparea inteligentă poate recunoaște ce se află într-o imagine. Modelul rulează pe calculatorul tău și nu se încarcă nimic nicăieri.
+settings-cutout-recognition = Recunoaște obiectele
+settings-cutout-recognition-note = Dezactivată, decuparea se ghidează doar după culori. E mai rapidă, dar merge doar acolo unde subiectul și împrejurimile arată diferit.
+settings-cutout-model = Model
+settings-cutout-bundled = Inclus (MobileSAM, 45 MB)
+settings-cutout-folder = Dintr-un dosar
+settings-cutout-choose = Alege un dosar
+settings-cutout-model-note = Un dosar ales de tine are nevoie de un encoder și un decoder în formatul MobileSAM.
 settings-language = Limbă
 settings-language-note = Ce limbă să folosească RustyPaint. Automatic folosește a desktop-ului.
 
@@ -310,14 +319,36 @@ done = Gata
 
 cutout-choose = Alege o zonă pentru decupare
 cutout-choose-hint = Trage colțurile sau laturile pentru a alege ce să fie focusat.
+cutout-target = Ce să decupăm
+cutout-subject = Subiect
+cutout-background = Fundal
+cutout-colour = Culoare
+cutout-colour-hint = Apasă pe imagine ca să alegi culoarea dorită, apoi reglează cât de departe se întinde potrivirea.
+cutout-target-hint = Păstrează ce e în casetă sau, dimpotrivă, tot ce e în jurul ei.
 cutout-next = Continuă
 cutout-refine = Rafinează decupajul
 cutout-add = Adaugă
 cutout-remove = Șterge
-cutout-add-hint = Lipsește ceva? Pictează peste pentru a adăuga.
-cutout-remove-hint = Prea mult? Picteazp peste pentru a șterge.
+cutout-add-hint = Lipsește ceva? Pictează peste pentru a adăuga. Urmărește marginea ca să o ajustezi sau pictează mai în interior ca să iei toată zona.
+cutout-remove-hint = Prea mult? Pictează peste pentru a șterge. Urmărește marginea ca să o ajustezi sau pictează mai în interior ca să elimini toată zona.
 cutout-autofill = Umplere automată de fundal
 cutout-back = Mergi înapoi
+cutout-options = Opțiuni
+cutout-edges = Margini
+cutout-radius = Raza detaliilor
+cutout-brush-radius = Raza pensulei
+cutout-fallback = Detectarea obiectului a fost incertă. Decupajul bazat pe culori poate fi rafinat.
+cutout-feather = Estompare
+cutout-smooth = Netezire
+cutout-shift = Extindere / restrângere
+cutout-licences = Licențele modelului de decupare
+cutout-decontaminate = Elimină culoarea de fundal de pe margini
+cutout-preview = Fundalul previzualizării
+cutout-overlay = Original umbrit
+cutout-checkerboard = Tablă de șah
+cutout-working = Se caută decupajul... Poți continua corectarea sau anula.
+cutout-failed = Decuparea inteligentă nu a reușit. Verifică modelul în Setări sau dezactivează recunoașterea obiectelor de acolo.
+cutout-undo-hint = Anularea și refacerea se aplică corecțiilor până apeși Gata.
 
 ## Dialogs
 

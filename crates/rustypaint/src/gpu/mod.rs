@@ -118,6 +118,8 @@ pub struct FloatingFrame {
     pub text_empty: bool,
     pub opacity: f32,
     pub masked: bool,
+    // The cut shades what it leaves out, so its alpha is the selection turned inside out.
+    pub shaded: bool,
     pub blur: Option<crate::paint::blur::Settings>,
     pub grips: bool,
 }
@@ -189,7 +191,11 @@ impl Primitive {
             reach: ROTATION_REACH * scale,
             count: floating.points.len().min(curve::MAX_POINTS) as f32,
             opacity: floating.opacity,
-            masked: if floating.masked { 1.0 } else { 0.0 },
+            masked: match (floating.masked, floating.shaded) {
+                (true, true) => 2.0,
+                (true, false) => 1.0,
+                _ => 0.0,
+            },
             blur: if floating.blur.is_some() { 1.0 } else { 0.0 },
             points,
         }
@@ -360,6 +366,7 @@ pub enum Interaction {
     FloatReleasedAt(f32, f32),
     CaretTick,
     FrameGrabbed(Handle),
+    FrameClicked(f32, f32),
     FrameDragged(f32, f32),
     FrameReleased,
     PointAdded(f32, f32),
@@ -422,6 +429,9 @@ impl Program {
 
     fn grab_at(&self, x: f32, y: f32) -> Option<Grab> {
         let floating = self.frame.floating.as_ref()?;
+        if !floating.grips {
+            return None;
+        }
         let xform = floating.xform;
         let zoom = self.frame.view.zoom.max(0.01);
         let reach = (handles::HALF + 3.0) / zoom;
@@ -599,7 +609,8 @@ where
                             shader::Action::publish(Interaction::FrameGrabbed(handle).into())
                                 .and_capture()
                         }
-                        None => shader::Action::capture(),
+                        None => shader::Action::publish(Interaction::FrameClicked(x, y).into())
+                            .and_capture(),
                     });
                 }
 
@@ -852,6 +863,7 @@ mod tests {
                     opacity: 1.0,
                     grips: true,
                     masked: false,
+                    shaded: false,
                     blur: None,
                 }),
                 ants: 0.0,
@@ -878,6 +890,32 @@ mod tests {
         };
         <Program as shader::Program<Interaction>>::update(program, state, &event, bounds, cursor)
             .and_then(|action| action.into_inner().0)
+    }
+
+    #[test]
+    fn a_cutout_overlay_accepts_brush_events_instead_of_object_drags() {
+        use iced::mouse::Event as Mouse;
+        let mut program = floating_program(Vec::new());
+        program.frame.floating.as_mut().unwrap().grips = false;
+        program.brush = Some(16.0);
+        assert_eq!(program.grab_at(120.0, 120.0), None);
+        assert_eq!(program.grab_at(100.0, 100.0), None);
+        let mut state = State::default();
+        let cursor = mouse::Cursor::Available(Point::new(400.0, 300.0));
+        let press = interact(
+            &program,
+            &mut state,
+            iced::Event::Mouse(Mouse::ButtonPressed(mouse::Button::Left)),
+            cursor,
+        );
+        assert!(matches!(press, Some(Interaction::PaintBegan(..))));
+        let release = interact(
+            &program,
+            &mut state,
+            iced::Event::Mouse(Mouse::ButtonReleased(mouse::Button::Left)),
+            cursor,
+        );
+        assert!(matches!(release, Some(Interaction::PaintEnded)));
     }
 
     #[test]

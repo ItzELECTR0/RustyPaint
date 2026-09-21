@@ -767,11 +767,13 @@ impl App {
                 page,
                 self.document_name(),
                 self.doc.modified(),
-                &self.config,
-                self.accent,
-                self.custom_accent,
-                self.viewport,
-                (&self.custom_canvas.0, &self.custom_canvas.1),
+                menu::Settings {
+                    config: &self.config,
+                    accent: self.accent,
+                    custom_accent: self.custom_accent,
+                    viewport: self.viewport,
+                    custom_canvas: (&self.custom_canvas.0, &self.custom_canvas.1),
+                },
                 self.save_format,
             );
         }
@@ -783,9 +785,10 @@ impl App {
                 match (&self.cropping, &self.cutting_out) {
                     (_, Some(cutting_out)) => sidebar::shell(
                         sidebar::cutout_panel(
-                            cutting_out.refining,
-                            cutting_out.adding,
-                            cutting_out.autofill,
+                            cutting_out,
+                            self.typed
+                                .as_ref()
+                                .map(|typed| (typed.field, typed.text.as_str())),
                         ),
                         metrics::SIDE_PANEL_WIDTH,
                     ),
@@ -974,7 +977,11 @@ impl App {
             view: self.view,
             show_canvas: self.panel.show_canvas,
             pixel_grid: self.config.pixel_grid,
-            handles: self.tab == Tab::Canvas && self.panel.show_canvas,
+            // Resizing the canvas under an open cutout would take the refinement with it, and its
+            // own undo cannot reach the document, so the grips stay away until the cutout ends.
+            handles: self.tab == Tab::Canvas
+                && self.panel.show_canvas
+                && self.cutting_out.is_none(),
             preview: self.resize_preview,
             backing: self.doc.has_backing(),
             floating: self.cutout_overlay().or_else(|| {
@@ -988,6 +995,7 @@ impl App {
                     text_empty: f.text_is_empty(),
                     opacity: f.opacity(),
                     masked: f.masked(),
+                    shaded: false,
                     blur: f.blur_settings(),
                     grips: true,
                 })
@@ -1029,7 +1037,8 @@ impl App {
             editing_text: false,
             text_empty: false,
             opacity: 1.0,
-            masked: true,
+            masked: cutting_out.preview == CutoutPreview::Overlay,
+            shaded: true,
             blur: None,
             grips: false,
         })
@@ -1045,7 +1054,9 @@ impl App {
                     Tool::Select | Tool::Text | Tool::Shape | Tool::Blur
                 ),
             brush: if self.refining() {
-                Some(CuttingOut::BRUSH * 2.0 / self.view.zoom.max(0.01))
+                self.cutting_out
+                    .as_ref()
+                    .map(|c| c.brush * 2.0 / self.view.zoom.max(0.01))
             } else {
                 (matches!(self.tab, Tab::Brushes | Tab::Symmetry)
                     && self.brush.tool.profile().is_some())

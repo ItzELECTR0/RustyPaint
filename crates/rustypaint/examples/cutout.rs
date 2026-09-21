@@ -106,11 +106,13 @@ fn main() {
         } else {
             150
         };
-        *pixel = if mask[i] > 128 {
-            image::Rgba([source[i * 4], source[i * 4 + 1], source[i * 4 + 2], 255])
-        } else {
-            image::Rgba([ground, ground, ground, 255])
-        };
+        let alpha = u32::from(mask[i]) * u32::from(source[i * 4 + 3]) / 255;
+        for c in 0..3 {
+            pixel.0[c] = ((u32::from(source[i * 4 + c]) * alpha
+                + u32::from(ground) * (255 - alpha))
+                / 255) as u8;
+        }
+        pixel.0[3] = 255;
     }
     out.save(dir.join(format!("{name}-cut.png")))
         .expect("the cut");

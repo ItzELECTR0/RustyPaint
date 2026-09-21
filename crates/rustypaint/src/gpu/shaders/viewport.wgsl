@@ -286,22 +286,29 @@ fn marching_ants(base: vec3<f32>, local: vec2<f32>) -> vec3<f32> {
     );
 }
 
-fn mask_ants(base: vec3<f32>, local: vec2<f32>) -> vec3<f32> {
+fn selected_at(uv: vec2<f32>, shaded: bool) -> bool {
+    let a = textureSampleLevel(float_tex, canvas_sampler, uv, 0.0).a;
+    return select(a > 0.5, a < 0.5, shaded);
+}
+
+fn mask_ants(base: vec3<f32>, local: vec2<f32>, shaded: bool) -> vec3<f32> {
     let uv = float_local(local);
+    // One screen pixel rather than one image pixel, so the outline keeps its width at any zoom.
+    // Taken before any branch, because a derivative is only defined in uniform control flow.
+    let step = max(fwidth(uv), vec2<f32>(1.0e-6));
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         return base;
     }
-    let texel = 1.0 / vec2<f32>(textureDimensions(float_tex));
-    let here = textureSampleLevel(float_tex, canvas_sampler, uv, 0.0).a;
-    if (here <= 0.5) {
+    if (!selected_at(uv, shaded)) {
         return base;
     }
-    let left = textureSampleLevel(float_tex, canvas_sampler, uv - vec2<f32>(texel.x, 0.0), 0.0).a;
-    let right = textureSampleLevel(float_tex, canvas_sampler, uv + vec2<f32>(texel.x, 0.0), 0.0).a;
-    let up = textureSampleLevel(float_tex, canvas_sampler, uv - vec2<f32>(0.0, texel.y), 0.0).a;
-    let down = textureSampleLevel(float_tex, canvas_sampler, uv + vec2<f32>(0.0, texel.y), 0.0).a;
-    let open = uv.x < texel.x || uv.x > 1.0 - texel.x || uv.y < texel.y || uv.y > 1.0 - texel.y;
-    if (!open && left > 0.5 && right > 0.5 && up > 0.5 && down > 0.5) {
+    let left = selected_at(uv - vec2<f32>(step.x, 0.0), shaded);
+    let right = selected_at(uv + vec2<f32>(step.x, 0.0), shaded);
+    let up = selected_at(uv - vec2<f32>(0.0, step.y), shaded);
+    let down = selected_at(uv + vec2<f32>(0.0, step.y), shaded);
+    // A shaded cut spans the whole picture, so that border is the canvas edge, not the cut's.
+    let rim = uv.x < step.x || uv.x > 1.0 - step.x || uv.y < step.y || uv.y > 1.0 - step.y;
+    if ((shaded || !rim) && left && right && up && down) {
         return base;
     }
     return dash(local.x + local.y);
@@ -383,8 +390,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
     if (u.float_present > 0.5) {
         if (u.float_masked > 0.5) {
-            colour = mask_ants(colour, local);
-        } else {
+            colour = mask_ants(colour, local, u.float_masked > 1.5);
+        } else if (u.float_handles > 0.5) {
             colour = marching_ants(colour, local);
         }
         if (u.float_handles > 0.5) {

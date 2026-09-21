@@ -165,6 +165,7 @@ fn a_tile_that_is_not_selected_lets_its_bar_through() {
 fn app(width: u32, height: u32) -> App {
     let config = Config {
         theme: Choice::Light,
+        cutout_object: false,
         ..Config::default()
     };
     let (mut app, _boot) = App::boot(config, None, None, None);
@@ -376,7 +377,33 @@ fn copying_the_canvas_leaves_a_floating_object_out_of_it() {
 }
 
 fn send(app: &mut App, message: Message) {
-    let _ = app.update(message);
+    let cutout = app.cutting_out.is_some();
+    let task = app.update(message);
+    if cutout {
+        drain_cutout(app, task);
+    }
+}
+
+fn drain_cutout(app: &mut App, task: Task<Message>) {
+    use iced::futures::StreamExt;
+    let Some(mut stream) = iced_runtime::task::into_stream(task) else {
+        return;
+    };
+    let messages = iced::futures::executor::block_on(async move {
+        let mut messages = Vec::new();
+        while let Some(action) = stream.next().await {
+            if let iced_runtime::Action::Output(message) = action {
+                messages.push(message);
+            }
+        }
+        messages
+    });
+    for message in messages {
+        if matches!(message, Message::CutoutFinished(..)) {
+            let task = app.update(message);
+            drain_cutout(app, task);
+        }
+    }
 }
 
 fn resize_to(app: &mut App, w: &str, h: &str) {
@@ -2550,6 +2577,240 @@ fn the_cutout_takes_the_thing_out_and_lifts_it() {
         behind[2] > behind[0],
         "and filled with the blue that was round it"
     );
+}
+
+fn cutout_scene() -> App {
+    let mut app = app(80, 60);
+    fill_canvas(&mut app, [40, 60, 200, 255]);
+    for y in 15..45 {
+        for x in 20..60 {
+            app.doc.edit().pixels_mut()[(y * 80 + x) * 4..(y * 80 + x) * 4 + 4]
+                .copy_from_slice(&[200, 40, 40, 255]);
+        }
+    }
+    send(&mut app, Message::CutoutOpened);
+    app
+}
+
+#[test]
+fn an_open_cutout_ignores_the_shortcuts_that_would_lift_the_picture() {
+    let mut app = cutout_scene();
+    let before = app.doc.pixels().clone();
+    let version = app.doc.version();
+    for message in [Message::SelectAll, Message::Cut, Message::Paste] {
+        send(&mut app, message);
+        assert!(app.cutting_out.is_some(), "the cutout is still open");
+        assert!(app.floating.is_none(), "and nothing was lifted out of it");
+    }
+    assert_eq!(app.doc.version(), version);
+    assert_eq!(app.doc.pixels().as_bytes(), before.as_bytes());
+    send(&mut app, Message::Deselect);
+    assert!(app.cutting_out.is_none(), "escape is what ends it");
+    send(&mut app, Message::SelectAll);
+    assert!(app.floating.is_some(), "and then the shortcuts work again");
+}
+
+#[test]
+fn cutout_cancellation_and_back_reject_late_worker_results() {
+    for cancel in [true, false] {
+        let mut app = cutout_scene();
+        let before = app.doc.pixels().clone();
+        let pending = app.update(Message::CutoutNext);
+        let old_id = app.cutting_out.as_ref().unwrap().id;
+        assert!(app.cutting_out.as_ref().unwrap().busy);
+        let _ = app.update(Message::CutoutDone);
+        assert!(app.floating.is_none());
+        let _ = app.update(if cancel {
+            Message::CutoutCancelled
+        } else {
+            Message::CutoutBack
+        });
+        if cancel {
+            let _ = app.update(Message::CutoutOpened);
+        }
+        drain_cutout(&mut app, pending);
+        let c = app.cutting_out.as_ref().unwrap();
+        assert_ne!(c.id, old_id);
+        assert!(!c.refining && c.mask.is_none() && !c.busy);
+        assert_eq!(app.doc.pixels(), &before);
+    }
+}
+
+#[test]
+fn cutout_discards_results_for_an_edited_document() {
+    let mut app = cutout_scene();
+    let pending = app.update(Message::CutoutNext);
+    app.doc.edit().pixels_mut()[0] = 123;
+    drain_cutout(&mut app, pending);
+    assert!(app.cutting_out.is_none());
+    assert!(app.floating.is_none());
+    assert_eq!(app.doc.pixels().as_bytes()[0], 123);
+}
+
+#[test]
+fn cutout_does_not_follow_a_replacement_document_with_the_same_version() {
+    let mut app = cutout_scene();
+    let pending = app.update(Message::CutoutNext);
+    let replacement = Document::from_image(app.doc.pixels().clone(), None);
+    app.adopt_document(replacement);
+    let before = app.doc.pixels().clone();
+    drain_cutout(&mut app, pending);
+    assert!(app.cutting_out.is_none());
+    assert!(app.floating.is_none());
+    assert_eq!(app.doc.pixels(), &before);
+}
+
+#[test]
+fn opening_a_tab_finishes_a_cutout_stroke_on_the_old_tab() {
+    let mut app = cutout_scene();
+    send(&mut app, Message::CutoutNext);
+    send(&mut app, Message::CutoutBrushPicked(false));
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintBegan(35.0, 30.0)),
+    );
+    let other = app.new_sheet(
+        Document::blank_sized(12, 12, false),
+        doc::io::SaveFormat::Png,
+    );
+    let pending = app.add_sheet(other);
+    drain_cutout(&mut app, pending);
+    let pending = app.switch_to(0);
+    drain_cutout(&mut app, pending);
+    let c = app.cutting_out.as_ref().unwrap();
+    assert!(!c.painting && !c.busy);
+    assert_eq!(c.revision, c.applied_revision);
+    assert_eq!(c.mask.as_ref().unwrap()[30 * 80 + 35], 0);
+}
+
+#[test]
+fn cutout_coalesces_worker_requests_and_slider_undo() {
+    let mut app = cutout_scene();
+    let before = app.doc.pixels().clone();
+    let pending = app.update(Message::CutoutNext);
+    let _ = app.update(Message::CutoutFieldChanged(Field::CutoutFeather, 2.0));
+    let _ = app.update(Message::CutoutFieldChanged(Field::CutoutFeather, 4.0));
+    let _ = app.update(Message::FieldSubmitted);
+    drain_cutout(&mut app, pending);
+    let c = app.cutting_out.as_ref().unwrap();
+    assert!(!c.busy);
+    assert_eq!(c.revision, c.applied_revision);
+    assert_eq!(c.history.len(), 1);
+    let feathered = c.mask.clone();
+    send(&mut app, Message::Undo);
+    assert_eq!(app.cutting_out.as_ref().unwrap().settings.feather, 0.0);
+    assert_ne!(app.cutting_out.as_ref().unwrap().mask, feathered);
+    send(&mut app, Message::Redo);
+    assert_eq!(app.cutting_out.as_ref().unwrap().mask, feathered);
+    assert_eq!(app.doc.pixels(), &before);
+}
+
+#[test]
+fn cutout_brush_undo_redo_restores_exact_masks_without_document_edits() {
+    let mut app = cutout_scene();
+    let before = app.doc.pixels().clone();
+    send(&mut app, Message::CutoutNext);
+    let initial = app.cutting_out.as_ref().unwrap().mask.clone();
+    send(&mut app, Message::CutoutBrushPicked(false));
+    send(
+        &mut app,
+        Message::CutoutFieldChanged(Field::CutoutBrush, 3.0),
+    );
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintBegan(30.0, 30.0)),
+    );
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintMoved(50.0, 30.0)),
+    );
+    send(&mut app, Message::Canvas(gpu::Interaction::PaintEnded));
+    let removed = app.cutting_out.as_ref().unwrap().mask.clone();
+    for x in 30..50 {
+        assert_eq!(removed.as_ref().unwrap()[30 * 80 + x], 0);
+    }
+    send(&mut app, Message::Undo);
+    assert_eq!(app.cutting_out.as_ref().unwrap().mask, initial);
+    send(&mut app, Message::Redo);
+    assert_eq!(app.cutting_out.as_ref().unwrap().mask, removed);
+    assert_eq!(app.doc.pixels(), &before);
+}
+
+#[test]
+fn cutout_workers_update_their_parked_document_and_resume_queued_edits() {
+    let mut app = cutout_scene();
+    let pending = app.update(Message::CutoutNext);
+    let _ = app.update(Message::CutoutFieldChanged(Field::CutoutFeather, 3.0));
+    let other = app.new_sheet(
+        Document::blank_sized(12, 12, false),
+        doc::io::SaveFormat::Png,
+    );
+    let _ = app.add_sheet(other);
+    let active_before = app.doc.pixels().clone();
+    drain_cutout(&mut app, pending);
+    assert!(app.cutting_out.is_none());
+    assert_eq!(app.doc.pixels(), &active_before);
+    let task = app.switch_to(0);
+    drain_cutout(&mut app, task);
+    let c = app.cutting_out.as_ref().unwrap();
+    assert_eq!(c.settings.feather, 3.0);
+    assert_eq!(c.revision, c.applied_revision);
+    assert!(c.mask.is_some() && !c.busy);
+}
+
+#[test]
+fn cutout_model_failure_leaves_a_retryable_session_and_the_original_image() {
+    let mut app = cutout_scene();
+    let before = app.doc.pixels().clone();
+    let c = app.cutting_out.as_mut().unwrap();
+    c.object = true;
+    c.model_path = Some(std::path::PathBuf::from("missing-cutout-model-directory"));
+    send(&mut app, Message::CutoutNext);
+    let c = app.cutting_out.as_ref().unwrap();
+    assert!(c.failed && !c.busy && c.mask.is_none());
+    send(&mut app, Message::CutoutDone);
+    assert!(app.floating.is_none());
+    app.cutting_out.as_mut().unwrap().object = false;
+    send(&mut app, Message::CutoutNext);
+    assert!(!app.cutting_out.as_ref().unwrap().failed);
+    assert!(app.cutting_out.as_ref().unwrap().mask.is_some());
+    assert_eq!(app.doc.pixels(), &before);
+}
+
+#[test]
+fn cutout_soft_edges_survive_lifting_and_undo_restores_the_original() {
+    let mut app = cutout_scene();
+    send(&mut app, Message::CutoutNext);
+    send(&mut app, Message::CutoutAutofillToggled(false));
+    send(
+        &mut app,
+        Message::CutoutFieldChanged(Field::CutoutFeather, 3.0),
+    );
+    let before = app.doc.pixels().clone();
+    let c = app.cutting_out.as_ref().unwrap();
+    let expected = c
+        .mask
+        .as_ref()
+        .unwrap()
+        .iter()
+        .filter(|&&a| a > 0 && a < 255)
+        .count();
+    assert!(expected > 0);
+    send(&mut app, Message::CutoutDone);
+    let floating = app.floating.as_ref().unwrap();
+    assert_eq!(
+        floating
+            .pixels
+            .as_bytes()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|p| p[3] > 0 && p[3] < 255)
+            .count(),
+        expected
+    );
+    send(&mut app, Message::Undo);
+    assert_eq!(app.doc.pixels(), &before);
 }
 
 #[test]

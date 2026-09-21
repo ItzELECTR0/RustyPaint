@@ -256,7 +256,6 @@ impl App {
                     if let Some(cutting_out) = &mut self.cutting_out {
                         cutting_out.painting = false;
                     }
-                    self.run_cutout(None);
                     return;
                 }
                 if let Some(stroke) = &mut self.stroke {
@@ -375,6 +374,7 @@ impl App {
                     cutting_out.grabbed = Some((cutting_out.rect, handle));
                 }
             }
+            gpu::Interaction::FrameClicked(x, y) => self.sample_cutout_tone(x, y),
             gpu::Interaction::FrameDragged(x, y) => {
                 let canvas = self.doc.size();
                 if let Some(cropping) = &mut self.cropping

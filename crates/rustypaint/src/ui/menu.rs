@@ -16,6 +16,7 @@ use iced::{Element, Length, Size};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     About,
+    Licences,
     Open,
     SaveAs,
     Settings,
@@ -28,15 +29,19 @@ const RAIL: f32 = 250.0;
 const ITEM: f32 = 38.0;
 const MARKER: f32 = 3.0;
 
+pub struct Settings<'a> {
+    pub config: &'a Config,
+    pub accent: Scheme,
+    pub custom_accent: CustomAccent,
+    pub viewport: Size,
+    pub custom_canvas: (&'a str, &'a str),
+}
+
 pub fn view<'a>(
     page: Page,
     title: &'a str,
     modified: bool,
-    config: &Config,
-    accent: Scheme,
-    custom_accent: CustomAccent,
-    viewport: Size,
-    custom: (&'a str, &'a str),
+    settings: Settings<'a>,
     save_format: SaveFormat,
 ) -> Element<'a, Message> {
     let name = i18n::window_title(title, modified);
@@ -113,9 +118,10 @@ pub fn view<'a>(
 
     let pane: Element<'_, Message> = match page {
         Page::About => pane_about(),
+        Page::Licences => scrollable(text(crate::select::cutout::model::NOTICES).size(13)).into(),
         Page::Open => pane_open(),
         Page::SaveAs => pane_save_as(save_format),
-        Page::Settings => pane_settings(config, accent, custom_accent, viewport, custom),
+        Page::Settings => pane_settings(settings),
     };
     let pane_right_padding = if page == Page::Settings { 8.0 } else { 40.0 };
 
@@ -242,13 +248,14 @@ fn pane_save_as<'a>(format: SaveFormat) -> Element<'a, Message> {
     .into()
 }
 
-fn pane_settings<'a>(
-    config: &Config,
-    accent: Scheme,
-    custom_accent: CustomAccent,
-    viewport: Size,
-    custom: (&'a str, &'a str),
-) -> Element<'a, Message> {
+fn pane_settings<'a>(settings: Settings<'a>) -> Element<'a, Message> {
+    let Settings {
+        config,
+        accent,
+        custom_accent,
+        viewport,
+        custom_canvas,
+    } = settings;
     let options = column![
         title(i18n::settings_title()),
         subheading(i18n::settings_language()),
@@ -331,7 +338,7 @@ fn pane_settings<'a>(
             ),
         ]
         .spacing(6),
-        new_canvas_choice(config.new_canvas, custom),
+        new_canvas_choice(config.new_canvas, custom_canvas),
         text(canvas::describe(
             config.new_canvas,
             viewport,
@@ -339,6 +346,32 @@ fn pane_settings<'a>(
         ))
         .size(12)
         .color(theme::colours().accent_text),
+        divider(),
+        subheading(i18n::settings_cutout()),
+        note(i18n::settings_cutout_note()),
+        toggler(config.cutout_object)
+            .style(crate::ui::controls::toggler_style)
+            .label(i18n::settings_cutout_recognition())
+            .text_size(13)
+            .on_toggle(Message::CutoutObjectToggled),
+        note(i18n::settings_cutout_recognition_note()),
+        Space::new().height(Length::Fixed(6.0)),
+        note(i18n::settings_cutout_model()),
+        row![
+            pill(
+                i18n::settings_cutout_bundled(),
+                config.cutout_model.is_none(),
+                Message::CutoutModelReset
+            ),
+            pill(
+                i18n::settings_cutout_choose(),
+                config.cutout_model.is_some(),
+                Message::CutoutModelRequested
+            ),
+        ]
+        .spacing(6),
+        chosen_model(config.cutout_model.as_deref()),
+        note(i18n::settings_cutout_model_note()),
         divider(),
         subheading(i18n::settings_title_bar()),
         note(i18n::settings_title_bar_note()),
@@ -370,6 +403,16 @@ fn pane_settings<'a>(
         .into()
 }
 
+fn chosen_model<'a>(path: Option<&std::path::Path>) -> Element<'a, Message> {
+    match path {
+        Some(path) => text(path.display().to_string())
+            .size(12)
+            .color(theme::colours().accent_text)
+            .into(),
+        None => Space::new().height(Length::Fixed(0.0)).into(),
+    }
+}
+
 fn pane_about<'a>() -> Element<'a, Message> {
     let credit = column![
         text(i18n::about_credit())
@@ -377,6 +420,8 @@ fn pane_about<'a>() -> Element<'a, Message> {
             .center()
             .color(theme::colours().text_dim),
         link(i18n::about_source(), REPO_URL),
+        button(text(i18n::cutout_licences()).size(13))
+            .on_press(Message::MenuPagePicked(Page::Licences)),
     ]
     .spacing(6)
     .align_x(iced::Alignment::Center);

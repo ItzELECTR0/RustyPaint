@@ -155,7 +155,13 @@ impl App {
                 self.status = e;
             }
 
-            Message::Canvas(interaction) => self.canvas(interaction),
+            Message::Canvas(interaction) => {
+                let recut = matches!(interaction, gpu::Interaction::PaintEnded) && self.refining();
+                self.canvas(interaction);
+                if recut {
+                    return self.run_cutout();
+                }
+            }
 
             Message::WindowResized(window) => {
                 let first = self.viewport.width <= 1.0;
@@ -217,6 +223,10 @@ impl App {
                     self.status = e;
                 }
             }
+            // Smart cutout is modal: its panel says how it ends, and lifting the picture out from
+            // under it would take the refinement with it.
+            Message::SelectAll | Message::Cut | Message::Paste if self.cutting_out.is_some() => {}
+
             Message::Cut | Message::Copy => {
                 if self.typing() {
                     self.copy_selected_text(matches!(message, Message::Cut));
@@ -397,6 +407,10 @@ impl App {
             Message::PickerOpened(picking) => {
                 let colour = match picking {
                     Picking::Accent(part) => self.custom_accent.colour(part),
+                    Picking::CutoutGround => self
+                        .cutting_out
+                        .as_ref()
+                        .map_or(self.brush.colour, |c| c.ground),
                     _ => self.brush.colour,
                 };
                 self.picker = Some(Picker::on(colour));
@@ -434,6 +448,14 @@ impl App {
                             theme::set_custom_accent(self.custom_accent);
                             self.apply_theme();
                             self.save_config();
+                            paint_colour = false;
+                        }
+                        Some(Picking::CutoutGround) => {
+                            if let Some(c) = &mut self.cutting_out {
+                                c.ground = colour;
+                                c.build_overlay(self.doc.pixels());
+                                self.float_version += 1;
+                            }
                             paint_colour = false;
                         }
                         _ => {}
@@ -534,16 +556,31 @@ impl App {
                 self.commit_floating();
                 self.cropping = None;
                 self.cutting_out = Some(CuttingOut::new(self.doc.size()));
+                if let Some(c) = &mut self.cutting_out {
+                    c.object = self.config.cutout_object;
+                    c.model_path = self.config.cutout_model.clone();
+                }
             }
             Message::CutoutCancelled => {
                 self.cutting_out = None;
                 self.float_version += 1;
             }
-            Message::CutoutNext => self.run_cutout(Some(3)),
+            Message::CutoutNext => return self.run_cutout(),
             Message::CutoutBack => {
                 if let Some(cutting_out) = &mut self.cutting_out {
                     cutting_out.refining = false;
-                    cutting_out.cutout = None;
+                    cutting_out.result = None;
+                    cutting_out
+                        .cancelled
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    cutting_out.cancelled = Default::default();
+                    cutting_out.id = next_cutout_id();
+                    cutting_out.busy = false;
+                    cutting_out.failed = false;
+                    cutting_out.painting = false;
+                    cutting_out.strokes.clear();
+                    cutting_out.history.clear();
+                    cutting_out.redo.clear();
                     cutting_out.mask = None;
                     cutting_out.overlay = None;
                     self.float_version += 1;
@@ -558,6 +595,83 @@ impl App {
             Message::CutoutAutofillToggled(on) => {
                 if let Some(cutting_out) = &mut self.cutting_out {
                     cutting_out.autofill = on;
+                }
+            }
+            Message::CutoutFinished(id, revision, version, result) => {
+                return self.cutout_finished(id, revision, version, result);
+            }
+            Message::CutoutTargetPicked(target) => {
+                let centre = self.cutting_out.as_ref().map(|c| {
+                    (
+                        c.rect.x0 + c.rect.width() / 2,
+                        c.rect.y0 + c.rect.height() / 2,
+                    )
+                });
+                let sampled = centre.and_then(|(x, y)| {
+                    crate::paint::fill::pick(self.doc.pixels(), x as i64, y as i64)
+                });
+                if let Some(c) = &mut self.cutting_out {
+                    if target == select::cutout::workflow::Target::Colour && !c.sampled {
+                        c.aim.tone = sampled.unwrap_or(c.aim.tone);
+                    }
+                    c.aim.target = target;
+                }
+            }
+            Message::CutoutToneSampled(x, y) => {
+                self.sample_cutout_tone(x, y);
+                if self.refining() {
+                    return self.run_cutout();
+                }
+            }
+            Message::CutoutObjectToggled(on) => {
+                self.config.cutout_object = on;
+                if let Some(c) = &mut self.cutting_out {
+                    c.object = on;
+                    c.result = None;
+                }
+                self.save_config();
+            }
+            Message::CutoutModelRequested => {
+                return Task::perform(
+                    async {
+                        rfd::AsyncFileDialog::new()
+                            .pick_folder()
+                            .await
+                            .map(|f| f.path().to_path_buf())
+                    },
+                    Message::CutoutModelPicked,
+                );
+            }
+            Message::CutoutModelPicked(Some(path)) => {
+                if let Some(c) = &mut self.cutting_out {
+                    c.model_path = Some(path.clone());
+                    c.result = None;
+                }
+                self.config.cutout_model = Some(path);
+                self.save_config();
+            }
+            Message::CutoutModelPicked(None) => {}
+            Message::CutoutModelReset => {
+                if let Some(c) = &mut self.cutting_out {
+                    c.model_path = None;
+                    c.result = None;
+                }
+                self.config.cutout_model = None;
+                self.save_config();
+            }
+            Message::CutoutFieldChanged(field, value) => return self.cutout_field(field, value),
+            Message::CutoutDecontaminateToggled(on) => {
+                if let Some(c) = &mut self.cutting_out {
+                    c.checkpoint();
+                    c.settings.decontaminate = on;
+                }
+                return self.run_cutout();
+            }
+            Message::CutoutPreviewPicked(preview) => {
+                if let Some(c) = &mut self.cutting_out {
+                    c.preview = preview;
+                    c.build_overlay(self.doc.pixels());
+                    self.float_version += 1;
                 }
             }
             Message::BonesRequested => {
@@ -708,7 +822,12 @@ impl App {
                 });
                 return task;
             }
-            Message::FieldSubmitted => self.typed = None,
+            Message::FieldSubmitted => {
+                self.typed = None;
+                if let Some(c) = &mut self.cutting_out {
+                    c.edit_field = None;
+                }
+            }
             Message::HardnessChanged(v) => self.brush.set_hardness(v),
             Message::OpacityChanged(v) => self.brush.set_opacity(v),
             Message::ToleranceChanged(v) => self.brush.tolerance = v,
@@ -718,8 +837,16 @@ impl App {
                 }
             }
 
-            Message::Undo => self.step_history(true),
-            Message::Redo => self.step_history(false),
+            Message::Undo | Message::Redo => {
+                let undo = matches!(message, Message::Undo);
+                if let Some(c) = &mut self.cutting_out {
+                    if c.step(undo) {
+                        return self.run_cutout();
+                    }
+                } else {
+                    self.step_history(undo);
+                }
+            }
 
             Message::TransparencyToggled(on) => {
                 self.doc.set_transparent(on);

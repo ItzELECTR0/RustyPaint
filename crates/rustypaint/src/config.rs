@@ -42,6 +42,9 @@ pub struct Config {
     pub auto_pixel_grid: bool,
     pub open_in: OpenIn,
     pub custom_colours: Vec<[u8; 4]>,
+    pub cutout_object: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cutout_model: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -60,6 +63,8 @@ impl Default for Config {
             auto_pixel_grid: false,
             open_in: OpenIn::default(),
             custom_colours: Vec::new(),
+            cutout_object: true,
+            cutout_model: None,
         }
     }
 }
@@ -169,6 +174,8 @@ mod tests {
             auto_pixel_grid: true,
             open_in: OpenIn::Window,
             custom_colours: vec![[254, 168, 69, 255]],
+            cutout_object: false,
+            cutout_model: Some(PathBuf::from("models/custom")),
         };
         let text = toml::to_string_pretty(&config).unwrap();
         assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);

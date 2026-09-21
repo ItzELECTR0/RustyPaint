@@ -3,6 +3,7 @@ use crate::i18n;
 use crate::paint::curve::{self, CurveKind};
 use crate::paint::shapes::{self, ShapeKind, ShapeStyle};
 use crate::paint::{Brush, Mirror, Tool, blur, brush};
+use crate::select::cutout::workflow::Target;
 use crate::text::{Align, TextStyle};
 use crate::ui::controls;
 use crate::ui::icons::{self, icon};
@@ -892,6 +893,7 @@ fn blur_slider<'a>(
     column![
         field_row(label, field, value, typed),
         slider(range, value, changed)
+            .on_release(Message::FieldSubmitted)
             .step(field.slider_step())
             .style(controls::slider_style),
     ]
@@ -1683,12 +1685,16 @@ fn size_field<'a>(
     .into()
 }
 
-pub fn cutout_panel<'a>(refining: bool, adding: bool, autofill: bool) -> Element<'a, Message> {
-    // The first step has nothing to set, so it stays a title and an instruction with no card.
+pub fn cutout_panel<'a>(
+    cutout: &'a crate::app::CuttingOut,
+    typed: Option<(Field, &'a str)>,
+) -> Element<'a, Message> {
+    let (refining, adding, autofill) = (cutout.refining, cutout.adding, cutout.autofill);
     if !refining {
         return Panel::new(i18n::smart_cutout())
             .loose(label(i18n::cutout_choose()))
             .hint(i18n::cutout_choose_hint())
+            .card(i18n::cutout_target(), cutout_target(cutout, typed))
             .loose(
                 row![
                     wide_button(i18n::cancel(), Message::CutoutCancelled),
@@ -1705,41 +1711,215 @@ pub fn cutout_panel<'a>(refining: bool, adding: bool, autofill: bool) -> Element
         i18n::cutout_remove_hint()
     };
 
-    Panel::new(i18n::smart_cutout())
+    let panel = Panel::new(i18n::smart_cutout());
+    let panel = match cutout.aim.target {
+        Target::Colour => panel.card(i18n::cutout_colour(), cutout_tone(cutout, typed)),
+        _ => panel,
+    };
+    panel
         .card(
             i18n::cutout_refine(),
             column![
                 row![
-                    brush_tile(i18n::cutout_add(), true, adding),
-                    brush_tile(i18n::cutout_remove(), false, adding),
+                    brush_tile(
+                        i18n::cutout_add(),
+                        crate::assets::tool_icons::MARKER,
+                        adding,
+                        Message::CutoutBrushPicked(true)
+                    ),
+                    brush_tile(
+                        i18n::cutout_remove(),
+                        crate::assets::tool_icons::ERASER,
+                        !adding,
+                        Message::CutoutBrushPicked(false)
+                    ),
                 ]
                 .spacing(8),
                 text(hint).size(12).color(theme::colours().text_dim),
-                checkbox(autofill)
-                    .style(controls::checkbox_style)
-                    .label(i18n::cutout_autofill())
-                    .text_size(13)
-                    .on_toggle(Message::CutoutAutofillToggled),
+                blur_slider(
+                    i18n::cutout_brush_radius(),
+                    Field::CutoutBrush,
+                    cutout.brush,
+                    1.0..=200.0,
+                    |v| Message::CutoutFieldChanged(Field::CutoutBrush, v),
+                    typed
+                ),
             ]
             .spacing(10),
         )
+        .card(
+            i18n::cutout_edges(),
+            column![
+                blur_slider(
+                    i18n::cutout_radius(),
+                    Field::CutoutRadius,
+                    cutout.settings.radius,
+                    0.0..=32.0,
+                    |v| Message::CutoutFieldChanged(Field::CutoutRadius, v),
+                    typed
+                ),
+                blur_slider(
+                    i18n::cutout_feather(),
+                    Field::CutoutFeather,
+                    cutout.settings.feather,
+                    0.0..=20.0,
+                    |v| Message::CutoutFieldChanged(Field::CutoutFeather, v),
+                    typed
+                ),
+                blur_slider(
+                    i18n::cutout_smooth(),
+                    Field::CutoutSmooth,
+                    cutout.settings.smooth,
+                    0.0..=20.0,
+                    |v| Message::CutoutFieldChanged(Field::CutoutSmooth, v),
+                    typed
+                ),
+                blur_slider(
+                    i18n::cutout_shift(),
+                    Field::CutoutShift,
+                    cutout.settings.shift,
+                    -20.0..=20.0,
+                    |v| Message::CutoutFieldChanged(Field::CutoutShift, v),
+                    typed
+                ),
+            ]
+            .spacing(10),
+        )
+        .card(i18n::cutout_options(), cutout_options(cutout, autofill))
+        .hint(if cutout.busy {
+            i18n::cutout_working()
+        } else if cutout.failed {
+            i18n::cutout_failed()
+        } else if cutout.result.as_ref().is_some_and(|r| r.colour_fallback) {
+            i18n::cutout_fallback()
+        } else {
+            i18n::cutout_undo_hint()
+        })
         .loose(
             row![
                 wide_button(i18n::cutout_back(), Message::CutoutBack),
-                wide_button(i18n::done(), Message::CutoutDone),
+                button(text(i18n::done()).center())
+                    .width(Length::Fill)
+                    .on_press_maybe(
+                        (!cutout.busy && !cutout.failed).then_some(Message::CutoutDone)
+                    ),
             ]
             .spacing(8),
         )
         .into()
 }
 
-fn brush_tile<'a>(label: &'a str, adds: bool, adding: bool) -> Element<'a, Message> {
-    let active = adds == adding;
-    let art = if adds {
-        crate::assets::tool_icons::MARKER
-    } else {
-        crate::assets::tool_icons::ERASER
-    };
+fn cutout_target<'a>(
+    cutout: &'a crate::app::CuttingOut,
+    typed: Option<(Field, &'a str)>,
+) -> Element<'a, Message> {
+    let target = cutout.aim.target;
+    let chosen = Target::ALL.iter().position(|t| *t == target).unwrap_or(0);
+    let mut card = column![
+        segmented::segmented(Target::ALL.map(Target::name).to_vec(), chosen, |index| {
+            Message::CutoutTargetPicked(Target::ALL[index])
+        },),
+        text(if target == Target::Colour {
+            i18n::cutout_colour_hint()
+        } else {
+            i18n::cutout_target_hint()
+        })
+        .size(12)
+        .color(theme::colours().text_dim),
+    ]
+    .spacing(8);
+    if target == Target::Colour {
+        card = card.push(cutout_tone(cutout, typed));
+    }
+    card.into()
+}
+
+fn cutout_options<'a>(cutout: &'a crate::app::CuttingOut, autofill: bool) -> Element<'a, Message> {
+    let [r, g, b, a] = cutout.ground;
+    let ground = Color::from_rgba8(r, g, b, a as f32 / 255.0);
+    let mut options = column![
+        checkbox(autofill)
+            .style(controls::checkbox_style)
+            .label(i18n::cutout_autofill())
+            .text_size(13)
+            .on_toggle(Message::CutoutAutofillToggled),
+        checkbox(cutout.settings.decontaminate)
+            .style(controls::checkbox_style)
+            .label(i18n::cutout_decontaminate())
+            .text_size(13)
+            .on_toggle(Message::CutoutDecontaminateToggled),
+        text(i18n::cutout_preview())
+            .size(12)
+            .color(theme::colours().text_dim),
+        iced::widget::pick_list(
+            crate::app::CutoutPreview::ALL,
+            Some(cutout.preview),
+            Message::CutoutPreviewPicked,
+        )
+        .text_size(13),
+    ]
+    .spacing(10);
+    if cutout.preview == crate::app::CutoutPreview::Colour {
+        options = options.push(
+            button(Space::new().width(Length::Fill).height(Length::Fixed(26.0)))
+                .width(Length::Fill)
+                .style(move |_theme, status| button::Style {
+                    background: Some(ground.into()),
+                    border: iced::Border {
+                        color: if matches!(status, button::Status::Hovered) {
+                            theme::colours().accent
+                        } else {
+                            theme::colours().border
+                        },
+                        width: 1.0,
+                        radius: 6.0.into(),
+                    },
+                    ..Default::default()
+                })
+                .on_press(Message::PickerOpened(Picking::CutoutGround)),
+        );
+    }
+    options.into()
+}
+
+fn cutout_tone<'a>(
+    cutout: &'a crate::app::CuttingOut,
+    typed: Option<(Field, &'a str)>,
+) -> Element<'a, Message> {
+    let tone = cutout.aim.tone;
+    column![
+        container(Space::new().height(Length::Fixed(26.0)))
+            .width(Length::Fill)
+            .style(move |_| container::Style {
+                background: Some(
+                    Color::from_rgba8(tone[0], tone[1], tone[2], tone[3] as f32 / 255.0).into(),
+                ),
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    width: 1.0,
+                    color: theme::colours().border,
+                },
+                ..container::Style::default()
+            }),
+        blur_slider(
+            i18n::tolerance(),
+            Field::CutoutTolerance,
+            cutout.aim.tolerance,
+            0.0..=1.0,
+            |v| Message::CutoutFieldChanged(Field::CutoutTolerance, v),
+            typed,
+        ),
+    ]
+    .spacing(8)
+    .into()
+}
+
+fn brush_tile<'a>(
+    label: &'a str,
+    art: &'static [u8],
+    active: bool,
+    press: Message,
+) -> Element<'a, Message> {
     button(
         column![
             crate::ui::centred(icons::art(art, 30.0, None)),
@@ -1751,6 +1931,6 @@ fn brush_tile<'a>(label: &'a str, adds: bool, adding: bool) -> Element<'a, Messa
     .width(Length::Fill)
     .height(Length::Fixed(66.0))
     .style(move |_theme, _status| tile_style(active))
-    .on_press(Message::CutoutBrushPicked(adds))
+    .on_press(press)
     .into()
 }

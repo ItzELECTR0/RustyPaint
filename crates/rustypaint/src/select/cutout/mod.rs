@@ -1,9 +1,14 @@
 pub mod gmm;
 pub mod maxflow;
+pub mod model;
+pub mod refine;
+mod runtime;
+pub mod workflow;
 
 use crate::doc::{Rect, Rgba8, image::CHANNELS};
 use gmm::Gmm;
 use maxflow::{DIRS, Grid};
+use std::sync::Arc;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Known {
@@ -20,32 +25,53 @@ const RIM: f32 = 0.09;
 
 pub const WORKING: usize = 560;
 
+#[derive(Clone)]
 pub struct Cutout {
     width: usize,
     height: usize,
-    colours: Vec<[f32; 3]>,
+    colours: Arc<Vec<[f32; 3]>>,
     known: Vec<Known>,
     label: Vec<bool>,
-    links: Vec<f32>,
+    links: Arc<Vec<f32>>,
     models: Option<(Gmm, Gmm)>,
     scale: f32,
     source: (u32, u32),
+    region: Rect,
+    rect: Rect,
+    strokes: Vec<refine::Dab>,
 }
 
 impl Cutout {
     pub fn new(pixels: &Rgba8, rect: Rect) -> Self {
+        Self::with_limit(pixels, rect, WORKING)
+    }
+
+    pub(super) fn with_limit(pixels: &Rgba8, rect: Rect, limit: usize) -> Self {
         let (source_w, source_h) = pixels.size();
-        let longest = source_w.max(source_h) as usize;
-        let scale = (WORKING as f32 / longest as f32).min(1.0);
-        let width = ((source_w as f32 * scale).round() as usize).max(1);
-        let height = ((source_h as f32 * scale).round() as usize).max(1);
+        let rect = Rect::new(
+            rect.x0.min(source_w),
+            rect.y0.min(source_h),
+            rect.x1.min(source_w),
+            rect.y1.min(source_h),
+        );
+        let margin = (rect.width().max(rect.height()) / 12).max(8);
+        let region = Rect::new(
+            rect.x0.saturating_sub(margin),
+            rect.y0.saturating_sub(margin),
+            rect.x1.saturating_add(margin).min(source_w),
+            rect.y1.saturating_add(margin).min(source_h),
+        );
+        let longest = region.width().max(region.height()).max(1) as usize;
+        let scale = (limit as f32 / longest as f32).min(1.0);
+        let width = ((region.width() as f32 * scale).round() as usize).max(1);
+        let height = ((region.height() as f32 * scale).round() as usize).max(1);
 
         let mut colours = Vec::with_capacity(width * height);
         let bytes = pixels.as_bytes();
         for y in 0..height {
             for x in 0..width {
-                let sx = ((x as f32 + 0.5) / scale) as u32;
-                let sy = ((y as f32 + 0.5) / scale) as u32;
+                let sx = region.x0 + ((x as f32 + 0.5) / scale) as u32;
+                let sy = region.y0 + ((y as f32 + 0.5) / scale) as u32;
                 let i = (sy.min(source_h - 1) as usize * source_w as usize
                     + sx.min(source_w - 1) as usize)
                     * CHANNELS;
@@ -56,20 +82,23 @@ impl Cutout {
         let mut cutout = Self {
             width,
             height,
-            colours,
+            colours: Arc::new(colours),
             known: vec![Known::Background; width * height],
             label: vec![false; width * height],
-            links: Vec::new(),
+            links: Arc::new(Vec::new()),
             models: None,
             scale,
             source: (source_w, source_h),
+            region,
+            rect,
+            strokes: Vec::new(),
         };
 
         let box_in_working = |v: u32, s: f32| (v as f32 * s).round() as usize;
-        let x0 = box_in_working(rect.x0, scale);
-        let y0 = box_in_working(rect.y0, scale);
-        let x1 = box_in_working(rect.x1, scale).min(width);
-        let y1 = box_in_working(rect.y1, scale).min(height);
+        let x0 = box_in_working(rect.x0 - region.x0, scale).min(width);
+        let y0 = box_in_working(rect.y0 - region.y0, scale).min(height);
+        let x1 = box_in_working(rect.x1 - region.x0, scale).min(width);
+        let y1 = box_in_working(rect.y1 - region.y0, scale).min(height);
         let outside = (width * height - (x1 - x0) * (y1 - y0)) as f32;
         let roomy = outside > (width * height) as f32 * 0.05;
         let band = (((x1 - x0).min(y1 - y0) as f32 * RIM).round() as usize).max(1);
@@ -81,7 +110,7 @@ impl Cutout {
             }
         }
 
-        cutout.links = cutout.build_links();
+        cutout.links = Arc::new(cutout.build_links());
         cutout
     }
 
@@ -90,8 +119,17 @@ impl Cutout {
     }
 
     pub fn paint(&mut self, at: (f32, f32), radius: f32, foreground: bool) {
-        let radius = radius * self.scale;
-        let centre = (at.0 * self.scale, at.1 * self.scale);
+        self.strokes.push(refine::Dab {
+            at,
+            radius,
+            foreground,
+            stroke: 0,
+        });
+        let radius = (radius * self.scale).max(0.75);
+        let centre = (
+            (at.0 - self.region.x0 as f32) * self.scale,
+            (at.1 - self.region.y0 as f32) * self.scale,
+        );
         let known = if foreground {
             Known::Foreground
         } else {
@@ -140,7 +178,6 @@ impl Cutout {
                 break;
             }
         }
-        self.tidy();
         self.models = models;
     }
 
@@ -150,7 +187,6 @@ impl Cutout {
             return;
         };
         self.cut(&models.0, &models.1);
-        self.tidy();
 
         let kept = self.label.iter().filter(|l| **l).count();
         let forced = self
@@ -174,7 +210,8 @@ impl Cutout {
                     Gmm::fit(&bg, &gmm::cluster(&bg)),
                 );
                 self.cut(&models.0, &models.1);
-                self.tidy();
+                self.models = Some(models);
+            } else {
                 self.models = Some(models);
             }
             return;
@@ -315,66 +352,6 @@ impl Cutout {
             .then(|| y as usize * self.width + x as usize)
     }
 
-    pub fn tidy(&mut self) {
-        let pieces = self.pieces(true);
-        let biggest = pieces.iter().map(|p| p.len()).max().unwrap_or(0);
-        if biggest == 0 {
-            return;
-        }
-        for piece in &pieces {
-            if piece.len() * 4 < biggest {
-                for node in piece {
-                    if self.known[*node] != Known::Foreground {
-                        self.label[*node] = false;
-                    }
-                }
-            }
-        }
-
-        let holes = self.pieces(false);
-        for hole in &holes {
-            let touches_edge = hole.iter().any(|node| {
-                let (x, y) = (node % self.width, node / self.width);
-                x == 0 || y == 0 || x + 1 == self.width || y + 1 == self.height
-            });
-            if !touches_edge && hole.len() * 200 < biggest {
-                for node in hole {
-                    if self.known[*node] != Known::Background {
-                        self.label[*node] = true;
-                    }
-                }
-            }
-        }
-    }
-
-    fn pieces(&self, wanted: bool) -> Vec<Vec<usize>> {
-        let mut seen = vec![false; self.label.len()];
-        let mut out = Vec::new();
-        let mut stack = Vec::new();
-
-        for start in 0..self.label.len() {
-            if seen[start] || self.label[start] != wanted {
-                continue;
-            }
-            let mut piece = Vec::new();
-            stack.push(start);
-            seen[start] = true;
-            while let Some(node) = stack.pop() {
-                piece.push(node);
-                for dir in [2, 3, 6, 7] {
-                    let Some(other) = self.neighbour(node, dir) else {
-                        continue;
-                    };
-                    if !seen[other] && self.label[other] == wanted {
-                        seen[other] = true;
-                        stack.push(other);
-                    }
-                }
-            }
-            out.push(piece);
-        }
-        out
-    }
     pub fn working_mask(&self) -> Vec<u8> {
         self.label
             .iter()
@@ -385,10 +362,12 @@ impl Cutout {
     pub fn mask(&self) -> Vec<u8> {
         let (w, h) = (self.source.0 as usize, self.source.1 as usize);
         let mut out = vec![0u8; w * h];
-        for y in 0..h {
-            let sy = ((y as f32 * self.scale) as usize).min(self.height - 1);
-            for x in 0..w {
-                let sx = ((x as f32 * self.scale) as usize).min(self.width - 1);
+        for y in self.rect.y0 as usize..self.rect.y1 as usize {
+            let sy =
+                (((y - self.region.y0 as usize) as f32 * self.scale) as usize).min(self.height - 1);
+            for x in self.rect.x0 as usize..self.rect.x1 as usize {
+                let sx = (((x - self.region.x0 as usize) as f32 * self.scale) as usize)
+                    .min(self.width - 1);
                 out[y * w + x] = if self.label[sy * self.width + sx] {
                     255
                 } else {
@@ -402,118 +381,14 @@ impl Cutout {
 
 impl Cutout {
     pub fn refined_mask(&self, pixels: &Rgba8) -> Vec<u8> {
-        let mut mask = self.mask();
-        let (w, h) = (self.source.0 as usize, self.source.1 as usize);
+        let mask = self.mask();
         if pixels.size() != self.source {
             return mask;
         }
-
-        let reach = ((1.0 / self.scale).ceil() as usize + 1).clamp(2, 6);
-        let band = self.band(&mask, w, h, reach);
-        let mut in_band = vec![false; w * h];
-        for &node in &band {
-            in_band[node] = true;
-        }
-
-        let bytes = pixels.as_bytes();
-        let colour_at = |i: usize| {
-            [
-                bytes[i * CHANNELS] as f32,
-                bytes[i * CHANNELS + 1] as f32,
-                bytes[i * CHANNELS + 2] as f32,
-            ]
-        };
-
-        let window = (reach * 2 + 2) as i32;
-        let mut decided = mask.clone();
-        for &node in &band {
-            let (x, y) = ((node % w) as i32, (node / w) as i32);
-            let here = colour_at(node);
-            let (mut best_fg, mut best_bg) = (f32::MAX, f32::MAX);
-
-            for dy in -window..=window {
-                for dx in -window..=window {
-                    let (nx, ny) = (x + dx, y + dy);
-                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
-                        continue;
-                    }
-                    let other = ny as usize * w + nx as usize;
-                    if in_band[other] {
-                        continue;
-                    }
-                    let d = distance(here, colour_at(other));
-                    if mask[other] > 128 {
-                        best_fg = best_fg.min(d);
-                    } else {
-                        best_bg = best_bg.min(d);
-                    }
-                }
-            }
-
-            if best_fg == f32::MAX || best_bg == f32::MAX {
-                continue;
-            }
-            decided[node] = if best_fg <= best_bg { 255 } else { 0 };
-        }
-
-        for &node in &band {
-            let (x, y) = ((node % w) as i32, (node / w) as i32);
-            let mut fg = 0;
-            let mut total = 0;
-            for dy in -1..=1i32 {
-                for dx in -1..=1i32 {
-                    let (nx, ny) = (x + dx, y + dy);
-                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
-                        continue;
-                    }
-                    total += 1;
-                    if decided[ny as usize * w + nx as usize] > 128 {
-                        fg += 1;
-                    }
-                }
-            }
-            mask[node] = if fg * 2 > total { 255 } else { 0 };
-        }
-        mask
-    }
-
-    fn band(&self, mask: &[u8], w: usize, h: usize, reach: usize) -> Vec<usize> {
-        let mut edge = Vec::new();
-        for y in 0..h {
-            for x in 0..w {
-                let node = y * w + x;
-                let mine = mask[node] > 128;
-                let boundary = [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)]
-                    .iter()
-                    .any(|(dx, dy)| {
-                        let (nx, ny) = (x as i32 + dx, y as i32 + dy);
-                        nx >= 0
-                            && ny >= 0
-                            && nx < w as i32
-                            && ny < h as i32
-                            && (mask[ny as usize * w + nx as usize] > 128) != mine
-                    });
-                if boundary {
-                    edge.push((x, y));
-                }
-            }
-        }
-
-        let mut band = Vec::new();
-        let reach = reach as i32;
-        for (x, y) in edge {
-            for dy in -reach..=reach {
-                for dx in -reach..=reach {
-                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
-                    if nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32 {
-                        band.push(ny as usize * w + nx as usize);
-                    }
-                }
-            }
-        }
-        band.sort_unstable();
-        band.dedup();
-        band
+        let reach = ((1.0 / self.scale).ceil() as u32 + 1).clamp(2, 24);
+        let mut out = refine::matte(pixels, &mask, self.rect, reach);
+        refine::constrain(&mut out, pixels, self.rect, &self.strokes);
+        out
     }
 }
 
@@ -540,32 +415,29 @@ pub fn fill_behind(pixels: &Rgba8, mask: &[u8], rect: Rect) -> Rgba8 {
     }
 
     let bytes = out.pixels_mut();
-    let mut waiting: Vec<usize> = (0..hole.len()).filter(|i| hole[*i]).collect();
     let mut known: Vec<bool> = hole.iter().map(|h| !h).collect();
+    let neighbours = |node: usize| {
+        let (x, y) = ((node % stride) as i32, (node / stride) as i32);
+        DIRS.into_iter().filter_map(move |(dx, dy)| {
+            let (nx, ny) = (x + dx, y + dy);
+            (nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32)
+                .then(|| ny as usize * stride + nx as usize)
+        })
+    };
+    let mut queued = vec![false; hole.len()];
+    let mut waiting: Vec<usize> = (0..hole.len())
+        .filter(|&i| hole[i] && neighbours(i).any(|j| known[j]))
+        .collect();
+    for &node in &waiting {
+        queued[node] = true;
+    }
     while !waiting.is_empty() {
-        let mut filled_any = false;
-        let mut still = Vec::with_capacity(waiting.len());
         let mut writes = Vec::new();
 
-        for node in waiting {
-            let (x, y) = (node % stride, node / stride);
+        for &node in &waiting {
             let mut total = [0u32; CHANNELS];
             let mut count = 0u32;
-            for (dx, dy) in [
-                (1i32, 0i32),
-                (-1, 0),
-                (0, 1),
-                (0, -1),
-                (1, 1),
-                (-1, -1),
-                (1, -1),
-                (-1, 1),
-            ] {
-                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
-                if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
-                    continue;
-                }
-                let other = ny as usize * stride + nx as usize;
+            for other in neighbours(node) {
                 if !known[other] {
                     continue;
                 }
@@ -576,7 +448,6 @@ pub fn fill_behind(pixels: &Rgba8, mask: &[u8], rect: Rect) -> Rgba8 {
             }
 
             if count == 0 {
-                still.push(node);
                 continue;
             }
             let mut colour = [0u8; CHANNELS];
@@ -584,17 +455,22 @@ pub fn fill_behind(pixels: &Rgba8, mask: &[u8], rect: Rect) -> Rgba8 {
                 colour[c] = (total[c] / count) as u8;
             }
             writes.push((node, colour));
-            filled_any = true;
         }
 
         for (node, colour) in writes {
             bytes[node * CHANNELS..node * CHANNELS + CHANNELS].copy_from_slice(&colour);
             known[node] = true;
         }
-        if !filled_any {
-            break;
+        let mut next = Vec::new();
+        for node in waiting {
+            for other in neighbours(node) {
+                if hole[other] && !queued[other] {
+                    queued[other] = true;
+                    next.push(other);
+                }
+            }
         }
-        waiting = still;
+        waiting = next;
     }
 
     let inside: Vec<usize> = (0..hole.len()).filter(|i| hole[*i]).collect();
@@ -844,5 +720,68 @@ mod tests {
         let (ww, wh) = cutout.size();
         assert!(ww.max(wh) <= WORKING, "the working copy is {ww} by {wh}");
         assert_eq!(cutout.mask().len(), (w * h) as usize);
+    }
+
+    #[test]
+    fn a_small_subject_in_a_large_photo_keeps_its_source_detail() {
+        let thing = Rect::new(2000, 900, 2020, 920);
+        let image = blob(4000, 2000, thing, [200, 30, 20, 255], [30, 60, 180, 255]);
+        let mut cutout = Cutout::new(&image, Rect::new(1990, 890, 2030, 930));
+        assert_eq!(cutout.scale, 1.0);
+        assert_eq!(cutout.size(), (56, 56));
+        cutout.run(3);
+        let mask = cutout.refined_mask(&image);
+        assert_eq!(mask[910 * 4000 + 2010], 255);
+        assert_eq!(mask[910 * 4000 + 1992], 0);
+    }
+
+    #[test]
+    fn holes_and_detached_details_are_not_discarded() {
+        let mut image = blob(
+            100,
+            80,
+            Rect::new(20, 20, 70, 60),
+            [200, 30, 20, 255],
+            [30, 60, 180, 255],
+        );
+        for y in 30..50 {
+            for x in 30..60 {
+                image.pixels_mut()[(y * 100 + x) * 4..(y * 100 + x) * 4 + 4]
+                    .copy_from_slice(&[30, 60, 180, 255]);
+            }
+        }
+        for y in 25..29 {
+            for x in 78..82 {
+                image.pixels_mut()[(y * 100 + x) * 4..(y * 100 + x) * 4 + 4]
+                    .copy_from_slice(&[200, 30, 20, 255]);
+            }
+        }
+        let mut cutout = Cutout::new(&image, Rect::new(10, 10, 90, 70));
+        cutout.run(3);
+        let mask = cutout.refined_mask(&image);
+        assert_eq!(mask[40 * 100 + 45], 0);
+        assert_eq!(mask[25 * 100 + 25], 255);
+        assert_eq!(mask[27 * 100 + 80], 255);
+    }
+
+    #[test]
+    fn background_fill_reaches_the_centre_and_leaves_the_surroundings_alone() {
+        let image = blob(
+            200,
+            140,
+            Rect::new(20, 20, 180, 120),
+            [200, 30, 20, 0],
+            [30, 60, 180, 255],
+        );
+        let filled = fill_behind(&image, &vec![255; 160 * 100], Rect::new(20, 20, 180, 120));
+        assert_eq!(
+            &filled.as_bytes()[(70 * 200 + 100) * 4..(70 * 200 + 100) * 4 + 4],
+            &[30, 60, 180, 255]
+        );
+        assert_eq!(&filled.as_bytes()[..80], &image.as_bytes()[..80]);
+        assert_eq!(
+            fill_behind(&image, &vec![0; 200 * 140], Rect::new(0, 0, 200, 140)),
+            image
+        );
     }
 }
