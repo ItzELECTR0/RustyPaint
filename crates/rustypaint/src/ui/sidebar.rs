@@ -540,7 +540,13 @@ impl<'a> Panel<'a> {
     }
 
     fn hint(self, label: impl iced::widget::text::IntoFragment<'a>) -> Self {
-        self.loose(text(label).size(12).color(theme::colours().text_dim))
+        self.loose(
+            text(label)
+                .size(12)
+                .center()
+                .color(theme::colours().text_dim)
+                .width(Length::Fill),
+        )
     }
 }
 
@@ -549,6 +555,7 @@ impl<'a> From<Panel<'a>> for Element<'a, Message> {
         column![heading(panel.title)]
             .extend(panel.items)
             .spacing(12)
+            .align_x(iced::Alignment::Center)
             .into()
     }
 }
@@ -586,11 +593,21 @@ fn note<'a>(control: impl Into<Element<'a, Message>>, label: &'a str) -> Element
 }
 
 fn label<'a>(content: &'a str) -> Element<'a, Message> {
-    text(content).size(14).color(theme::colours().text).into()
+    text(content)
+        .size(14)
+        .center()
+        .color(theme::colours().text)
+        .width(Length::Fill)
+        .into()
 }
 
 fn section<'a>(label: &'a str) -> Element<'a, Message> {
-    text(label).size(13).color(theme::colours().text_dim).into()
+    text(label)
+        .size(13)
+        .center()
+        .color(theme::colours().text_dim)
+        .width(Length::Fill)
+        .into()
 }
 
 fn curve_thumbnail<'a>(kind: CurveKind, active: bool) -> Element<'a, Message> {
@@ -674,7 +691,9 @@ fn shape_thumbnail<'a>(kind: ShapeKind, active: bool) -> Element<'a, Message> {
 fn heading<'a>(label: &'a str) -> Element<'a, Message> {
     text(label)
         .size(20)
+        .center()
         .color(theme::colours().accent_text)
+        .width(Length::Fill)
         .into()
 }
 
