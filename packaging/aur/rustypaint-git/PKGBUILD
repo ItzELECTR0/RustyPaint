@@ -1,7 +1,7 @@
 # Maintainer: ELECTRO <electro@electris.net>
 
 pkgname=rustypaint-git
-pkgver=0.2.3.r0.g2c68909
+pkgver=0.2.3.r22.ga9f31dd
 pkgrel=1
 pkgdesc="Paint 3D's 2D editor, without the 3D (Git version)"
 arch=('x86_64' 'aarch64')
@@ -41,6 +41,13 @@ build() {
     cd rustypaint
     export CARGO_TARGET_DIR=target
     export ORT_LIB_PATH="$srcdir/onnxruntime"
+
+    for variable in CFLAGS CXXFLAGS; do
+        read -ra flags <<< "${!variable}"
+        flags=("${flags[@]/#-flto*/}")
+        printf -v "$variable" '%s ' "${flags[@]}"
+        export "$variable"
+    done
 
     if [[ -n "${_native:-}" ]]; then
         export RUSTFLAGS="${RUSTFLAGS:-} -C target-cpu=native"
