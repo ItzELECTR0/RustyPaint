@@ -152,8 +152,8 @@ jobs:
             # WiX 3 has no arm64 architecture at all and cargo-packager pins it by checksum, so on
             # ARM the NSIS installer is the only one there is.
             formats: nsis
-    # Both architectures on the x86 runner, since that is where the installer toolchains run.
-    runs-on: windows-2025
+    # The ONNX Runtime build script uses the Visual Studio 2022 CMake generator.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6
       - name: Select stable Rust

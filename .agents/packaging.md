@@ -142,10 +142,11 @@ the setup program is built for both architectures and is the only installer ARM 
 
 `installer-mode = "perMachine"` puts the setup program where the MSI goes, because a fallback that
 installs somewhere else is not much of a fallback; NSIS on its own defaults to a per-user install
-recorded under `HKCU`. Both architectures build on `windows-2025`, since that is where the installer
-toolchains run. `--target` moves the directory the packager reads to `target/<triple>/<profile>`,
-and `CARGO_BUILD_TARGET` is what makes `before-packaging-command` build there, since the hook is
-handed no arguments of ours. When a Windows package build fails, note that cargo-packager's
+recorded under `HKCU`. Both architectures build on `windows-2022`, whose Visual Studio version
+matches the ONNX Runtime build script's generator. `--target` moves the directory the packager
+reads to `target/<triple>/<profile>`, and `CARGO_BUILD_TARGET` is what makes
+`before-packaging-command` build there, since the hook is handed no arguments of ours. When a
+Windows package build fails, note that cargo-packager's
 `WixFailed` formats its first field twice and drops the error, so the log shows the tool's name
 where the message should be; `-v` puts the tool's own output in the log instead.
 
