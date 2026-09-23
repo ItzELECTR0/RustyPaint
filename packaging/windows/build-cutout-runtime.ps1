@@ -37,10 +37,11 @@ try {
 # already misses what this version splits out. Hand it the single library instead.
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 $studio = & $vswhere -latest -products * -property installationPath
-Import-Module (Join-Path $studio 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
 $machine = if ($Architecture -eq 'aarch64') { 'ARM64' } else { 'X64' }
-Enter-VsDevShell -VsInstallPath $studio -SkipAutomaticLocation `
-    -DevCmdArguments "-arch=$($machine.ToLower()) -no_logo"
+$toolset = Get-ChildItem (Join-Path $studio 'VC/Tools/MSVC') -Directory |
+    Sort-Object Name | Select-Object -Last 1
+$librarian = Join-Path $toolset.FullName "bin/Hostx64/$($machine.ToLower())/lib.exe"
+if (!(Test-Path $librarian)) { throw "MSVC librarian not found: $librarian" }
 
 $output = Join-Path $runtime 'lib'
 Remove-Item -Recurse -Force $output -ErrorAction Ignore
@@ -49,7 +50,7 @@ $arguments = Join-Path $output 'merge.rsp'
 @("/OUT:`"$(Join-Path $output 'onnxruntime.lib')`"", "/MACHINE:$machine") +
     (Get-ChildItem (Join-Path $runtime 'build/Windows/Release') -Recurse -Filter '*.lib' |
         ForEach-Object { '"{0}"' -f $_.FullName }) | Set-Content -Path $arguments
-lib.exe "@$arguments"
+& $librarian "@$arguments"
 Remove-Item $arguments
 
 $env:ORT_LIB_PATH = $output
