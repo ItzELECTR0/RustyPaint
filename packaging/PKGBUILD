@@ -1,9 +1,9 @@
 # Maintainer: ELECTRO <electro@electris.net>
 
-pkgname=rustypaint
-pkgver=0.2.3
+pkgname=rustypaint-dev
+pkgver=0.0.0
 pkgrel=1
-pkgdesc="Paint 3D's 2D editor, without the 3D"
+pkgdesc="Paint 3D's 2D editor, without the 3D (Development version)"
 arch=('x86_64' 'aarch64')
 license=('GPL-3.0-only')
 depends=('vulkan-icd-loader' 'fontconfig' 'libxkbcommon' 'gcc-libs')
@@ -12,6 +12,8 @@ optdepends=('xdg-desktop-portal: native file dialogs, and following the system c
             'vulkan-radeon: AMD GPU driver'
             'nvidia-utils: NVIDIA GPU driver'
             'vulkan-intel: Intel GPU driver')
+provides=('rustypaint')
+conflicts=('rustypaint' 'rustypaint-git')
 options=('!debug')
 source_x86_64=('onnxruntime-x86_64.tar.lzma2::https://cdn.pyke.io/0/pyke:ort-rs/ms@1.28.0/x86_64-unknown-linux-gnu.tar.lzma2')
 source_aarch64=('onnxruntime-aarch64.tar.lzma2::https://cdn.pyke.io/0/pyke:ort-rs/ms@1.28.0/aarch64-unknown-linux-gnu.tar.lzma2')
@@ -37,6 +39,13 @@ build() {
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
     export ORT_LIB_PATH="$srcdir/onnxruntime"
+
+    for variable in CFLAGS CXXFLAGS; do
+        read -ra flags <<< "${!variable}"
+        flags=("${flags[@]/#-flto*/}")
+        printf -v "$variable" '%s ' "${flags[@]}"
+        export "$variable"
+    done
 
     if [[ -n "${_native:-}" ]]; then
         export RUSTFLAGS="${RUSTFLAGS:-} -C target-cpu=native"
