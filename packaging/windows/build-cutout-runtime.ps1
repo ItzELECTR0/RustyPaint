@@ -14,18 +14,21 @@ if ((git -C $runtime rev-parse HEAD) -ne $revision) {
     throw 'Unexpected ONNX Runtime source revision; use a separate build directory.'
 }
 $parallel = if ($env:CMAKE_BUILD_PARALLEL_LEVEL) { $env:CMAKE_BUILD_PARALLEL_LEVEL } else { '4' }
+$gitRoot = Split-Path (Split-Path (Get-Command git).Source -Parent) -Parent
+$patch = Join-Path $gitRoot 'usr/bin/patch.exe'
+if (!(Test-Path $patch)) { throw "Git for Windows patch executable not found: $patch" }
 $buildArgs = @(
     'tools/ci_build/build.py', '--build_dir', 'build/Windows', '--config', 'Release',
     '--update', '--build', '--parallel', $parallel, '--skip_tests', '--compile_no_warning_as_error',
     '--enable_msvc_static_runtime', '--cmake_extra_defines',
-    'onnxruntime_ENABLE_CPUINFO=ON', 'onnxruntime_BUILD_UNIT_TESTS=OFF'
+    'onnxruntime_ENABLE_CPUINFO=ON', 'onnxruntime_BUILD_UNIT_TESTS=OFF', "Patch_EXECUTABLE=$patch"
 )
 if ($Architecture -eq 'aarch64') { $buildArgs += '--arm64' }
 Push-Location $runtime
 try {
     python @buildArgs
     # The providers reference re2, which nothing in the default target ever builds.
-    cmake --build build/Windows/Release --config Release --target re2 --parallel $parallel
+    cmake --build build/Windows/Release/_deps/re2-build --config Release --target re2 --parallel $parallel
 } finally {
     Pop-Location
 }
