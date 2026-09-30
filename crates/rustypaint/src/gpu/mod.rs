@@ -13,7 +13,7 @@ use iced::{Point, Rectangle, Size, Vector, mouse};
 use std::sync::Arc;
 
 pub const MIN_ZOOM: f32 = 0.05;
-pub const MAX_ZOOM: f32 = 32.0;
+pub const MAX_ZOOM: f32 = 50.0;
 
 const ANTS_SPEED: f32 = 20.0;
 
@@ -2033,7 +2033,7 @@ mod tests {
             (anchor.y - rect.y) / view.zoom,
         );
 
-        for zoom in [0.25, 0.5, 2.0, 8.0, 31.0] {
+        for zoom in [0.25, 0.5, 2.0, 8.0, 31.0, 50.0] {
             let after = view.zoomed_at(anchor, zoom, viewport(), CANVAS);
             let landed = project(after, image);
             assert!(
