@@ -1,7 +1,7 @@
 use crate::canvas::NewCanvas;
 use crate::config::Config;
 use crate::doc::clipboard::Clip;
-use crate::doc::{self, Document, Rect, Rgba8, Version};
+use crate::doc::{self, Document, Rgba8, Version};
 use crate::gpu::{self, View};
 use crate::i18n::Language;
 use crate::paint::{Brush, Mirror, Stroke, Tool, curve, shapes};
@@ -152,7 +152,7 @@ pub(super) struct Sheet {
     selecting: Option<((f32, f32), (f32, f32))>,
     lasso: Option<Lasso>,
     resize_preview: Option<(u32, u32)>,
-    dirty: Option<(Version, Rect)>,
+    damage: gpu::Damage,
     save_format: doc::io::SaveFormat,
     cropping: Option<Cropping>,
     cutting_out: Option<CuttingOut>,
@@ -411,7 +411,7 @@ pub struct App {
     freeform: bool,
     stashed_tool: Tool,
     resize_preview: Option<(u32, u32)>,
-    dirty: Option<(Version, Rect)>,
+    damage: gpu::Damage,
     menu: Option<MenuPage>,
     save_format: doc::io::SaveFormat,
     config: Config,
@@ -824,7 +824,7 @@ impl App {
             accent,
             custom_accent,
             config_path,
-            dirty: None,
+            damage: gpu::Damage::default(),
         };
 
         let measure = iced::window::latest()
@@ -863,7 +863,7 @@ impl App {
             selecting: None,
             lasso: None,
             resize_preview: None,
-            dirty: None,
+            damage: gpu::Damage::default(),
             save_format,
             cropping: None,
             cutting_out: None,
@@ -926,7 +926,7 @@ impl App {
             selecting: self.selecting.take(),
             lasso: self.lasso.take(),
             resize_preview: self.resize_preview.take(),
-            dirty: self.dirty.take(),
+            damage: std::mem::take(&mut self.damage),
             save_format: self.save_format,
             cropping: self.cropping.take(),
             cutting_out: self.cutting_out.take(),
@@ -950,7 +950,7 @@ impl App {
         self.selecting = sheet.selecting;
         self.lasso = sheet.lasso;
         self.resize_preview = sheet.resize_preview;
-        self.dirty = sheet.dirty;
+        self.damage = sheet.damage;
         self.save_format = sheet.save_format;
         self.cropping = sheet.cropping;
         self.cutting_out = sheet.cutting_out;

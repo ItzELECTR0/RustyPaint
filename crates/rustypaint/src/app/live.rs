@@ -381,7 +381,7 @@ impl App {
             }
         }
         self.float_version += 1;
-        self.dirty = None;
+        self.damage.clear();
     }
 
     pub(super) fn draw_blur(&mut self, from: (f32, f32), to: (f32, f32)) {
@@ -397,7 +397,7 @@ impl App {
             }
         }
         self.float_version += 1;
-        self.dirty = None;
+        self.damage.clear();
     }
 
     pub(super) fn draw_curve(&mut self, kind: curve::CurveKind, from: (f32, f32), to: (f32, f32)) {
@@ -411,7 +411,7 @@ impl App {
             }
         }
         self.float_version += 1;
-        self.dirty = None;
+        self.damage.clear();
     }
 
     pub(super) fn restyle_text(&mut self) {
@@ -519,7 +519,7 @@ impl App {
         let at = self.looking_at();
         self.floating = Some(Floating::pasted_text(&self.doc, style, text, at));
         self.float_version += 1;
-        self.dirty = None;
+        self.damage.clear();
         self.status.clear();
     }
 
@@ -567,7 +567,7 @@ impl App {
         self.commit_floating();
         self.floating = Some(Floating::text(&self.doc, self.text_style.clone(), rect));
         self.float_version += 1;
-        self.dirty = None;
+        self.damage.clear();
     }
 
     pub(super) fn curve_style(&self) -> shapes::ShapeStyle {
@@ -583,7 +583,7 @@ impl App {
         if let Some(floating) = Floating::lift_masked(&mut self.doc, rect, mask) {
             self.float_version += 1;
             self.floating = Some(floating);
-            self.dirty = None;
+            self.damage.clear();
         }
     }
 
@@ -623,7 +623,7 @@ impl App {
         self.grab = None;
         self.grab_from = None;
         if floating.text_box().is_some_and(|boxed| boxed.is_empty()) {
-            self.dirty = None;
+            self.damage.clear();
             return;
         }
         floating.editing = false;
@@ -631,7 +631,7 @@ impl App {
             self.doc
                 .commit(floating.label(), touched, floating.backup());
         }
-        self.dirty = None;
+        self.damage.clear();
     }
 
     pub(super) fn restyle_shape(&mut self) {
@@ -744,7 +744,7 @@ impl App {
 
         self.brush.tool = Tool::Select;
         self.float_version += 1;
-        self.dirty = None;
+        self.damage.clear();
     }
 
     pub(super) fn cancel_floating(&mut self) {
@@ -761,7 +761,7 @@ impl App {
         self.grab = None;
         self.grab_from = None;
         self.float_version += 1;
-        self.dirty = None;
+        self.damage.clear();
     }
 
     pub(super) fn redo_floating(&mut self) -> bool {
@@ -776,7 +776,7 @@ impl App {
         }
         self.floating = Some(redo.floating);
         self.float_version += 1;
-        self.dirty = None;
+        self.damage.clear();
         true
     }
 }

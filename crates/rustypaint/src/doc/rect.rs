@@ -55,6 +55,15 @@ impl Rect {
         }
     }
 
+    pub fn intersection(self, other: Self) -> Self {
+        Self::new(
+            self.x0.max(other.x0),
+            self.y0.max(other.y0),
+            self.x1.min(other.x1),
+            self.y1.min(other.y1),
+        )
+    }
+
     pub fn clamped(self, width: u32, height: u32) -> Self {
         Self {
             x0: self.x0.min(width),
@@ -96,6 +105,17 @@ impl Bounds {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rects_that_do_not_overlap_have_an_empty_intersection() {
+        let a = Rect::new(0, 0, 10, 10);
+        assert_eq!(
+            a.intersection(Rect::new(5, 2, 20, 8)),
+            Rect::new(5, 2, 10, 8)
+        );
+        assert!(a.intersection(Rect::new(10, 0, 20, 10)).is_empty());
+        assert!(a.intersection(Rect::new(30, 30, 40, 40)).is_empty());
+    }
 
     #[test]
     fn union_ignores_empties() {

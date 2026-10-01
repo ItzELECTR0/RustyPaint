@@ -9,10 +9,16 @@ pub mod transform;
 pub use image::Rgba8;
 pub use rect::Rect;
 
-use history::{Edit, History, Snapshot};
+use history::{Edit, History, Part, Snapshot};
 use std::path::PathBuf;
 
 pub type Version = u64;
+
+// Unique across documents, so a texture can never take one tab for another.
+fn next_version() -> Version {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
 
 pub struct Document {
     pixels: Rgba8,
@@ -30,7 +36,7 @@ impl Document {
     pub fn blank_sized(width: u32, height: u32, transparent: bool) -> Self {
         Self {
             pixels: Rgba8::transparent(width, height),
-            version: 1,
+            version: next_version(),
             transparent,
             path: None,
             touched: false,
@@ -43,7 +49,7 @@ impl Document {
         let transparent = has_transparency(&pixels);
         Self {
             pixels,
-            version: 1,
+            version: next_version(),
             transparent,
             path,
             touched: false,
@@ -89,7 +95,7 @@ impl Document {
     }
 
     pub fn edit(&mut self) -> &mut Rgba8 {
-        self.version += 1;
+        self.version = next_version();
         self.touched = true;
         &mut self.pixels
     }
@@ -110,31 +116,51 @@ impl Document {
 
     pub(crate) fn restore_live(&mut self, pixels: Rgba8, touched: bool) {
         self.pixels = pixels;
-        self.version += 1;
+        self.version = next_version();
         self.touched = touched;
     }
 
     pub fn commit(&mut self, label: &'static str, rect: Rect, before: &Rgba8) {
-        self.touched = false;
         let rect = rect.clamped(self.pixels.width(), self.pixels.height());
-        if rect.is_empty() {
-            return;
-        }
-        let (was, now) = (
-            Edit::extract(before, rect),
-            Edit::extract(&self.pixels, rect),
-        );
-        if was == now {
-            return;
-        }
-        self.history.push(
-            label,
-            Edit::Region {
+        self.commit_parts(label, vec![(rect, Edit::extract(before, rect))]);
+    }
+
+    // Each region comes with its old rows, top to bottom.
+    pub fn commit_parts(&mut self, label: &'static str, regions: Vec<(Rect, Vec<u8>)>) {
+        self.touched = false;
+        let (width, height) = self.pixels.size();
+        let mut parts: Vec<Part> = regions
+            .into_iter()
+            .filter(|(rect, before)| {
+                let fits = rect.clamped(width, height) == *rect
+                    && before.len() == rect.area() * image::CHANNELS;
+                debug_assert!(fits, "{rect:?} does not match what was kept from under it");
+                fits && !rect.is_empty()
+            })
+            .map(|(rect, before)| Part {
                 rect,
-                before: was,
-                after: now,
-            },
-        );
+                before,
+                after: Edit::extract(&self.pixels, rect),
+            })
+            .filter(|part| part.before != part.after)
+            .collect();
+        let edit = match parts.len() {
+            0 => return,
+            1 => {
+                let Part {
+                    rect,
+                    before,
+                    after,
+                } = parts.remove(0);
+                Edit::Region {
+                    rect,
+                    before,
+                    after,
+                }
+            }
+            _ => Edit::Regions(parts),
+        };
+        self.history.push(label, edit);
     }
 
     fn snapshot(&self) -> Snapshot {
@@ -161,7 +187,7 @@ impl Document {
                 after: self.snapshot(),
             },
         );
-        self.version += 1;
+        self.version = next_version();
         self.touched = false;
     }
 
@@ -233,20 +259,25 @@ impl Document {
         self.history.can_undo()
     }
 
+    #[cfg(test)]
+    pub fn history_bytes(&self) -> usize {
+        self.history.bytes()
+    }
+
     pub fn can_redo(&self) -> bool {
         self.history.can_redo()
     }
 
     pub fn undo(&mut self) -> Option<Option<Rect>> {
         let changed = self.history.undo(&mut self.pixels, &mut self.transparent)?;
-        self.version += 1;
+        self.version = next_version();
         self.touched = false;
         Some(changed)
     }
 
     pub fn redo(&mut self) -> Option<Option<Rect>> {
         let changed = self.history.redo(&mut self.pixels, &mut self.transparent)?;
-        self.version += 1;
+        self.version = next_version();
         self.touched = false;
         Some(changed)
     }

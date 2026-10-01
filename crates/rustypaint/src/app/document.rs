@@ -163,6 +163,10 @@ impl App {
         if !self.unsaved() || self.snapshotted == Some(at) || self.snapshotting {
             return Task::none();
         }
+        // The encoder shares the canvas, so the stroke's next stamp would have to copy all of it.
+        if self.stroke.is_some() {
+            return Task::none();
+        }
         if self.last_snapshot.elapsed() < doc::recovery::SNAPSHOT_GAP {
             return Task::none();
         }
@@ -221,7 +225,7 @@ impl App {
         self.grab_from = None;
         self.float_version += 1;
         self.view = View::fitted(self.viewport, self.doc.size());
-        self.dirty = None;
+        self.damage.clear();
         self.panel.sync(self.doc.size());
         self.status.clear();
         self.menu = None;
@@ -357,7 +361,7 @@ impl App {
         if let Some(hole) = floating.lifted_from {
             self.doc.commit("Cut", hole, floating.backup());
         }
-        self.dirty = None;
+        self.damage.clear();
     }
 
     pub(super) fn bucket(&mut self, x: f32, y: f32) {
@@ -377,7 +381,7 @@ impl App {
         };
         *self.doc.edit() = filled;
         self.doc.commit("Fill", touched, &before);
-        self.dirty = Some((version, touched));
+        self.damage.record(version, self.doc.version(), [touched]);
     }
 
     pub(super) fn eyedropper(&mut self, x: f32, y: f32) {
@@ -396,14 +400,8 @@ impl App {
         let Some(stroke) = &mut self.stroke else {
             return;
         };
-        let Some(rect) = stroke.flush(&mut self.doc) else {
-            return;
-        };
-
-        self.dirty = Some(match self.dirty.take() {
-            Some((from, existing)) => (from, existing.union(rect)),
-            None => (before, rect),
-        });
+        let rects = stroke.flush(&mut self.doc);
+        self.damage.record(before, self.doc.version(), rects);
     }
 
     pub(super) fn can_undo(&self) -> bool {
@@ -455,11 +453,11 @@ impl App {
         } else {
             self.doc.redo()
         };
-        self.dirty = match changed {
-            Some(Some(rect)) => Some((before, rect)),
-            Some(None) => None,
+        match changed {
+            Some(Some(rect)) => self.damage.record(before, self.doc.version(), [rect]),
+            Some(None) => self.damage.clear(),
             None => return,
-        };
+        }
         self.panel.sync(self.doc.size());
     }
 }

@@ -1,3 +1,5 @@
+use super::damage::Damage;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Uniforms {
@@ -86,29 +88,28 @@ struct Texture {
     uploaded: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Upload {
     Nothing,
     Whole,
-    Region(crate::doc::Rect),
+    Regions(Vec<crate::doc::Rect>),
 }
 
-pub fn plan_upload(
-    uploaded: u64,
-    size: (u32, u32),
-    version: u64,
-    dirty: Option<(u64, crate::doc::Rect)>,
-) -> Upload {
+pub fn plan_upload(uploaded: u64, size: (u32, u32), version: u64, damage: &Damage) -> Upload {
     if uploaded == version {
         return Upload::Nothing;
     }
-    match dirty.filter(|(from, _)| *from == uploaded) {
-        Some((_, rect)) => {
-            let rect = rect.clamped(size.0, size.1);
-            if rect.is_empty() {
+    match damage.since(uploaded, version) {
+        Some(rects) => {
+            let rects: Vec<_> = rects
+                .into_iter()
+                .map(|rect| rect.clamped(size.0, size.1))
+                .filter(|rect| !rect.is_empty())
+                .collect();
+            if rects.is_empty() {
                 Upload::Nothing
             } else {
-                Upload::Region(rect)
+                Upload::Regions(rects)
             }
         }
         None => Upload::Whole,
@@ -328,7 +329,7 @@ impl Viewport {
         queue: &wgpu::Queue,
         size: (u32, u32),
         version: u64,
-        dirty: Option<(u64, crate::doc::Rect)>,
+        damage: &Damage,
         pixels: &[u8],
     ) {
         let limit = device.limits().max_texture_dimension_2d;
@@ -348,30 +349,32 @@ impl Viewport {
         let Some(texture) = &mut self.canvas else {
             return;
         };
-        let plan = plan_upload(texture.uploaded, size, version, dirty);
+        let plan = plan_upload(texture.uploaded, size, version, damage);
         texture.uploaded = version;
 
         match plan {
             Upload::Nothing => {}
-            Upload::Region(rect) => {
-                let span = rect.width() as usize * 4;
-                let stride = size.0 as usize * 4;
-                let mut staged = Vec::with_capacity(span * rect.height() as usize);
-                for y in rect.rows() {
-                    let start = y as usize * stride + rect.x0 as usize * 4;
-                    staged.extend_from_slice(&pixels[start..start + span]);
+            Upload::Regions(rects) => {
+                for rect in rects {
+                    let span = rect.width() as usize * 4;
+                    let stride = size.0 as usize * 4;
+                    let mut staged = Vec::with_capacity(span * rect.height() as usize);
+                    for y in rect.rows() {
+                        let start = y as usize * stride + rect.x0 as usize * 4;
+                        staged.extend_from_slice(&pixels[start..start + span]);
+                    }
+                    Self::upload(
+                        queue,
+                        &texture.handle,
+                        wgpu::Origin3d {
+                            x: rect.x0,
+                            y: rect.y0,
+                            z: 0,
+                        },
+                        (rect.width(), rect.height()),
+                        &staged,
+                    );
                 }
-                Self::upload(
-                    queue,
-                    &texture.handle,
-                    wgpu::Origin3d {
-                        x: rect.x0,
-                        y: rect.y0,
-                        z: 0,
-                    },
-                    (rect.width(), rect.height()),
-                    &staged,
-                );
             }
             Upload::Whole => {
                 Self::upload(queue, &texture.handle, wgpu::Origin3d::ZERO, size, pixels)

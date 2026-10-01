@@ -58,7 +58,8 @@ fn main() {
         brush.set_thickness(if tool == Tool::PixelPen { 3.0 } else { 34.0 });
 
         let mut stroke = Stroke::begin_with_mirror(brush, &doc, MARGIN, y, Mirror::default());
-        for step in 0..=220 {
+        // The editor only ever puffs the spray can where the pointer is.
+        for step in (0..=220).filter(|_| !tool.sprays()) {
             let t = step as f32 / 220.0;
             let x = MARGIN + t * (WIDTH as f32 - MARGIN * 2.0);
             stroke.extend(x, y + (t * 9.0).sin() * (ROW as f32 * 0.22));

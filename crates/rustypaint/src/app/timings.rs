@@ -1,4 +1,4 @@
-// Measures rather than asserts, so it only runs with `--release --ignored --nocapture`.
+// Measures rather than asserts, so it is ignored by default. See `.agents/brushes.md`.
 
 use super::*;
 use crate::gpu::{CanvasFrame, Upload, plan_upload};
@@ -163,50 +163,65 @@ impl Gpu {
         }
     }
 
-    // Brings the texture up to the frame and returns the bytes that took and how long it took.
-    fn present(&mut self, frame: &CanvasFrame) -> (usize, bool, Duration) {
-        let plan = plan_upload(self.uploaded, frame.size, frame.version, frame.dirty);
+    // Returns what the renderer keeps until the next frame, bytes uploaded, whether that was the
+    // whole canvas, and how long it took.
+    fn present(&mut self, frame: CanvasFrame) -> (gpu::Primitive, usize, bool, Duration) {
+        use iced::widget::shader::Primitive as _;
+
+        let plan = plan_upload(self.uploaded, frame.size, frame.version, &frame.damage);
         self.uploaded = frame.version;
-        let bytes = match plan {
+        let bytes = match &plan {
             Upload::Nothing => 0,
             Upload::Whole => frame.pixels.len(),
-            Upload::Region(rect) => rect.area() * 4,
+            Upload::Regions(rects) => rects.iter().map(|rect| rect.area() * 4).sum(),
         };
+        let size = frame.size;
+        let program = gpu::Program {
+            frame,
+            cursor: iced::mouse::Interaction::Crosshair,
+            brush: None,
+            selecting: false,
+        };
+        let bounds = iced::Rectangle::new(iced::Point::ORIGIN, Size::new(1280.0, 800.0));
+        let primitive = <gpu::Program as iced::widget::shader::Program<Message>>::draw(
+            &program,
+            &gpu::State::default(),
+            iced::mouse::Cursor::Unavailable,
+            bounds,
+        );
+        drop(program);
 
         let t = Instant::now();
         if let Some((device, queue, pipeline)) = &mut self.real {
-            pipeline.sync_canvas(
-                device,
-                queue,
-                frame.size,
-                frame.version,
-                frame.dirty,
-                &frame.pixels,
-            );
+            let viewport =
+                iced::widget::shader::Viewport::with_physical_size(iced::Size::new(1280, 800), 1.0);
+            primitive.prepare(pipeline, device, queue, &bounds, &viewport);
             queue.submit([]);
             let _ = device.poll(wgpu::PollType::wait_indefinitely());
-        } else {
-            match plan {
+        } else if let Some(pixels) = primitive.hand_over() {
+            match &plan {
                 Upload::Nothing => {}
                 Upload::Whole => {
                     self.scratch.clear();
-                    self.scratch.extend_from_slice(&frame.pixels);
+                    self.scratch.extend_from_slice(&pixels);
                 }
-                Upload::Region(rect) => {
-                    let (span, stride) = (rect.width() as usize * 4, frame.size.0 as usize * 4);
-                    self.staged.clear();
-                    for y in rect.rows() {
-                        let start = y as usize * stride + rect.x0 as usize * 4;
-                        self.staged
-                            .extend_from_slice(&frame.pixels[start..start + span]);
-                    }
+                Upload::Regions(rects) => {
                     self.scratch.clear();
-                    self.scratch.extend_from_slice(&self.staged);
+                    let stride = size.0 as usize * 4;
+                    for rect in rects {
+                        let span = rect.width() as usize * 4;
+                        self.staged.clear();
+                        for y in rect.rows() {
+                            let start = y as usize * stride + rect.x0 as usize * 4;
+                            self.staged.extend_from_slice(&pixels[start..start + span]);
+                        }
+                        self.scratch.extend_from_slice(&self.staged);
+                    }
                 }
             }
         }
         std::hint::black_box(&self.scratch);
-        (bytes, matches!(plan, Upload::Whole), t.elapsed())
+        (primitive, bytes, matches!(plan, Upload::Whole), t.elapsed())
     }
 }
 
@@ -322,8 +337,7 @@ fn run(gpu: &mut Gpu, canvas: (u32, u32), tip: Tip, movement: Movement) -> Tally
     let mut tally = Tally::default();
 
     // The renderer keeps the last frame's primitive until it draws the next one.
-    let mut held = Some(app.frame());
-    gpu.present(held.as_ref().unwrap());
+    let mut held = Some(gpu.present(app.frame()).0);
 
     let pointer = |app: &App, at: (f32, f32)| -> usize {
         let (w, h) = app.doc.size();
@@ -373,8 +387,8 @@ fn run(gpu: &mut Gpu, canvas: (u32, u32), tip: Tip, movement: Movement) -> Tally
         let t = Instant::now();
         let frame = app.frame();
         let view = t.elapsed();
-        let (bytes, whole, upload) = gpu.present(&frame);
-        held = Some(frame);
+        let (primitive, bytes, whole, upload) = gpu.present(frame);
+        held = Some(primitive);
         if n == 0 {
             tally.press += view + upload;
         }
@@ -386,7 +400,7 @@ fn run(gpu: &mut Gpu, canvas: (u32, u32), tip: Tip, movement: Movement) -> Tally
     let t = Instant::now();
     let _ = app.update(Message::Canvas(gpu::Interaction::PaintEnded));
     let frame = app.frame();
-    let (bytes, whole, upload) = gpu.present(&frame);
+    let (_, bytes, whole, upload) = gpu.present(frame);
     tally.release = t.elapsed();
     tally.uploads.push(bytes);
     tally.whole += usize::from(whole);

@@ -173,7 +173,7 @@ impl App {
                         if (w, h) != self.doc.size() {
                             self.doc = Document::blank_sized(w, h, false);
                             self.panel.sync(self.doc.size());
-                            self.dirty = None;
+                            self.damage.clear();
                         }
                     }
                     self.view = View::fitted(self.viewport, self.doc.size());
@@ -694,7 +694,7 @@ impl App {
                     && floating.add_bones()
                 {
                     self.float_version += 1;
-                    self.dirty = None;
+                    self.damage.clear();
                 }
             }
             Message::StickerRecalled(i) => {
@@ -707,7 +707,7 @@ impl App {
             Message::DeleteFloating => {
                 if self.floating.take().is_some() {
                     self.float_version += 1;
-                    self.dirty = None;
+                    self.damage.clear();
                 }
             }
             Message::ThicknessNudged(by) => {
@@ -1075,7 +1075,7 @@ impl App {
 
     pub(super) fn reshaped(&mut self) {
         self.panel.sync(self.doc.size());
-        self.dirty = None;
+        self.damage.clear();
     }
 
     pub(super) fn match_aspect(&mut self, width_led: bool) {
