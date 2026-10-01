@@ -3,9 +3,22 @@
 The viewport is an iced shader widget backed by one wgpu pipeline, uniform buffer, and canvas
 texture. Pan, zoom, caret animation, and marching ants should require uniform updates only.
 
-The canvas texture is keyed by document version. A dirty rectangle may be uploaded only when it
-describes every change since the version already on the GPU; the first frame, a skipped version, or a
-shape change requires a full upload. This invariant keeps brush strokes on large images inexpensive.
+The canvas texture is keyed by document version. Regions may be uploaded only when they describe
+every change since the version already on the GPU; the first frame, a version the application no
+longer remembers, or a shape change requires a full upload. This keeps brush strokes on large images
+cheap.
+
+The application cannot see which version the renderer has, so each frame carries `gpu::Damage`, a
+short log of recently changed regions. The renderer uploads the ones after its own version and falls
+back to the whole canvas when the log does not reach back that far. Changes the application cannot
+name clear the log. Document versions come from one process-wide counter, so a version the log knows
+is always this document's and two same-sized tabs can never be mistaken for each other.
+
+Nearby regions are merged into one upload only while that costs at most half again their area, so
+mirrored copies at opposite edges of the same rows do not become a band across the canvas.
+
+The primitive releases the canvas once it is uploaded. The renderer keeps the last primitive until
+the next draw, and holding the pixels that long would make the next brush stamp copy all of them.
 
 The optional pixel grid is a shader overlay toggled from the zoom toolbar. Its spacing follows canvas
 pixels, its line width follows physical screen pixels, and it draws below editing handles. The
