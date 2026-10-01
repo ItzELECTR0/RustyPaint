@@ -262,13 +262,10 @@ impl App {
                     stroke.settle();
                 }
                 self.flush_stroke();
-                if let Some(stroke) = self.stroke.take()
-                    && let Some(touched) = stroke.touched()
-                {
-                    self.doc.commit(stroke.label(), touched, stroke.backup());
+                if let Some(stroke) = self.stroke.take() {
+                    stroke.commit(&mut self.doc);
                 }
                 self.last_point = None;
-                self.dirty = None;
             }
 
             gpu::Interaction::SelectBegan(x, y) => {
@@ -355,7 +352,7 @@ impl App {
                     && floating.add_point(x, y, reach)
                 {
                     self.float_version += 1;
-                    self.dirty = None;
+                    self.damage.clear();
                 }
             }
             gpu::Interaction::PointRemoved(index) => {
@@ -363,7 +360,7 @@ impl App {
                     && floating.remove_point(index)
                 {
                     self.float_version += 1;
-                    self.dirty = None;
+                    self.damage.clear();
                 }
             }
             gpu::Interaction::FrameGrabbed(handle) => {

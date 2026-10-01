@@ -1,6 +1,8 @@
+mod damage;
 pub mod handles;
 mod pipeline;
 
+pub use damage::Damage;
 pub use handles::Handle;
 pub use pipeline::Viewport as ViewportPipeline;
 #[cfg(test)]
@@ -96,7 +98,7 @@ pub struct CanvasFrame {
     pub pixels: Arc<Vec<u8>>,
     pub size: (u32, u32),
     pub version: u64,
-    pub dirty: Option<(u64, Rect)>,
+    pub damage: Damage,
     pub view: View,
     pub show_canvas: bool,
     pub pixel_grid: bool,
@@ -152,9 +154,25 @@ struct Floated {
     points: [[f32; 4]; 12],
 }
 
+// The canvas, released once uploaded. See `.agents/rendering.md`.
+struct Pending(std::sync::Mutex<Option<Arc<Vec<u8>>>>);
+
+impl Pending {
+    fn take(&self) -> Option<Arc<Vec<u8>>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).take()
+    }
+}
+
+impl std::fmt::Debug for Pending {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Pending")
+    }
+}
+
 #[derive(Debug)]
 pub struct Primitive {
     frame: CanvasFrame,
+    pixels: Pending,
     ants: f32,
     hot: Option<Handle>,
     hot_grab: Option<Grab>,
@@ -254,6 +272,13 @@ impl Primitive {
     }
 }
 
+#[cfg(test)]
+impl Primitive {
+    pub fn hand_over(&self) -> Option<Arc<Vec<u8>>> {
+        self.pixels.take()
+    }
+}
+
 impl shader::Primitive for Primitive {
     type Pipeline = ViewportPipeline;
 
@@ -265,14 +290,16 @@ impl shader::Primitive for Primitive {
         bounds: &Rectangle,
         viewport: &shader::Viewport,
     ) {
-        pipeline.sync_canvas(
-            device,
-            queue,
-            self.frame.size,
-            self.frame.version,
-            self.frame.dirty,
-            &self.frame.pixels,
-        );
+        if let Some(pixels) = self.pixels.take() {
+            pipeline.sync_canvas(
+                device,
+                queue,
+                self.frame.size,
+                self.frame.version,
+                &self.frame.damage,
+                &pixels,
+            );
+        }
         pipeline.sync_blur(
             device,
             queue,
@@ -777,8 +804,11 @@ where
     }
 
     fn draw(&self, state: &Self::State, cursor: mouse::Cursor, bounds: Rectangle) -> Primitive {
+        let mut frame = self.frame.clone();
+        let pixels = std::mem::take(&mut frame.pixels);
         Primitive {
-            frame: self.frame.clone(),
+            frame,
+            pixels: Pending(std::sync::Mutex::new(Some(pixels))),
             ants: self.frame.ants + state.ants,
             hot: state.dragging.map(|d| d.handle).or(state.hot),
             hot_grab: state.grabbing.or(state.hot_grab),
@@ -841,7 +871,7 @@ mod tests {
                 pixels: Arc::new(vec![0; CANVAS.0 as usize * CANVAS.1 as usize * 4]),
                 size: CANVAS,
                 version: 0,
-                dirty: None,
+                damage: Damage::default(),
                 view: View::default(),
                 show_canvas: true,
                 pixel_grid: false,
@@ -1929,6 +1959,10 @@ mod tests {
             bounds,
         );
         primitive.prepare(&mut pipeline, &device, &queue, &bounds, &viewport);
+        assert!(
+            primitive.hand_over().is_none(),
+            "preparing kept hold of the canvas"
+        );
 
         let unpadded = size.0 as usize * 4;
         let padded = unpadded.div_ceil(256) * 256;

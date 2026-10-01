@@ -973,7 +973,7 @@ impl App {
             pixels: self.doc.pixels().bytes_arc(),
             size: self.doc.size(),
             version: self.doc.version(),
-            dirty: self.dirty,
+            damage: self.damage.clone(),
             view: self.view,
             show_canvas: self.panel.show_canvas,
             pixel_grid: self.config.pixel_grid,

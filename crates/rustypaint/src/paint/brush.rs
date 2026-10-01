@@ -324,55 +324,247 @@ impl Brush {
         (self.thickness() * self.profile().spacing).max(1.0)
     }
 
+    #[cfg(test)]
     pub fn coverage_at(&self, cx: f32, cy: f32, px: f32, py: f32) -> u8 {
+        let tip = self.tip();
+        let d = tip.length(tip.local(px - cx, py - cy));
+        tip.coverage(d, px.floor() as i64, py.floor() as i64)
+    }
+
+    pub fn tip(&self) -> Tip {
         let profile = self.profile();
         let r = self.stamp_radius();
-
         let (sin, cos) = profile.angle.sin_cos();
-        let (dx, dy) = (px - cx, py - cy);
-        let rx = dx * cos + dy * sin;
-        let ry = (-dx * sin + dy * cos) / profile.aspect.max(0.01);
-        let d = if profile.square {
-            rx.abs().max(ry.abs())
-        } else {
-            (rx * rx + ry * ry).sqrt()
-        };
-
-        let mut coverage = self.falloff(profile, r, d);
-        if coverage <= 0.0 {
-            return 0;
+        Tip {
+            sin,
+            cos,
+            aspect: profile.aspect.max(0.01),
+            square: profile.square,
+            edge: self.edge(profile, r),
+            grain: profile.grain,
+            scatter: profile.scatter,
+            flow: profile.flow,
+            bump: bump(),
         }
-
-        if profile.grain > 0.0 {
-            coverage *= 1.0 - profile.grain * bump_at(px, py);
-        }
-        if profile.scatter > 0.0 {
-            coverage *= 1.0 - profile.scatter * noise_at(px, py);
-        }
-
-        ((coverage * profile.flow).clamp(0.0, 1.0) * 255.0).round() as u8
     }
 
     // Hardness draws the solid core in towards the centre while the rim stays a half pixel past
     // the stamp radius, so softening a stamp never widens it. Other tools keep a fixed-width edge.
-    fn falloff(&self, profile: Profile, r: f32, d: f32) -> f32 {
+    fn edge(&self, profile: Profile, r: f32) -> Edge {
         if !self.tool.edge_is_tunable() {
             return if profile.feather <= 0.0 {
-                if d <= r.max(0.5) { 1.0 } else { 0.0 }
+                Edge::Hard(r.max(0.5))
             } else {
-                ((r - d) / profile.feather + 0.5).clamp(0.0, 1.0)
+                Edge::Feathered {
+                    radius: r,
+                    feather: profile.feather,
+                }
             };
         }
         if !self.antialiased() {
-            return if d <= r.max(0.5) { 1.0 } else { 0.0 };
+            return Edge::Hard(r.max(0.5));
         }
 
         let hardness = self.hardness().clamp(0.0, 1.0);
-        let core = hardness * (r - 0.5).max(0.0);
-        let rim = r + 0.5;
-        let t = ((rim - d) / (rim - core)).clamp(0.0, 1.0);
-        t + (1.0 - hardness) * (t * t * (3.0 - 2.0 * t) - t)
+        Edge::Tunable {
+            core: hardness * (r - 0.5).max(0.0),
+            rim: r + 0.5,
+            hardness,
+        }
     }
+}
+
+// A brush worked out once per stroke. Distances are in the tip's own frame, turned and squashed so
+// the tip is round there, or square for a square pixel pen.
+#[derive(Clone, Copy)]
+pub struct Tip {
+    sin: f32,
+    cos: f32,
+    aspect: f32,
+    square: bool,
+    edge: Edge,
+    grain: f32,
+    scatter: f32,
+    flow: f32,
+    bump: &'static [f32; BUMP_SIDE * BUMP_SIDE],
+}
+
+#[derive(Clone, Copy)]
+pub struct Sweep {
+    tip: Tip,
+    from: (f32, f32),
+    along: (f32, f32),
+    inverse: f32,
+}
+
+impl Sweep {
+    // Closest approach to the centre of pixel (x, y), in the tip's frame.
+    #[inline]
+    pub fn distance(&self, x: u32, y: u32) -> f32 {
+        let (dx, dy) = (x as f32 + 0.5 - self.from.0, y as f32 + 0.5 - self.from.1);
+        if !self.tip.is_round() {
+            return self
+                .tip
+                .distance_to_segment(self.tip.local(dx, dy), self.along);
+        }
+        let t = ((dx * self.along.0 + dy * self.along.1) * self.inverse).clamp(0.0, 1.0);
+        let (ex, ey) = (dx - self.along.0 * t, dy - self.along.1 * t);
+        (ex * ex + ey * ey).sqrt()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Edge {
+    Hard(f32),
+    Feathered { radius: f32, feather: f32 },
+    Tunable { core: f32, rim: f32, hardness: f32 },
+}
+
+impl Edge {
+    #[inline]
+    fn at(self, d: f32) -> f32 {
+        match self {
+            Edge::Hard(radius) => {
+                if d <= radius {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Edge::Feathered { radius, feather } => ((radius - d) / feather + 0.5).clamp(0.0, 1.0),
+            Edge::Tunable {
+                core,
+                rim,
+                hardness,
+            } => {
+                let t = ((rim - d) / (rim - core)).clamp(0.0, 1.0);
+                t + (1.0 - hardness) * (t * t * (3.0 - 2.0 * t) - t)
+            }
+        }
+    }
+
+    fn reach(self) -> f32 {
+        match self {
+            Edge::Hard(radius) => radius,
+            Edge::Feathered { radius, feather } => radius + feather / 2.0,
+            Edge::Tunable { rim, .. } => rim,
+        }
+    }
+
+    fn solid(self) -> f32 {
+        match self {
+            Edge::Hard(radius) => radius,
+            Edge::Feathered { radius, feather } => radius - feather / 2.0,
+            Edge::Tunable { core, .. } => core,
+        }
+    }
+}
+
+impl Tip {
+    pub fn sweep(&self, from: (f32, f32), to: (f32, f32)) -> Sweep {
+        let (dx, dy) = (to.0 - from.0, to.1 - from.1);
+        let along = if self.is_round() {
+            (dx, dy)
+        } else {
+            self.local(dx, dy)
+        };
+        let length = along.0 * along.0 + along.1 * along.1;
+        Sweep {
+            tip: *self,
+            from,
+            along,
+            inverse: if length > 0.0 { 1.0 / length } else { 0.0 },
+        }
+    }
+
+    pub fn local(&self, dx: f32, dy: f32) -> (f32, f32) {
+        (
+            dx * self.cos + dy * self.sin,
+            (-dx * self.sin + dy * self.cos) / self.aspect,
+        )
+    }
+
+    pub fn length(&self, (x, y): (f32, f32)) -> f32 {
+        if self.square {
+            x.abs().max(y.abs())
+        } else {
+            (x * x + y * y).sqrt()
+        }
+    }
+
+    // Distance from `q` to the segment from the origin to `v`, both in the tip's frame.
+    pub fn distance_to_segment(&self, q: (f32, f32), v: (f32, f32)) -> f32 {
+        let along = v.0 * v.0 + v.1 * v.1;
+        if along <= 0.0 {
+            return self.length(q);
+        }
+        let at = |t: f32| self.length((q.0 - v.0 * t, q.1 - v.1 * t));
+        if !self.square {
+            return at(((q.0 * v.0 + q.1 * v.1) / along).clamp(0.0, 1.0));
+        }
+        // The larger of two V shapes is least where one bottoms out, they cross, or at an end.
+        let mut best = at(0.0).min(at(1.0));
+        let mut consider = |num: f32, den: f32| {
+            if den != 0.0 {
+                best = best.min(at((num / den).clamp(0.0, 1.0)));
+            }
+        };
+        consider(q.0, v.0);
+        consider(q.1, v.1);
+        consider(q.0 - q.1, v.0 - v.1);
+        consider(q.0 + q.1, v.0 + v.1);
+        best
+    }
+
+    #[inline]
+    pub fn is_round(&self) -> bool {
+        !self.square && self.aspect == 1.0
+    }
+
+    // Where coverage reaches zero, in the tip's frame.
+    pub fn reach(&self) -> f32 {
+        self.edge.reach()
+    }
+
+    // Where coverage stops being full, in the tip's frame.
+    pub fn solid(&self) -> f32 {
+        self.edge.solid()
+    }
+
+    // The reach in canvas pixels, however the tip is turned.
+    pub fn extent(&self) -> f32 {
+        let stretched = self.reach() * self.aspect.max(1.0);
+        if self.square {
+            stretched * std::f32::consts::SQRT_2
+        } else {
+            stretched
+        }
+    }
+
+    #[inline]
+    pub fn strength(&self, d: f32, x: i64, y: i64) -> f32 {
+        let mut coverage = self.edge.at(d);
+        if coverage <= 0.0 {
+            return 0.0;
+        }
+        if self.grain > 0.0 {
+            coverage *= 1.0 - self.grain * bump_cell(self.bump, x, y);
+        }
+        if self.scatter > 0.0 {
+            coverage *= 1.0 - self.scatter * noise_cell(x, y);
+        }
+        (coverage * self.flow).clamp(0.0, 1.0)
+    }
+
+    #[inline]
+    pub fn coverage(&self, d: f32, x: i64, y: i64) -> u8 {
+        to_level(self.strength(d, x, y))
+    }
+}
+
+// Adding a half avoids the libm call `round` costs on CPUs without SSE4.1.
+pub fn to_level(fraction: f32) -> u8 {
+    (fraction * 255.0 + 0.5) as u8
 }
 
 fn bump() -> &'static [f32; BUMP_SIDE * BUMP_SIDE] {
@@ -406,10 +598,11 @@ const PIT: f32 = 0.34;
 
 const BUMP_SIDE: usize = 64;
 
-fn bump_at(x: f32, y: f32) -> f32 {
-    let ix = (x.floor() as i64).rem_euclid(BUMP_SIDE as i64) as usize;
-    let iy = (y.floor() as i64).rem_euclid(BUMP_SIDE as i64) as usize;
-    bump()[iy * BUMP_SIDE + ix]
+#[inline]
+fn bump_cell(table: &[f32; BUMP_SIDE * BUMP_SIDE], x: i64, y: i64) -> f32 {
+    let ix = x.rem_euclid(BUMP_SIDE as i64) as usize;
+    let iy = y.rem_euclid(BUMP_SIDE as i64) as usize;
+    table[iy * BUMP_SIDE + ix]
 }
 
 pub fn hash01(n: u64) -> f32 {
@@ -420,9 +613,9 @@ pub fn hash01(n: u64) -> f32 {
     (h >> 40) as f32 / 16_777_215.0
 }
 
-fn noise_at(x: f32, y: f32) -> f32 {
-    let xi = x.floor() as i64 as u64;
-    let yi = y.floor() as i64 as u64;
+#[inline]
+fn noise_cell(x: i64, y: i64) -> f32 {
+    let (xi, yi) = (x as u64, y as u64);
     let mut h = xi.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ yi.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
     h ^= h >> 29;
     h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -746,6 +939,64 @@ mod tests {
             .map(|i| b.coverage_at(0.0, 0.0, i as f32 * 0.5, 0.0))
             .collect();
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn the_reach_and_the_solid_core_agree_with_the_edge() {
+        for tool in PANEL_ORDER.into_iter().filter(|t| t.profile().is_some()) {
+            for thickness in [1.0, 3.0, 12.0, 60.0] {
+                for (antialiased, hardness) in [(false, 1.0), (true, 1.0), (true, 0.3), (true, 0.0)]
+                {
+                    let mut b = sized(tool, thickness);
+                    b.set_antialiased(antialiased);
+                    b.set_hardness(hardness);
+                    let tip = b.tip();
+                    let (px, py) = (3, 7);
+                    assert_eq!(
+                        tip.strength(tip.reach() + 0.001, px, py),
+                        0.0,
+                        "{tool:?} {thickness} reaches past its reach"
+                    );
+                    assert!(tip.strength(tip.reach() - 0.05, px, py) > 0.0);
+                    if tip.solid() > 0.0 {
+                        assert_eq!(
+                            tip.strength(tip.solid() - 0.001, px, py),
+                            tip.strength(0.0, px, py),
+                            "{tool:?} {thickness} is not solid out to its core"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_swept_tip_is_as_close_as_its_nearest_pass() {
+        for (tool, square) in [
+            (Tool::PixelPen, true),
+            (Tool::PixelPen, false),
+            (Tool::Calligraphy, false),
+        ] {
+            let mut b = sized(tool, 20.0);
+            b.set_square_tip(square);
+            let tip = b.tip();
+            for v in [(0.0, 0.0), (7.0, 0.0), (3.0, -5.0), (-6.0, 6.0), (2.0, 9.0)] {
+                for qy in -8..=8 {
+                    for qx in -8..=8 {
+                        let q = (qx as f32 * 1.3, qy as f32 * 1.1);
+                        let exact = tip.distance_to_segment(q, v);
+                        let sampled = (0..=4000)
+                            .map(|i| i as f32 / 4000.0)
+                            .map(|t| tip.length((q.0 - v.0 * t, q.1 - v.1 * t)))
+                            .fold(f32::INFINITY, f32::min);
+                        assert!(
+                            exact <= sampled + 1e-4 && sampled - exact < 0.01,
+                            "{tool:?} square {square}: {exact} against {sampled} at {q:?} {v:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

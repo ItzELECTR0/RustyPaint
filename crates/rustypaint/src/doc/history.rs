@@ -15,10 +15,18 @@ pub enum Edit {
         before: Vec<u8>,
         after: Vec<u8>,
     },
+    // Kept apart so a long stroke costs what it touched, not the box around it.
+    Regions(Vec<Part>),
     Whole {
         before: Snapshot,
         after: Snapshot,
     },
+}
+
+pub struct Part {
+    pub rect: Rect,
+    pub before: Vec<u8>,
+    pub after: Vec<u8>,
 }
 
 impl Edit {
@@ -46,6 +54,7 @@ impl Edit {
     fn bytes(&self) -> usize {
         match self {
             Edit::Region { before, after, .. } => before.len() + after.len(),
+            Edit::Regions(parts) => parts.iter().map(|p| p.before.len() + p.after.len()).sum(),
             Edit::Whole { before, after } => {
                 before.pixels.as_bytes().len() + after.pixels.as_bytes().len()
             }
@@ -105,6 +114,11 @@ impl History {
         self.depth > 0
     }
 
+    #[cfg(test)]
+    pub fn bytes(&self) -> usize {
+        self.bytes
+    }
+
     pub fn can_redo(&self) -> bool {
         self.depth < self.entries.len()
     }
@@ -138,6 +152,15 @@ fn restore(edit: &Edit, image: &mut Rgba8, transparent: &mut bool, forwards: boo
         } => {
             Edit::apply(image, *rect, if forwards { after } else { before });
             Some(*rect)
+        }
+        Edit::Regions(parts) => {
+            let mut changed = Rect::new(0, 0, 0, 0);
+            for part in parts {
+                let pixels = if forwards { &part.after } else { &part.before };
+                Edit::apply(image, part.rect, pixels);
+                changed = changed.union(part.rect);
+            }
+            Some(changed)
         }
         Edit::Whole { before, after } => {
             let target = if forwards { after } else { before };

@@ -1,4 +1,5 @@
 use super::*;
+use crate::doc::Rect;
 use crate::gpu::Handle;
 use crate::select::Xform;
 use iced::Point;
@@ -4822,4 +4823,190 @@ fn nonsense_in_the_size_fields_is_ignored() {
         (1, 1),
         "zero clamps to the smallest real canvas"
     );
+}
+
+// Brings a stand-in texture up to the current frame the way the pipeline would.
+fn present(app: &App, texture: &mut Vec<u8>, uploaded: &mut u64) -> gpu::Upload {
+    let frame = app.frame();
+    let plan = gpu::plan_upload(*uploaded, frame.size, frame.version, &frame.damage);
+    *uploaded = frame.version;
+    match &plan {
+        gpu::Upload::Nothing => {}
+        gpu::Upload::Whole => *texture = frame.pixels.to_vec(),
+        gpu::Upload::Regions(rects) => {
+            let stride = frame.size.0 as usize * 4;
+            for rect in rects {
+                for y in rect.rows() {
+                    let start = y as usize * stride + rect.x0 as usize * 4;
+                    let end = start + rect.width() as usize * 4;
+                    texture[start..end].copy_from_slice(&frame.pixels[start..end]);
+                }
+            }
+        }
+    }
+    plan
+}
+
+fn uploaded_area(plan: &gpu::Upload, canvas: (u32, u32)) -> usize {
+    match plan {
+        gpu::Upload::Nothing => 0,
+        gpu::Upload::Whole => canvas.0 as usize * canvas.1 as usize,
+        gpu::Upload::Regions(rects) => rects.iter().map(Rect::area).sum(),
+    }
+}
+
+#[test]
+fn a_stroke_uploads_only_what_it_changed_frame_after_frame() {
+    let canvas = (400, 300);
+    for mirror in [false, true] {
+        let mut app = app(canvas.0, canvas.1);
+        app.brush.tool = Tool::Marker;
+        app.brush.set_thickness(8.0);
+        app.mirror = Mirror {
+            horizontal: mirror,
+            vertical: mirror,
+        };
+        let (mut texture, mut uploaded) = (Vec::new(), u64::MAX);
+        assert_eq!(
+            present(&app, &mut texture, &mut uploaded),
+            gpu::Upload::Whole,
+            "the first frame has nothing to build on"
+        );
+
+        send(
+            &mut app,
+            Message::Canvas(gpu::Interaction::PaintBegan(20.0, 20.0)),
+        );
+        for step in 1..=40 {
+            let at = (20.0 + step as f32 * 8.0, 20.0 + step as f32 * 5.0);
+            send(
+                &mut app,
+                Message::Canvas(gpu::Interaction::PaintMoved(at.0, at.1)),
+            );
+            if step % 4 == 0 {
+                let plan = present(&app, &mut texture, &mut uploaded);
+                assert!(
+                    matches!(plan, gpu::Upload::Regions(_)),
+                    "frame {step} went back to the whole canvas (mirrored: {mirror})"
+                );
+                assert!(
+                    uploaded_area(&plan, canvas) * 10 < canvas.0 as usize * canvas.1 as usize,
+                    "frame {step} uploaded more than the brush touched: {plan:?} ({mirror})"
+                );
+                assert!(
+                    texture == app.doc.pixels().as_bytes(),
+                    "frame {step} fell behind"
+                );
+            }
+        }
+        send(&mut app, Message::Canvas(gpu::Interaction::PaintEnded));
+        let plan = present(&app, &mut texture, &mut uploaded);
+        assert!(
+            !matches!(plan, gpu::Upload::Whole),
+            "releasing sent the whole canvas again"
+        );
+        assert!(texture == app.doc.pixels().as_bytes());
+
+        for message in [Message::Undo, Message::Redo] {
+            send(&mut app, message);
+            let plan = present(&app, &mut texture, &mut uploaded);
+            assert!(!matches!(plan, gpu::Upload::Whole));
+            assert!(
+                texture == app.doc.pixels().as_bytes(),
+                "undo or redo was left off"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_tab_is_never_taken_for_another_one_the_same_size() {
+    let mut app = app(64, 64);
+    let (mut texture, mut uploaded) = (Vec::new(), u64::MAX);
+    app.brush.tool = Tool::Marker;
+    click(&mut app, 10.0, 10.0);
+    present(&app, &mut texture, &mut uploaded);
+
+    send(&mut app, Message::NewRequested);
+    let mut fresh = Document::blank_sized(64, 64, false);
+    fresh.edit();
+    app.doc = fresh;
+    app.brush.tool = Tool::Marker;
+    click(&mut app, 50.0, 50.0);
+    present(&app, &mut texture, &mut uploaded);
+    assert!(texture == app.doc.pixels().as_bytes());
+
+    send(&mut app, Message::TabStepped(-1));
+    present(&app, &mut texture, &mut uploaded);
+    assert!(
+        texture == app.doc.pixels().as_bytes(),
+        "the other tab's picture was left on screen"
+    );
+}
+
+#[test]
+fn a_frame_on_screen_does_not_make_the_next_stamp_copy_the_canvas() {
+    let mut app = app(400, 300);
+    app.brush.tool = Tool::Marker;
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintBegan(20.0, 20.0)),
+    );
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintMoved(30.0, 20.0)),
+    );
+
+    let program = gpu::Program {
+        frame: app.frame(),
+        cursor: iced::mouse::Interaction::Crosshair,
+        brush: None,
+        selecting: false,
+    };
+    let bounds = iced::Rectangle::new(Point::ORIGIN, Size::new(800.0, 600.0));
+    let on_screen = <gpu::Program as iced::widget::shader::Program<Message>>::draw(
+        &program,
+        &gpu::State::default(),
+        iced::mouse::Cursor::Unavailable,
+        bounds,
+    );
+    drop(program);
+    let _ = on_screen.hand_over();
+
+    let buffer = std::sync::Arc::as_ptr(&app.doc.pixels().bytes_arc());
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintMoved(40.0, 20.0)),
+    );
+    assert_eq!(
+        std::sync::Arc::as_ptr(&app.doc.pixels().bytes_arc()),
+        buffer,
+        "the stamp copied the whole canvas because the last frame still held it"
+    );
+    drop(on_screen);
+}
+
+#[test]
+fn a_stroke_in_progress_is_written_out_when_it_ends() {
+    let root = recovery_scratch("midstroke");
+    let mut app = recovering(&root);
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintBegan(5.0, 5.0)),
+    );
+    send(
+        &mut app,
+        Message::Canvas(gpu::Interaction::PaintMoved(9.0, 9.0)),
+    );
+    assert!(
+        !app.snapshotting,
+        "the encoder would share the canvas with the stroke still painting it"
+    );
+
+    send(&mut app, Message::Canvas(gpu::Interaction::PaintEnded));
+    assert!(
+        app.snapshotting,
+        "the stroke goes out the moment it is filed"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
 }
