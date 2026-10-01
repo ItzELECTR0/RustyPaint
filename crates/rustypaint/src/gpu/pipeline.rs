@@ -86,6 +86,35 @@ struct Texture {
     uploaded: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Upload {
+    Nothing,
+    Whole,
+    Region(crate::doc::Rect),
+}
+
+pub fn plan_upload(
+    uploaded: u64,
+    size: (u32, u32),
+    version: u64,
+    dirty: Option<(u64, crate::doc::Rect)>,
+) -> Upload {
+    if uploaded == version {
+        return Upload::Nothing;
+    }
+    match dirty.filter(|(from, _)| *from == uploaded) {
+        Some((_, rect)) => {
+            let rect = rect.clamped(size.0, size.1);
+            if rect.is_empty() {
+                Upload::Nothing
+            } else {
+                Upload::Region(rect)
+            }
+        }
+        None => Upload::Whole,
+    }
+}
+
 impl iced::widget::shader::Pipeline for Viewport {
     fn new(device: &wgpu::Device, _queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -319,19 +348,12 @@ impl Viewport {
         let Some(texture) = &mut self.canvas else {
             return;
         };
-        if texture.uploaded == version {
-            return;
-        }
-
-        let partial = dirty.filter(|(from, _)| *from == texture.uploaded);
+        let plan = plan_upload(texture.uploaded, size, version, dirty);
         texture.uploaded = version;
 
-        match partial {
-            Some((_, rect)) => {
-                let rect = rect.clamped(size.0, size.1);
-                if rect.is_empty() {
-                    return;
-                }
+        match plan {
+            Upload::Nothing => {}
+            Upload::Region(rect) => {
                 let span = rect.width() as usize * 4;
                 let stride = size.0 as usize * 4;
                 let mut staged = Vec::with_capacity(span * rect.height() as usize);
@@ -351,7 +373,9 @@ impl Viewport {
                     &staged,
                 );
             }
-            None => Self::upload(queue, &texture.handle, wgpu::Origin3d::ZERO, size, pixels),
+            Upload::Whole => {
+                Self::upload(queue, &texture.handle, wgpu::Origin3d::ZERO, size, pixels)
+            }
         }
     }
 

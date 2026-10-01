@@ -3,6 +3,8 @@ mod pipeline;
 
 pub use handles::Handle;
 pub use pipeline::Viewport as ViewportPipeline;
+#[cfg(test)]
+pub use pipeline::{Upload, plan_upload};
 
 use crate::doc::Rect;
 use crate::paint::curve;
