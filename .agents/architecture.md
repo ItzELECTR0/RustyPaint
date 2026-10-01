@@ -29,8 +29,9 @@ Open paths with two points are lines, longer ones are curves, and closed paths a
 picker keeps the original curve presets; editable paths show their point count separately.
 
 Document history stores before-and-after regions for local edits and copy-on-write whole buffers for
-canvas-wide changes. Live objects sit outside that history. Undo first resolves live state: text uses
-its own edit journal, while another live object is cancelled before committed document history moves.
+canvas-wide changes. Brush strokes store only the tiles they changed (see `.agents/brushes.md`).
+Live objects sit outside that history. Undo first resolves live state: text uses its own edit
+journal, while another live object is cancelled before committed document history moves.
 
 ## Several documents
 
@@ -92,9 +93,11 @@ workspace, not a rescue.
 
 Snapshots ride along with the work rather than waiting for a timer. Every message ends with a check,
 and a write goes out as soon as the document differs from what was last written. `SNAPSHOT_GAP` is
-the shortest gap between two writes, so a long brush stroke cannot keep the encoder busy end to end,
-and one in-flight write at a time means a slow disk applies backpressure instead of queueing. The
-beat still runs to catch whatever the gap held back.
+the shortest gap between two writes, and one in-flight write at a time means a slow disk applies
+backpressure instead of queueing. The beat still runs to catch whatever the gap held back.
+
+A stroke in progress is written when it ends rather than part way through. The encoder shares the
+canvas while it works, so the next stamp would copy all of it, a dropped frame on large images.
 
 The index is the tab order, so `write_index` deletes the pixels of any slot no longer in it. Saving
 rewrites the index, which is what drops a saved document's copy.
@@ -179,7 +182,8 @@ grabbable on every tab. A press that commits one live object and starts another 
 not a discarded click.
 
 High-rate pointer samples for live-object transforms are coalesced until redraw. Release must flush
-the last sample before completing the operation.
+the last sample before completing the operation. Brush samples are never coalesced; each is painted
+as it arrives (see `.agents/brushes.md`).
 
 Shift snaps live-object rotation and the initial line/curve direction to 15-degree increments.
 Keep the unsnapped pointer during a drag so changing Shift updates the preview immediately without

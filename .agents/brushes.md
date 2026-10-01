@@ -34,6 +34,64 @@ wider than `canvas::MAX_CANVAS` has nowhere left to land, which
 `a_brush_cannot_grow_wider_than_the_largest_canvas` keeps honest. `paint/` cannot name `canvas`
 directly because the examples pull it in on its own.
 
+## Strokes
+
+Every pointer sample paints what the brush newly reaches. There is no spacing to cross and no
+timer: each sample sweeps the tip from where the brush was to where it is, so a one pixel nudge of
+a 200 px eraser erases the sliver it moved into and a release has nothing left to finish.
+
+`Brush::tip` works the brush out once per stroke. Distances are measured in the tip's own frame,
+where the calligraphy nib is a circle and a square pixel pen a square, and texture is looked up by
+pixel because grain and scatter belong to the canvas.
+
+`Max` brushes (marker, eraser, calligraphy, oil) give each pixel the edge at its distance from the
+swept segment, the limit of stamps laid ever closer together without the scallops between them.
+The previous sweep's solid core is already at full strength, so for round tips each row skips it
+and a short move only touches the new crescent.
+
+`Accumulate` brushes (watercolour, pencil, crayon) deposit a stamp's worth of optical density per
+profile spacing travelled, each piece laid at its end so the last lands under the pointer. Density
+is a float, so a hundred 1 px samples lay down what one 100 px sample does, give or take the one
+stamp of beading the spacing always caused. Compared with the old integer accumulation, watercolour
+comes out up to about ten levels darker where passes overlap.
+
+The pixel pen presses its hard tip on every pixel a one pixel line steps through. A one pixel pen
+passes each of those pixels through pixel-perfect, so corners are still seen one at a time however
+fast the pointer moves. The spray can still puffs per frame, because spray builds with time held.
+
+Coverage and what was under the stroke live in 64 px tiles made on first touch, so pressing on a
+large canvas copies and allocates nothing canvas sized, and the undo step holds only changed tiles.
+Each mirrored copy reports its own region so copies at opposite edges upload separately.
+
+## Measuring strokes
+
+`app::timings::stroke_timings` drags each brush through the real update path, keeps the previous
+frame alive as the renderer does, and plans uploads with the pipeline's own rule. With a GPU adapter
+it waits on real uploads; without one the upload column is CPU staging only. Missed pixels are ones
+at least 1.5 px inside the swept path that a drag or release left untouched; a one pixel pen is held
+to the pixel under the pointer and a stabilised stroke only to where it ends.
+
+```sh
+cargo test --release -p rustypaint stroke_timings -- --ignored --nocapture
+```
+
+Before and after strokes became sweeps, on a 4 core 2.1 GHz Xeon without an adapter (ms, mean
+frame with the worst in brackets):
+
+| Canvas | Brush and movement | Press | Frame | Release | Whole uploads, copies | Missed during, after |
+|---|---|---|---|---|---|---|
+| 1152x648 | Marker 200, 1 px nudges | 2.5 -> 0.9 | 0.28 (2.5) -> 0.14 (0.9) | 0.03 -> 0.06 | 0, 1 -> 0, 0 | 3283, 1012 -> 0, 0 |
+| 1152x648 | Eraser 200, slow short drag | 2.0 -> 0.69 | 0.46 (2.0) -> 0.21 (0.8) | 0.08 -> 0.09 | 2, 3 -> 0, 0 | 58149, 2103 -> 0, 0 |
+| 1152x648 | Pixel pen 1, 1 px nudges | 0.4 -> 0.01 | 0.45 (0.57) -> 0.002 (0.012) | 0.01 -> 0 | 7, 8 -> 0, 0 | 8, 1 -> 0, 0 |
+| 6000x4000 | Marker 12, slow short drag | 73 -> 0.08 | 86 (88) -> 0.058 (0.17) | 6.6 -> 0.04 | 12, 13 -> 0, 0 | 0, 0 -> 0, 0 |
+| 6000x4000 | Marker 200, rapid long drag | 66 -> 2.8 | 114 (135) -> 8.9 (12) | 76 -> 2.8 | 4, 5 -> 0, 0 | 86646, 520 -> 0, 0 |
+| 6000x4000 | Eraser 200, reversals | 68 -> 0.73 | 73 (89) -> 0.35 (1.3) | 7.5 -> 0.24 | 18, 19 -> 0, 0 | 66873, 1763 -> 0, 0 |
+| 6000x4000 | Watercolour 120, rapid long drag | 73 -> 2.2 | 133 (154) -> 16 (20) | 78 -> 1.9 | 4, 5 -> 0, 0 | 13324, 0 -> 0, 0 |
+| 6000x4000 | Pencil 40, reversals | 84 -> 0.14 | 78 (103) -> 0.67 (0.9) | 8.9 -> 0.12 | 20, 21 -> 0, 0 | 296, 15 -> 0, 0 |
+
+The rapid long drag crosses 4800 px in 64 samples at 16 a frame, about 90 000 canvas px/s. Only wide
+accumulating brushes get near a frame there, because each sample is still ten overlapping stamps.
+
 ## The stabiliser
 
 The brush chases the pointer instead of being it: each sample moves it a fraction of the way there,
@@ -42,8 +100,9 @@ line always converges rather than trailing forever behind a fast hand.
 
 Releasing calls `Stroke::settle`, which walks the brush the rest of the way to the last place the
 pointer was and then draws to it exactly, because a stroke that stops short of where the hand
-stopped looks like a dropped input. Only `extend` is smoothed, so the spray can, which puffs at the
-pointer directly, is unaffected and does not show the slider.
+stopped looks like a dropped input. Without the stabiliser the brush is already there, so settling
+paints nothing. Only `extend` is smoothed, so the spray can, which puffs at the pointer directly, is
+unaffected and does not show the slider.
 
 It starts at zero. A stabiliser that was on by default would change how every existing brush feels.
 
@@ -78,7 +137,7 @@ is a bug wearing a feature's clothes. The look itself is on a checkbox instead, 
 checkbox starts off, so the eraser is crisp until asked otherwise and only matches the screenshots
 at 10 px and up once antialiasing is turned on.
 
-`Brush::falloff` keeps the rim fixed at half a pixel past the stamp radius and walks the solid core
+`Brush::edge` keeps the rim fixed at half a pixel past the stamp radius and walks the solid core
 inwards as hardness drops, so softening an eraser never changes the area it reaches. Hardness 1
 leaves exactly the one-pixel band that antialiasing needs, which is why it comes out identical to
 the screenshots. Hardness 0 ramps from the centre, which is softer than Paint 3D could ever go.
