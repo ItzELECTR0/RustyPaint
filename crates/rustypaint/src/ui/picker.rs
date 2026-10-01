@@ -110,29 +110,24 @@ fn channels_of(colour: [u8; 4]) -> [String; 4] {
 pub fn view(picker: &Picker) -> Element<'_, Message> {
     let colour = picker.colour();
 
-    let field = mouse_area(iced::widget::stack![
+    let field = iced::widget::stack![
         image(square(picker.hue))
             .width(FIELD as f32)
             .height(FIELD as f32),
-        iced::widget::canvas(Marker::Spot(picker.saturation, 1.0 - picker.value))
-            .width(FIELD as f32)
-            .height(FIELD as f32),
-    ])
-    .on_press(Message::PickerFieldPressed)
-    .on_move(|at| Message::PickerFieldPicked(at.x / FIELD as f32, 1.0 - at.y / FIELD as f32))
-    .on_release(Message::PickerReleased)
-    .on_exit(Message::PickerReleased);
+        iced::widget::canvas(Field {
+            saturation: picker.saturation,
+            value: picker.value,
+        })
+        .width(FIELD as f32)
+        .height(FIELD as f32),
+    ];
 
-    let strip = mouse_area(iced::widget::stack![
+    let strip = iced::widget::stack![
         image(hues()).width(FIELD as f32).height(STRIP as f32),
-        iced::widget::canvas(Marker::Hue(picker.hue / 360.0))
+        iced::widget::canvas(HueStrip(picker.hue / 360.0))
             .width(FIELD as f32)
             .height(STRIP as f32),
-    ])
-    .on_press(Message::PickerStripPressed)
-    .on_move(|at| Message::PickerHuePicked(at.x / FIELD as f32 * 360.0))
-    .on_release(Message::PickerReleased)
-    .on_exit(Message::PickerReleased);
+    ];
 
     let preview = iced::widget::stack![
         image(checkers())
@@ -246,8 +241,56 @@ enum Marker {
     Hue(f32),
 }
 
-impl iced::widget::canvas::Program<Message> for Marker {
-    type State = ();
+struct Field {
+    saturation: f32,
+    value: f32,
+}
+
+impl iced::widget::canvas::Program<Message> for Field {
+    type State = bool;
+
+    fn update(
+        &self,
+        dragging: &mut Self::State,
+        event: &iced::widget::canvas::Event,
+        bounds: iced::Rectangle,
+        cursor: iced::mouse::Cursor,
+    ) -> Option<iced::widget::canvas::Action<Message>> {
+        use iced::widget::canvas::Action;
+
+        match event {
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left))
+                if cursor.is_over(bounds) =>
+            {
+                *dragging = true;
+                let at = cursor.position_in(bounds)?;
+                Some(
+                    Action::publish(Message::PickerFieldStarted(
+                        (at.x / bounds.width).clamp(0.0, 1.0),
+                        (1.0 - at.y / bounds.height).clamp(0.0, 1.0),
+                    ))
+                    .and_capture(),
+                )
+            }
+            iced::Event::Mouse(iced::mouse::Event::CursorMoved { .. }) if *dragging => {
+                let at = cursor.position()?;
+                Some(
+                    Action::publish(Message::PickerFieldPicked(
+                        ((at.x - bounds.x) / bounds.width).clamp(0.0, 1.0),
+                        (1.0 - (at.y - bounds.y) / bounds.height).clamp(0.0, 1.0),
+                    ))
+                    .and_capture(),
+                )
+            }
+            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left))
+                if *dragging =>
+            {
+                *dragging = false;
+                Some(Action::publish(Message::PickerReleased).and_capture())
+            }
+            _ => None,
+        }
+    }
 
     fn draw(
         &self,
@@ -257,6 +300,83 @@ impl iced::widget::canvas::Program<Message> for Marker {
         bounds: iced::Rectangle,
         _cursor: iced::mouse::Cursor,
     ) -> Vec<iced::widget::canvas::Geometry> {
+        vec![Marker::Spot(self.saturation, 1.0 - self.value).geometry(
+            renderer,
+            bounds,
+            iced::Size::new(18.0, 18.0),
+        )]
+    }
+}
+
+struct HueStrip(f32);
+
+impl iced::widget::canvas::Program<Message> for HueStrip {
+    type State = bool;
+
+    fn update(
+        &self,
+        dragging: &mut Self::State,
+        event: &iced::widget::canvas::Event,
+        bounds: iced::Rectangle,
+        cursor: iced::mouse::Cursor,
+    ) -> Option<iced::widget::canvas::Action<Message>> {
+        use iced::widget::canvas::Action;
+
+        match event {
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left))
+                if cursor.is_over(bounds) =>
+            {
+                *dragging = true;
+                let at = cursor.position_in(bounds)?;
+                Some(
+                    Action::publish(Message::PickerHueStarted(
+                        (at.x / bounds.width).clamp(0.0, 1.0) * 360.0,
+                    ))
+                    .and_capture(),
+                )
+            }
+            iced::Event::Mouse(iced::mouse::Event::CursorMoved { .. }) if *dragging => {
+                let at = cursor.position()?;
+                Some(
+                    Action::publish(Message::PickerHuePicked(
+                        ((at.x - bounds.x) / bounds.width).clamp(0.0, 1.0) * 360.0,
+                    ))
+                    .and_capture(),
+                )
+            }
+            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left))
+                if *dragging =>
+            {
+                *dragging = false;
+                Some(Action::publish(Message::PickerReleased).and_capture())
+            }
+            _ => None,
+        }
+    }
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &iced::Renderer,
+        _theme: &iced::Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        vec![Marker::Hue(self.0).geometry(
+            renderer,
+            bounds,
+            iced::Size::new(14.0, (bounds.height - 2.0).max(0.0)),
+        )]
+    }
+}
+
+impl Marker {
+    fn geometry(
+        &self,
+        renderer: &iced::Renderer,
+        bounds: iced::Rectangle,
+        size: iced::Size,
+    ) -> iced::widget::canvas::Geometry {
         use iced::widget::canvas::{Frame, Path, Stroke};
 
         let mut frame = Frame::new(renderer, bounds.size());
@@ -281,24 +401,24 @@ impl iced::widget::canvas::Program<Message> for Marker {
                     x.clamp(0.0, 1.0) * bounds.width,
                     y.clamp(0.0, 1.0) * bounds.height,
                 );
-                pair(
-                    &mut frame,
-                    &Path::rectangle(
-                        iced::Point::new(at.x - 9.0, at.y - 9.0),
-                        iced::Size::new(18.0, 18.0),
-                    ),
+                let path = Path::rectangle(
+                    iced::Point::new(at.x - size.width / 2.0, at.y - size.height / 2.0),
+                    size,
                 );
+                pair(&mut frame, &path);
             }
             Marker::Hue(x) => {
-                let x = x.clamp(0.0, 1.0) * bounds.width;
                 let path = Path::rectangle(
-                    iced::Point::new(x - 7.0, 1.0),
-                    iced::Size::new(14.0, bounds.height - 2.0),
+                    iced::Point::new(
+                        x.clamp(0.0, 1.0) * bounds.width - size.width / 2.0,
+                        bounds.height / 2.0 - size.height / 2.0,
+                    ),
+                    size,
                 );
                 pair(&mut frame, &path);
             }
         }
-        vec![frame.into_geometry()]
+        frame.into_geometry()
     }
 }
 

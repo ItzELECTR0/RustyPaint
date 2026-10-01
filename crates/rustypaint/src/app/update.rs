@@ -467,7 +467,22 @@ impl App {
                 self.picking_field = None;
             }
             Message::PickerFieldPressed => self.picking_field = Some(true),
+            Message::PickerFieldStarted(saturation, value) => {
+                self.picking_field = Some(true);
+                if let Some(picker) = &mut self.picker {
+                    picker.saturation = saturation.clamp(0.0, 1.0);
+                    picker.value = value.clamp(0.0, 1.0);
+                    picker.clear_typed();
+                }
+            }
             Message::PickerStripPressed => self.picking_field = Some(false),
+            Message::PickerHueStarted(hue) => {
+                self.picking_field = Some(false);
+                if let Some(picker) = &mut self.picker {
+                    picker.hue = hue.clamp(0.0, 360.0);
+                    picker.clear_typed();
+                }
+            }
             Message::PickerReleased => self.picking_field = None,
             Message::PickerFieldPicked(saturation, value) => {
                 if self.picking_field == Some(true)
