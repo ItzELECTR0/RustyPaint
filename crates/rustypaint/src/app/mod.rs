@@ -36,6 +36,8 @@ pub(crate) use live::Sticker;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
