@@ -531,8 +531,12 @@ impl Document {
 
     // Both layers have to show for the merge to keep the picture as it looks.
     pub fn can_merge_down(&self) -> bool {
-        let active = self.stack.active;
-        active > 0 && self.stack.layers[active].visible && self.stack.layers[active - 1].visible
+        self.can_merge(self.stack.active)
+    }
+
+    pub fn can_merge(&self, index: usize) -> bool {
+        let layers = &self.stack.layers;
+        index > 0 && index < layers.len() && layers[index].visible && layers[index - 1].visible
     }
 
     pub fn merge_down(&mut self) -> bool {
@@ -614,20 +618,6 @@ impl Document {
         self.stack.layers[index].visible = visible;
         let label = if visible { "Show layer" } else { "Hide layer" };
         self.arrange(label, before, Vec::new());
-    }
-
-    pub fn rename(&mut self, index: usize, name: &str) {
-        self.settle();
-        let name = name.trim();
-        let Some(layer) = self.stack.layers.get(index) else {
-            return;
-        };
-        if name.is_empty() || layer.name == name {
-            return;
-        }
-        let before = self.stack.arrangement();
-        self.stack.layers[index].name = name.to_owned();
-        self.arrange("Rename layer", before, Vec::new());
     }
 
     // Live, for a slider: the step is filed by `settle` once the drag lets go.
@@ -856,11 +846,12 @@ mod tests {
         d.add_layer();
         paint(&mut d, [0, 255, 0, 255]);
         d.set_visible(1, false);
-        d.rename(1, "Ink");
-        assert_eq!(d.layers()[1].name, "Ink");
+        d.set_opacity(1, 128);
+        d.settle();
+        assert_eq!(d.layers()[1].opacity, 128);
 
         d.undo().unwrap();
-        assert_eq!(d.layers()[1].name, "Layer 2");
+        assert_eq!(d.layers()[1].opacity, 255);
         d.undo().unwrap();
         assert!(d.layers()[1].visible);
         d.undo().unwrap();

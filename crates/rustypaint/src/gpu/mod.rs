@@ -68,10 +68,13 @@ impl View {
         (scale * FIT_MARGIN).clamp(MIN_ZOOM, 1.0)
     }
 
-    pub fn fitted(viewport: Size, canvas: (u32, u32)) -> Self {
+    // Fitted to what a panel floating over the right-hand `covered` pixels leaves, centred there.
+    pub fn fitted_beside(viewport: Size, canvas: (u32, u32), covered: f32) -> Self {
+        let covered = covered.clamp(0.0, viewport.width / 2.0);
+        let room = Size::new(viewport.width - covered, viewport.height);
         Self {
-            pan: Vector::ZERO,
-            zoom: Self::fit_zoom(viewport, canvas),
+            pan: Vector::new(-covered / 2.0, 0.0),
+            zoom: Self::fit_zoom(room, canvas),
         }
     }
 
@@ -2164,11 +2167,23 @@ mod tests {
 
     #[test]
     fn a_fitted_canvas_is_centred_and_fully_visible() {
-        let view = View::fitted(viewport(), CANVAS);
+        let view = View::fitted_beside(viewport(), CANVAS, 0.0);
         let rect = view.canvas_rect(viewport(), CANVAS);
 
         assert!(rect.width <= viewport().width && rect.height <= viewport().height);
         assert!((rect.x + rect.width / 2.0 - viewport().width / 2.0).abs() < 0.01);
+        assert!((rect.y + rect.height / 2.0 - viewport().height / 2.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_canvas_fitted_beside_a_panel_stays_clear_of_it() {
+        let covered = 136.0;
+        let view = View::fitted_beside(viewport(), CANVAS, covered);
+        let rect = view.canvas_rect(viewport(), CANVAS);
+        let room = viewport().width - covered;
+
+        assert!(rect.x >= 0.0 && rect.x + rect.width <= room + 0.01);
+        assert!((rect.x + rect.width / 2.0 - room / 2.0).abs() < 0.01);
         assert!((rect.y + rect.height / 2.0 - viewport().height / 2.0).abs() < 0.01);
     }
 

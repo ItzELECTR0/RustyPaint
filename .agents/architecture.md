@@ -7,7 +7,7 @@ state that has no better home; `update.rs` handles messages; `input.rs` turns po
 shortcut events into them; `live.rs` owns the live object's whole life from creation to commit,
 including crop and Smart cutout; `cutout.rs` owns asynchronous analysis and refinement history;
 `document.rs` covers saving, history, and whole-canvas pixel work; `layers.rs` runs the layers
-panel's commands and keeps its thumbnails; `view.rs` builds the widget tree.
+bar's commands, its slide and its thumbnails; `view.rs` builds the widget tree.
 
 Methods on `App` are spread across those files, so anything used outside the file it lives in needs
 `pub(super)`, which reaches every `app` submodule and no further. The tests are still one module
@@ -179,21 +179,15 @@ Card padding and `SIDE_PANEL_GUTTER_MARGIN` are tuned against the brush grid, wh
 tiles with 4px between them and therefore needs 216px inside the card. Widening either one clips the
 last column.
 
-`sidebar::split` is the panel surround: tools above, layers below, each half with a header that folds
-it away and a scroll area of its own, and the veil behind both. Crop and Smart cutout are the tools
-half while they run, so they cannot drift from the tabs. Panels hand back their title and cards
-separately (`sidebar::Panel`) so the title can sit in the header and stay put while the cards
-scroll. The padding sits inside each scroll area so the bar rides the gutter rather than the cards.
-
-The sash between the halves is a canvas `Program` (`ui::sash`) because a drag that strays off a
-mouse area stops, and this one has to follow the pointer anywhere. It works out the share from where
-the drag began rather than from absolute positions, so `split` measures the room with `responsive`.
-Neither half can be dragged below `LEAST`; folding a half away is what its header is for. The share
-and both folds are saved in the settings' `[sidebar]` table, on release rather than on every move.
+`sidebar::shell` is the panel surround: the gutter, the scroll area and the veil. Crop and smart
+cutout go through it too, so they cannot drift from the tabs. The padding sits inside the scroll
+area so the bar rides the gutter rather than the cards. The layers float over the canvas beside it
+rather than sharing it; see `.agents/layers.md`.
 
 `ui::segmented` is a canvas `Program` rather than a widget, so the pill's slide keeps its state and
 asks for its own redraws instead of going through the application update loop. The first frame
 places the pill where the choice already is, so opening a tab never plays a slide nobody asked for.
+With Reduced motion on (`ui::reduced_motion`, set from the settings) it is placed at once every time.
 
 ## Dropped files and the clipboard
 

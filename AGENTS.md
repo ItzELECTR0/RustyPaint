@@ -10,7 +10,7 @@ Run `cargo test --workspace` after changes. Use `cargo fmt --all -- --check` and
 Read `.agents/architecture.md` when changing documents, image file I/O, undo, floating objects,
 coordinates, input handling, dropped files, the clipboard, or the side panel and tab strip.
 
-Read `.agents/layers.md` when changing layers, the layers panel, OpenRaster projects, or how saving
+Read `.agents/layers.md` when changing layers, the layers bar, OpenRaster projects, or how saving
 treats layered work.
 
 Read `.agents/brushes.md` when changing brush settings, thickness limits, the eraser, or how strokes

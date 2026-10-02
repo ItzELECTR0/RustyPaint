@@ -1,6 +1,5 @@
 use crate::doc::layers::Stack;
 use crate::doc::{self, Document, Rect, Rgba8};
-use crate::gpu::View;
 use crate::i18n;
 use crate::paint::fill;
 
@@ -258,7 +257,7 @@ impl App {
         self.grab = None;
         self.grab_from = None;
         self.float_version += 1;
-        self.view = View::fitted(self.viewport, self.doc.size());
+        self.view = self.fitted(self.doc.size());
         self.damage.clear();
         self.panel.sync(self.doc.size());
         self.status.clear();

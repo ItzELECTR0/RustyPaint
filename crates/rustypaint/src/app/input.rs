@@ -90,6 +90,7 @@ pub(super) fn shortcut(event: iced::keyboard::Event) -> Option<Message> {
         }
         return match key.as_ref() {
             Key::Named(Named::Delete) => Some(Message::DeleteFloating),
+            Key::Named(Named::F7) => Some(Message::LayersToggled),
             Key::Character("[") => Some(Message::ThicknessNudged(-1.0)),
             Key::Character("]") => Some(Message::ThicknessNudged(1.0)),
             _ => None,

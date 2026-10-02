@@ -77,7 +77,7 @@ impl<Message> canvas::Program<Message> for Segmented<'_, Message> {
                 let target = self.selected as f32;
                 // The first frame places the pill where the choice already is, so opening a panel
                 // never plays a slide nobody asked for.
-                if !state.placed {
+                if !state.placed || crate::ui::reduced_motion() {
                     state.slide = slide(target);
                     state.placed = true;
                 } else if state.slide.value() != target {

@@ -19,9 +19,6 @@ use super::*;
 impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let zoom = self.view.zoom;
-        if self.renaming.is_some() && message.ends_renaming() {
-            self.finish_renaming();
-        }
         let task = self.dispatch(message);
         if self.config.auto_pixel_grid && self.view.zoom != zoom {
             self.config.pixel_grid = self.view.zoom >= 8.0;
@@ -54,16 +51,13 @@ impl App {
             self.typed = None;
         }
         match message {
-            Message::ToolsFolded => {
-                self.config.sidebar.tools_open = !self.config.sidebar.tools_open;
+            Message::LayersToggled => self.toggle_layers(),
+            Message::LayersSlid(now) => self.now = now,
+            Message::ReducedMotionToggled(on) => {
+                self.config.reduced_motion = on;
+                crate::ui::set_reduced_motion(on);
                 self.save_config();
             }
-            Message::LayersFolded => {
-                self.config.sidebar.layers_open = !self.config.sidebar.layers_open;
-                self.save_config();
-            }
-            Message::SidebarSplit(share) => self.config.sidebar.tools_share = share,
-            Message::SidebarSplitSettled => self.save_config(),
             Message::Layer(action) => return self.layer_action(action),
             Message::SnapshotTick => return self.snapshot(),
             Message::Snapshotted(at, result) => {
@@ -222,13 +216,13 @@ impl App {
                             self.damage.clear();
                         }
                     }
-                    self.view = View::fitted(self.viewport, self.doc.size());
+                    self.view = self.fitted(self.doc.size());
                 }
             }
 
             Message::ZoomIn => self.zoom_by(1.25),
             Message::ZoomOut => self.zoom_by(1.0 / 1.25),
-            Message::ZoomFit => self.view = View::fitted(self.viewport, self.doc.size()),
+            Message::ZoomFit => self.view = self.fitted(self.doc.size()),
             Message::ZoomActual => {
                 self.view = View {
                     pan: iced::Vector::ZERO,
@@ -326,7 +320,7 @@ impl App {
                 self.commit_floating();
                 self.doc.crop(rect);
                 self.reshaped();
-                self.view = View::fitted(self.viewport, self.doc.size());
+                self.view = self.fitted(self.doc.size());
             }
 
             Message::StickerRequested => {
@@ -592,7 +586,7 @@ impl App {
                 {
                     self.doc.crop(cropping.rect);
                     self.reshaped();
-                    self.view = View::fitted(self.viewport, self.doc.size());
+                    self.view = self.fitted(self.doc.size());
                 }
             }
             Message::CropFramingPicked(framing) => {

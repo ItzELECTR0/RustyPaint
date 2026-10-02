@@ -42,15 +42,43 @@ Photoshop is the behavioural reference; Paint's layers panel is the approachabil
 - A live object (selection, paste, sticker, shape, curve, text) belongs to the layer it was made on.
   Anything that changes the active layer or the stack's structure commits it there first, the way
   picking another tool does. Visibility, opacity and renaming leave it alone.
-- Crop and Smart cutout hold the stack still: the layers panel is shown but inert until they end.
+- Crop and Smart cutout hold the stack still: the layers bar is shown but inert until they end.
   Cutout's analysis belongs to the active layer as it was, and a crop is about to change every layer.
-- Double-clicking a name edits it; Enter, or moving on to anything else, keeps the new name.
 - Shortcuts are Photoshop's: Ctrl+Shift+N new layer, Ctrl+J duplicate, Ctrl+E merge down, Ctrl+] and
-  Ctrl+[ move the layer up and down.
+  Ctrl+[ move the layer up and down, F7 shows or puts away the layers bar.
 
 Not in the first version, with room left for each: groups, blend modes, masks, locks, text that stays
 editable as a layer, content outside the canvas, drag-and-drop reordering, selecting several layers,
-and per-layer export.
+renaming, and per-layer export.
+
+## The bar
+
+This is the second design. The first split the side panel into tools and layers halves, resizable
+and foldable; it was dropped because both halves folded looked wrong and the tools were never meant
+to fold. The bar follows Windows 11 Paint instead.
+
+- The Layers button beside Fit to window, or F7, slides the bar out over the canvas's right edge and
+  back. Whether it is out is kept in the settings (`layers_shown`).
+- It is a fixed size: as tall as the side panel less `MARGIN` at each end, `ui::layers::WIDTH` wide,
+  rounded by 8 px as Windows 11 rounds windows, with a flyout's shadow. It floats rather than taking
+  room from the canvas, so fitting the picture (`App::fitted`) leaves the width it covers clear.
+- Layers are thumbnails, top of the stack first, without names, as in Paint. Names are still kept
+  and written to OpenRaster for other editors. The active layer wears the accent; a hidden one is
+  dimmed with a closed eye that shows without hovering. The bottom layer of a picture with a backing
+  is drawn on white, the rest on checks.
+- Hovering a layer floats buttons over its thumbnail, only the ones that layer can use: show or
+  hide and duplicate always, delete unless it is the last layer, up unless it is the top, down
+  unless it is the bottom, merge down when `Document::can_merge` allows it. A button on a layer
+  other than the active one selects that layer first (`LayerAction::At`).
+- New layer heads the bar, and Flatten joins it only while there is something to flatten. The active
+  layer's opacity sits at the foot.
+- `ui::drawer` holds the bar: it pins it inside the canvas's right edge, shifts it while it slides,
+  and clips it so it goes out under the side panel. A press on the bar stays on it. A drag that began
+  on the canvas, a stroke, pan or moved selection, passes underneath and the bar ignores the pointer
+  until the button comes up, so nothing lights up mid-stroke.
+- The slide is 220 ms of `EaseInOutCubic`, with `window::frames` subscribed only while it runs.
+  Reduced motion in the settings puts the bar in place at once. Thumbnails are not drawn while the
+  bar is away.
 
 ## History
 
@@ -151,8 +179,9 @@ Saving runs off the interface thread, so the cost is only how long until the fil
 Strokes pay nothing for layers: the canvas texture is still the one layer being painted, and the
 layer thumbnails wait for a stroke to end. Against the branch point on the same machine, with real
 uploads to a software Vulkan device, `stroke_timings` keeps zero whole uploads, canvas copies and
-missed pixels in all 72 cases, with the median frame within 4% (noise) and a release about 0.2 ms
-slower for the one thumbnail redraw.
+missed pixels in all 72 cases, with the median frame within 4% (noise). It runs with the layers bar
+out, so a release also redraws the active layer's 192x144 thumbnail: the median release is 0.36 ms
+at 1152x648 and 0.9 ms at 6000x4000, against 0.14 and 0.22 ms for the first design's 44x32 one.
 
 Anything that changes the layers under or over the active one recomposites both sides on the CPU,
 in parallel above a million pixels. `cargo test --release -p rustypaint layer_timings -- --ignored

@@ -1,6 +1,17 @@
 use iced::widget::container;
 use iced::{Element, Length};
 
+static REDUCED_MOTION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+// Set from the settings, read by anything that would otherwise move on its own.
+pub fn set_reduced_motion(on: bool) {
+    REDUCED_MOTION.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn reduced_motion() -> bool {
+    REDUCED_MOTION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub fn centred<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     container(content).center(Length::Fill).into()
 }
@@ -157,11 +168,12 @@ pub mod controls {
 }
 
 pub mod dialog;
+pub mod drawer;
 #[allow(dead_code, reason = "reference table, filled in ahead of the widgets")]
 pub mod icons;
+pub mod layers;
 pub mod menu;
 pub mod picker;
-pub mod sash;
 pub mod segmented;
 pub mod sidebar;
 pub mod strings;

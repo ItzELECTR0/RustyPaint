@@ -295,6 +295,14 @@ fn pane_settings<'a>(settings: Settings<'a>) -> Element<'a, Message> {
             .text_size(13)
             .on_toggle(Message::AcrylicToggled),
         divider(),
+        subheading(i18n::settings_reduced_motion()),
+        note(i18n::settings_reduced_motion_note()),
+        toggler(config.reduced_motion)
+            .style(crate::ui::controls::toggler_style)
+            .label(on_off(config.reduced_motion))
+            .text_size(13)
+            .on_toggle(Message::ReducedMotionToggled),
+        divider(),
         subheading(i18n::settings_rotation_dial()),
         note(i18n::settings_rotation_dial_note()),
         toggler(config.rotation_dial)

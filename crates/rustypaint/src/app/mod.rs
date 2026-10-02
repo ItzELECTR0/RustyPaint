@@ -13,6 +13,7 @@ use crate::ui::sidebar;
 use crate::ui::theme::{self, AccentColour, Choice, CustomAccent, Scheme, metrics};
 use crate::ui::titlebar;
 
+use iced::animation::Animation;
 use iced::time::Instant;
 use iced::{Size, Task};
 use std::path::PathBuf;
@@ -348,29 +349,6 @@ impl Field {
 }
 
 impl Message {
-    // A name being typed is kept the moment the hand moves on to anything else.
-    fn ends_renaming(&self) -> bool {
-        match self {
-            Message::Canvas(interaction) => !matches!(
-                interaction,
-                gpu::Interaction::Viewed(_) | gpu::Interaction::CaretTick
-            ),
-            Message::Layer(LayerAction::NameEdited(_) | LayerAction::Renamed)
-            | Message::SnapshotTick
-            | Message::Snapshotted(..)
-            | Message::ParkedSnapshotted(_)
-            | Message::ModifiersChanged(_)
-            | Message::WindowResized(_)
-            | Message::WindowFocused
-            | Message::WindowUnfocused
-            | Message::SprayTick
-            | Message::NudgeTick(_)
-            | Message::CutoutFinished(..)
-            | Message::SidebarSplit(_) => false,
-            _ => true,
-        }
-    }
-
     // A slider drag or a nudge takes the value back, so half-typed text in its box is gone.
     fn moves_a_field(&self) -> bool {
         matches!(
@@ -474,9 +452,10 @@ pub struct App {
     parked: Vec<Sheet>,
     active: usize,
     tab_menu: Option<usize>,
-    // The draft name of the active layer while its name is being edited.
-    renaming: Option<String>,
     thumbnails: Vec<Thumbnail>,
+    // Where the layers bar is and where it is going, with the frame time it was last drawn at.
+    layers_slide: Animation<bool>,
+    now: Instant,
 }
 
 // A layer's picture in the layers list, redrawn only when what it shows can have changed.
@@ -672,10 +651,9 @@ pub enum Message {
     ModifiersChanged(iced::keyboard::Modifiers),
     Rotate(bool),
     Flip(bool),
-    ToolsFolded,
-    LayersFolded,
-    SidebarSplit(f32),
-    SidebarSplitSettled,
+    ReducedMotionToggled(bool),
+    LayersToggled,
+    LayersSlid(Instant),
     Layer(LayerAction),
 }
 
@@ -691,9 +669,8 @@ pub enum LayerAction {
     ToggleVisible(usize),
     Opacity(f32),
     OpacitySettled,
-    RenameStarted(usize),
-    NameEdited(String),
-    Renamed,
+    // A button on a layer other than the active one picks that layer before it acts.
+    At(usize, Box<LayerAction>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -807,6 +784,7 @@ impl App {
             .as_deref()
             .and_then(|root| doc::recovery::hold(root, &session));
         theme::set_acrylic(config.acrylic);
+        crate::ui::set_reduced_motion(config.reduced_motion);
         let (start_w, start_h) = crate::canvas::size_for(
             config.new_canvas,
             Size::new(1.0, 1.0),
@@ -879,8 +857,9 @@ impl App {
             parked: Vec::new(),
             active: 0,
             tab_menu: None,
-            renaming: None,
             thumbnails: Vec::new(),
+            layers_slide: layers::slide(config.layers_shown),
+            now: Instant::now(),
             config,
             accent,
             custom_accent,
@@ -912,7 +891,7 @@ impl App {
         self.next_slot += 1;
         Sheet {
             doc,
-            view: View::fitted(self.viewport, size),
+            view: self.fitted(size),
             panel: CanvasPanel::new(size),
             stroke: None,
             last_point: None,
@@ -1052,6 +1031,11 @@ impl App {
                 iced::keyboard::listen().filter_map(typing)
             } else {
                 iced::keyboard::listen().filter_map(shortcut)
+            },
+            if self.layers_sliding() {
+                iced::window::frames().map(Message::LayersSlid)
+            } else {
+                iced::Subscription::none()
             },
             if self.spraying() {
                 iced::window::frames().map(|_| Message::SprayTick)

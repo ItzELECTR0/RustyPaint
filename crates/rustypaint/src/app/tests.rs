@@ -5160,6 +5160,7 @@ fn opening(loaded: crate::doc::io::Loaded) -> Opening {
 #[test]
 fn opening_a_project_brings_its_layers() {
     let mut app = app(8, 8);
+    app.config.layers_shown = true;
     let mut stack = Document::from_image(Rgba8::new(6, 4, RED), None)
         .stack()
         .clone();
@@ -5230,21 +5231,132 @@ fn layered_work_comes_back_from_a_crash_with_its_layers() {
 }
 
 #[test]
-fn a_name_being_typed_is_kept_when_the_hand_moves_on() {
-    let mut app = layered(16, 16);
-    send(&mut app, Message::Layer(LayerAction::RenameStarted(0)));
-    assert_eq!(app.doc.active(), 0, "renaming a layer selects it");
-    assert_eq!(app.renaming.as_deref(), Some("Background"));
+fn a_button_on_another_layer_acts_on_that_layer() {
+    let mut app = layered(8, 8);
     send(
         &mut app,
-        Message::Layer(LayerAction::NameEdited("Sky".into())),
+        Message::Layer(LayerAction::At(0, Box::new(LayerAction::Duplicate))),
     );
-    send(&mut app, Message::Canvas(gpu::Interaction::CaretTick));
-    assert!(app.renaming.is_some(), "a blink is not the hand moving on");
+    assert_eq!(app.doc.layers().len(), 3);
+    assert_eq!(
+        app.doc.active(),
+        1,
+        "the copy sits over the layer it came from"
+    );
+    assert_eq!(layer_pixel(&app, 1, 1, 1), RED);
 
-    click(&mut app, 3.0, 3.0);
-    assert!(app.renaming.is_none());
-    assert_eq!(app.doc.layers()[0].name, "Sky");
+    send(
+        &mut app,
+        Message::Layer(LayerAction::At(2, Box::new(LayerAction::Delete))),
+    );
+    assert_eq!(app.doc.layers().len(), 2);
+    assert_eq!(
+        app.doc.active(),
+        1,
+        "the layer under the deleted one takes over"
+    );
+}
+
+#[test]
+fn a_held_picture_ignores_buttons_on_its_layers() {
+    let mut app = layered(8, 8);
+    send(&mut app, Message::CropOpened);
+    send(
+        &mut app,
+        Message::Layer(LayerAction::At(0, Box::new(LayerAction::Delete))),
+    );
+    assert_eq!(app.doc.layers().len(), 2);
+    assert_eq!(app.doc.active(), 1);
+}
+
+#[test]
+fn the_layers_bar_slides_out_and_back_and_is_remembered() {
+    let mut app = app(8, 8);
+    assert_eq!(app.layers_shift(), None, "put away to begin with");
+
+    send(&mut app, Message::LayersToggled);
+    assert!(app.config.layers_shown);
+    assert!(app.layers_sliding());
+    let started = app.now;
+    send(
+        &mut app,
+        Message::LayersSlid(started + std::time::Duration::from_millis(110)),
+    );
+    let halfway = app.layers_shift().expect("on its way in");
+    assert!(halfway > 0.0, "{halfway}");
+
+    send(
+        &mut app,
+        Message::LayersSlid(started + std::time::Duration::from_secs(1)),
+    );
+    assert_eq!(app.layers_shift(), Some(0.0));
+    assert!(!app.layers_sliding());
+
+    send(&mut app, Message::LayersToggled);
+    assert!(!app.config.layers_shown);
+    let started = app.now;
+    send(
+        &mut app,
+        Message::LayersSlid(started + std::time::Duration::from_secs(1)),
+    );
+    assert_eq!(app.layers_shift(), None);
+}
+
+#[test]
+fn reduced_motion_puts_the_layers_bar_in_place_at_once() {
+    let mut app = app(8, 8);
+    app.config.reduced_motion = true;
+    send(&mut app, Message::LayersToggled);
+    assert_eq!(app.layers_shift(), Some(0.0));
+    assert!(!app.layers_sliding());
+    send(&mut app, Message::LayersToggled);
+    assert_eq!(app.layers_shift(), None);
+}
+
+#[test]
+fn layer_pictures_wait_until_the_bar_is_out() {
+    let mut app = layered(8, 8);
+    assert!(app.thumbnails.is_empty(), "nothing to show them on");
+    send(&mut app, Message::LayersToggled);
+    assert_eq!(app.thumbnails.len(), 2);
+}
+
+fn first_texel(handle: &iced::widget::image::Handle) -> [u8; 4] {
+    match handle {
+        iced::widget::image::Handle::Rgba { pixels, .. } => pixels[..4].try_into().unwrap(),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn the_bottom_layer_shows_the_backing_it_sits_on() {
+    let mut app = app(8, 8);
+    send(&mut app, Message::Layer(LayerAction::Add));
+    send(&mut app, Message::LayersToggled);
+    assert_eq!(first_texel(&app.thumbnails[0].handle), [255, 255, 255, 255]);
+    assert_ne!(
+        first_texel(&app.thumbnails[1].handle),
+        [255, 255, 255, 255],
+        "the layer over it is empty, so it shows the checks"
+    );
+
+    send(&mut app, Message::TransparencyToggled(true));
+    assert_ne!(first_texel(&app.thumbnails[0].handle), [255, 255, 255, 255]);
+}
+
+#[test]
+fn fitting_leaves_the_open_layers_bar_clear() {
+    let mut app = app(400, 300);
+    send(&mut app, Message::LayersToggled);
+    send(&mut app, Message::ZoomFit);
+    let rect = app.view.canvas_rect(app.viewport, app.doc.size());
+    let room = app.viewport.width - crate::ui::layers::WIDTH - 2.0 * crate::ui::layers::MARGIN;
+    assert!(rect.x + rect.width <= room + 0.01, "{rect:?}");
+
+    send(&mut app, Message::LayersToggled);
+    send(&mut app, Message::ZoomFit);
+    let rect = app.view.canvas_rect(app.viewport, app.doc.size());
+    assert!((rect.center_x() - app.viewport.width / 2.0).abs() < 0.01);
 }
 
 #[test]
@@ -5259,17 +5371,6 @@ fn an_opacity_drag_is_one_undo_step() {
     send(&mut app, Message::Undo);
     assert_eq!(app.doc.layers()[1].opacity, 255);
     assert_eq!(app.doc.layers().len(), 2, "and only that step");
-}
-
-#[test]
-fn the_side_panel_remembers_how_it_was_shared() {
-    let mut app = app(8, 8);
-    send(&mut app, Message::SidebarSplit(0.3));
-    send(&mut app, Message::LayersFolded);
-    assert_eq!(app.config.sidebar.tools_share, 0.3);
-    assert!(!app.config.sidebar.layers_open);
-    send(&mut app, Message::LayersFolded);
-    assert!(app.config.sidebar.layers_open);
 }
 
 #[test]
@@ -5302,4 +5403,17 @@ fn layer_shortcuts_follow_photoshop() {
         press("e", Modifiers::COMMAND),
         Some(Message::Layer(LayerAction::Merge))
     ));
+    let f7 = shortcut(Event::KeyPressed {
+        key: Key::Named(key::Named::F7),
+        modified_key: Key::Named(key::Named::F7),
+        physical_key: key::Physical::Unidentified(key::NativeCode::Unidentified),
+        location: Location::Standard,
+        modifiers: Modifiers::empty(),
+        text: None,
+        repeat: false,
+    });
+    assert!(
+        matches!(f7, Some(Message::LayersToggled)),
+        "as its panel is"
+    );
 }

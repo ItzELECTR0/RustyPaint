@@ -24,14 +24,15 @@ It detects image types from their contents, opens several icon and obscure bitma
 
 ## How do layers work?
 
-A picture starts flat, like it did in Paint 3D. Add a layer from the Layers half of the side panel and
-it turns into a project: every layer has its own name, visibility and opacity, and the brushes, fill,
-shapes, text and pastes all land on the highlighted one. Save keeps the layers as an OpenRaster
-(`.ora`) project, which Krita opens too. Picking a flat format in Save as exports a flattened copy
-and leaves the layers alone, and Flatten image takes you back to one layer on purpose.
+A picture starts flat, like it did in Paint 3D. The Layers button next to Fit to window (or F7)
+slides out the layers bar, like the one in Windows 11 Paint. Add a layer there and the picture turns
+into a project: every layer has its own visibility and opacity, and the brushes, fill, shapes, text
+and pastes all land on the highlighted one. Hover over a layer for the buttons that can act on it.
+Save keeps the layers as an OpenRaster (`.ora`) project, which Krita opens too. Picking a flat format
+in Save as exports a flattened copy and leaves the layers alone, and Flatten image takes you back to
+one layer on purpose.
 
-Drag the bar between the tools and the layers to share the panel, or click either heading to fold
-that half away.
+If you'd rather nothing slid around, turn on Reduced motion in the settings.
 
 ## How do I cut something out?
 

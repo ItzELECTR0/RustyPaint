@@ -1,4 +1,4 @@
-use crate::app::{CanvasPanel, Drawing, Field, LayerAction, Message, Picking, Tab};
+use crate::app::{CanvasPanel, Drawing, Field, Message, Picking, Tab};
 use crate::i18n;
 use crate::paint::curve::{self, CurveKind};
 use crate::paint::shapes::{self, ShapeKind, ShapeStyle};
@@ -42,14 +42,15 @@ pub fn panel<'a>(
     style: ShapeStyle,
     blur_settings: blur::Settings,
     text_style: &'a TextStyle,
+    width: f32,
     colour_target: bool,
     live: Option<Live>,
     placement: Option<Placement>,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
     history: &'a [crate::app::Sticker],
-) -> Panel<'a> {
-    let panel = match tab {
+) -> Element<'a, Message> {
+    let body = match tab {
         Tab::Brushes => brushes(brush, typed, custom, custom_menu),
         Tab::Symmetry => symmetry_panel(mirror),
         Tab::Shapes => shapes_panel(
@@ -66,83 +67,28 @@ pub fn panel<'a>(
         Tab::Canvas => canvas_panel(canvas, size, transparent),
     };
 
-    match placement {
-        Some(placement) => panel.loose(placement_rows(placement, typed)),
-        None => panel,
-    }
+    let body = match placement {
+        Some(placement) => column![body, placement_rows(placement, typed)]
+            .spacing(16)
+            .into(),
+        None => body,
+    };
+
+    shell(body, width)
 }
 
-// How the side panel is shared between the tools and the layers, kept with the settings.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct Layout {
-    pub tools_share: f32,
-    pub tools_open: bool,
-    pub layers_open: bool,
-}
-
-impl Default for Layout {
-    fn default() -> Self {
-        Self {
-            tools_share: 0.62,
-            tools_open: true,
-            layers_open: true,
-        }
-    }
-}
-
-const HEADER: f32 = 44.0;
-
-// The sash stops this short of either end, so dragging never hides a section by accident; folding
-// one away is what its header is for.
-const LEAST: f32 = 72.0;
-
-// Every side panel wears this, tabbed or not: tools above, layers below, each with a header that
-// folds it away and a scroll area of its own, and a sash between them.
-pub fn split<'a>(
-    layout: Layout,
-    width: f32,
-    tools: impl Fn() -> Panel<'a> + 'a,
-    layers: impl Fn() -> Panel<'a> + 'a,
-) -> Element<'a, Message> {
-    let sections = iced::widget::responsive(move |size| {
-        let (tools, layers) = (tools(), layers());
-        let tools_header = section_header(tools.title, layout.tools_open, Message::ToolsFolded);
-        let layers_header = section_header(layers.title, layout.layers_open, Message::LayersFolded);
-        let room = (size.height - 2.0 * HEADER - crate::ui::sash::HEIGHT).max(0.0);
-        let parts: Vec<Element<'a, Message>> = match (layout.tools_open, layout.layers_open) {
-            (true, true) => {
-                let least = LEAST.min(room / 2.0);
-                let above = (layout.tools_share * room).clamp(least, room - least);
-                vec![
-                    tools_header,
-                    scroll_body(tools, Length::Fixed(above)),
-                    crate::ui::sash::sash(
-                        above,
-                        room,
-                        Message::SidebarSplit,
-                        Message::SidebarSplitSettled,
-                    ),
-                    layers_header,
-                    scroll_body(layers, Length::Fill),
-                ]
-            }
-            (true, false) => vec![
-                tools_header,
-                scroll_body(tools, Length::Fill),
-                layers_header,
-            ],
-            (false, true) => vec![
-                tools_header,
-                layers_header,
-                scroll_body(layers, Length::Fill),
-            ],
-            (false, false) => vec![tools_header, layers_header],
-        };
-        column(parts).height(Length::Fill).into()
+// Every side panel wears this, tabbed or not: the gutter, the scroll area and the veil behind them.
+pub fn shell<'a>(body: impl Into<Element<'a, Message>>, width: f32) -> Element<'a, Message> {
+    let [left, _, right, _] = metrics::SIDE_PANEL_GUTTER_MARGIN;
+    // The padding sits inside the scroll area so the bar rides the gutter rather than the cards.
+    let body = container(body.into()).padding(iced::Padding {
+        top: 16.0,
+        right,
+        bottom: 16.0,
+        left,
     });
 
-    container(sections)
+    container(scrollable(body).height(Length::Fill).style(scroll_style))
         .width(Length::Fixed(width))
         .height(Length::Fill)
         .style(|_theme| container::Style {
@@ -152,285 +98,7 @@ pub fn split<'a>(
         .into()
 }
 
-fn section_header<'a>(title: &'a str, open: bool, fold: Message) -> Element<'a, Message> {
-    let [left, _, right, _] = metrics::SIDE_PANEL_GUTTER_MARGIN;
-    let (chevron, hint) = if open {
-        (icons::CHEVRON_UP, i18n::section_collapse())
-    } else {
-        (icons::CHEVRON_DOWN, i18n::section_expand())
-    };
-    let face = row![
-        Space::new().width(Length::Fixed(18.0)),
-        heading(title),
-        note_below(icon(chevron, 18.0, theme::colours().text_dim), hint),
-    ]
-    .align_y(iced::Alignment::Center);
-    mouse_area(
-        container(face)
-            .height(Length::Fixed(HEADER))
-            .padding(iced::Padding {
-                top: 0.0,
-                right,
-                bottom: 0.0,
-                left,
-            })
-            .align_y(iced::Alignment::Center),
-    )
-    .on_press(fold)
-    .interaction(iced::mouse::Interaction::Pointer)
-    .into()
-}
-
-// The padding sits inside the scroll area so the bar rides the gutter rather than the cards.
-fn scroll_body<'a>(panel: Panel<'a>, height: Length) -> Element<'a, Message> {
-    let [left, _, right, _] = metrics::SIDE_PANEL_GUTTER_MARGIN;
-    let body = container(
-        column(panel.items)
-            .spacing(12)
-            .align_x(iced::Alignment::Center),
-    )
-    .padding(iced::Padding {
-        top: 2.0,
-        right,
-        bottom: 16.0,
-        left,
-    });
-    scrollable(body).height(height).style(scroll_style).into()
-}
-
-fn note_below<'a>(
-    control: impl Into<Element<'a, Message>>,
-    label: impl iced::widget::text::IntoFragment<'a>,
-) -> Element<'a, Message> {
-    iced::widget::tooltip(
-        control,
-        text(label).size(12),
-        iced::widget::tooltip::Position::Bottom,
-    )
-    .style(tooltip_style)
-    .padding(6)
-    .into()
-}
-
-// One row of the layers list, top of the stack first.
-pub struct LayerRow<'a> {
-    pub name: &'a str,
-    pub visible: bool,
-    pub opacity: u8,
-    pub thumbnail: Option<iced::widget::image::Handle>,
-}
-
-pub struct Layers<'a> {
-    pub rows: Vec<LayerRow<'a>>,
-    pub active: usize,
-    pub renaming: Option<&'a str>,
-    pub typed: Option<(Field, &'a str)>,
-    pub can_merge: bool,
-    pub layered: bool,
-    // Crop and Smart cutout hold the picture still until they finish.
-    pub held: bool,
-}
-
-pub const RENAME_ID: &str = "layer-name";
-
-pub fn layers_panel<'a>(layers: Layers<'a>) -> Panel<'a> {
-    let count = layers.rows.len();
-    let open = !layers.held;
-    let active = layers.active;
-    let action = |drawing, label: String, press: Message, enabled: bool| {
-        note_below(
-            button(crate::ui::centred(icon(
-                drawing,
-                16.0,
-                if enabled {
-                    theme::colours().text
-                } else {
-                    theme::colours().text_dim
-                },
-            )))
-            .width(Length::Fixed(28.0))
-            .height(Length::Fixed(28.0))
-            .padding(0)
-            .style(|_theme, status| quiet_style(status))
-            .on_press_maybe((open && enabled).then_some(press)),
-            label,
-        )
-    };
-    let keyed = |label: &str, key: String| crate::ui::strings::with_key(label, &key);
-    let command = crate::ui::strings::command_key;
-    let actions = row![
-        action(
-            icons::LAYER_NEW,
-            keyed(i18n::layer_new(), crate::ui::strings::shift_key("N")),
-            Message::Layer(LayerAction::Add),
-            true
-        ),
-        action(
-            icons::LAYER_DUPLICATE,
-            keyed(i18n::layer_duplicate(), command("J")),
-            Message::Layer(LayerAction::Duplicate),
-            true
-        ),
-        action(
-            icons::LAYER_DELETE,
-            i18n::layer_delete().to_owned(),
-            Message::Layer(LayerAction::Delete),
-            count > 1
-        ),
-        action(
-            icons::LAYER_UP,
-            keyed(i18n::layer_move_up(), command("]")),
-            Message::Layer(LayerAction::Move(true)),
-            active + 1 < count
-        ),
-        action(
-            icons::LAYER_DOWN,
-            keyed(i18n::layer_move_down(), command("[")),
-            Message::Layer(LayerAction::Move(false)),
-            active > 0
-        ),
-        action(
-            icons::LAYER_MERGE,
-            keyed(i18n::layer_merge_down(), command("E")),
-            Message::Layer(LayerAction::Merge),
-            layers.can_merge
-        ),
-        action(
-            icons::LAYER_FLATTEN,
-            i18n::layer_flatten().to_owned(),
-            Message::Layer(LayerAction::Flatten),
-            layers.layered
-        ),
-    ]
-    .spacing(4);
-
-    let renaming = layers.renaming;
-    let opacity = layers.rows_opacity(active);
-    let list = column(
-        layers
-            .rows
-            .into_iter()
-            .enumerate()
-            .rev()
-            .map(|(index, row)| {
-                layer_row(
-                    index,
-                    row,
-                    index == active,
-                    renaming.filter(|_| index == active),
-                    open,
-                )
-            }),
-    )
-    .spacing(2);
-
-    Panel::new(i18n::layers())
-        .loose(actions)
-        .plain(list)
-        .plain(
-            column![
-                field_row(i18n::opacity(), Field::LayerOpacity, opacity, layers.typed),
-                slider(0.0..=1.0_f32, opacity, |v| Message::Layer(
-                    LayerAction::Opacity(v)
-                ))
-                .step(1.0_f32 / 255.0)
-                .style(controls::slider_style)
-                .on_release(Message::Layer(LayerAction::OpacitySettled)),
-            ]
-            .spacing(8),
-        )
-        .hint(i18n::layer_rename())
-}
-
-impl Layers<'_> {
-    fn rows_opacity(&self, index: usize) -> f32 {
-        self.rows
-            .get(index)
-            .map_or(1.0, |row| row.opacity as f32 / 255.0)
-    }
-}
-
-const THUMBNAIL_SIZE: (f32, f32) = (44.0, 32.0);
-
-fn layer_row<'a>(
-    index: usize,
-    row_of: LayerRow<'a>,
-    active: bool,
-    renaming: Option<&'a str>,
-    open: bool,
-) -> Element<'a, Message> {
-    let ink = match (active, row_of.visible) {
-        (true, _) => theme::colours().selection_text,
-        (false, true) => theme::colours().text,
-        (false, false) => theme::colours().text_dim,
-    };
-    let (eye, eye_hint) = if row_of.visible {
-        (icons::EYE, i18n::layer_hide())
-    } else {
-        (icons::EYE_CLOSED, i18n::layer_show())
-    };
-    let eye = note_below(
-        button(crate::ui::centred(icon(eye, 16.0, ink)))
-            .width(Length::Fixed(26.0))
-            .height(Length::Fixed(26.0))
-            .padding(0)
-            .style(|_theme, status| quiet_style(status))
-            .on_press_maybe(open.then_some(Message::Layer(LayerAction::ToggleVisible(index)))),
-        eye_hint,
-    );
-    let thumbnail: Element<'a, Message> = match row_of.thumbnail {
-        Some(handle) => iced::widget::image(handle)
-            .width(Length::Fixed(THUMBNAIL_SIZE.0))
-            .height(Length::Fixed(THUMBNAIL_SIZE.1))
-            .content_fit(iced::ContentFit::Contain)
-            .into(),
-        None => Space::new()
-            .width(Length::Fixed(THUMBNAIL_SIZE.0))
-            .height(Length::Fixed(THUMBNAIL_SIZE.1))
-            .into(),
-    };
-    let name: Element<'a, Message> = match renaming {
-        Some(draft) => text_input("", draft)
-            .id(RENAME_ID)
-            .size(13)
-            .padding(4)
-            .style(controls::text_input_style)
-            .on_input(|name| Message::Layer(LayerAction::NameEdited(name)))
-            .on_submit(Message::Layer(LayerAction::Renamed))
-            .width(Length::Fill)
-            .into(),
-        None => text(row_of.name)
-            .size(13)
-            .color(ink)
-            .wrapping(iced::widget::text::Wrapping::None)
-            .width(Length::Fill)
-            .into(),
-    };
-    let face = container(
-        row![eye, thumbnail, name]
-            .spacing(6)
-            .align_y(iced::Alignment::Center),
-    )
-    .padding([4, 4])
-    .width(Length::Fill)
-    .style(move |_theme| container::Style {
-        background: active.then(theme::selection_wash),
-        border: iced::Border {
-            radius: 4.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    });
-    if !open || renaming.is_some() {
-        return face.into();
-    }
-    mouse_area(face)
-        .on_press(Message::Layer(LayerAction::Select(index)))
-        .on_double_click(Message::Layer(LayerAction::RenameStarted(index)))
-        .into()
-}
-
-fn scroll_style(theme: &iced::Theme, status: scrollable::Status) -> scrollable::Style {
+pub fn scroll_style(theme: &iced::Theme, status: scrollable::Status) -> scrollable::Style {
     let c = theme::colours();
     let lit = matches!(status, scrollable::Status::Hovered { .. });
     let rail = scrollable::Rail {
@@ -460,7 +128,7 @@ fn shapes_panel<'a>(
     typed: Option<(Field, &'a str)>,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
-) -> Panel<'a> {
+) -> Element<'a, Message> {
     match live {
         Some(live) => shape_style_panel(style, target, live, typed, custom, custom_menu),
         None => shape_grid(chosen),
@@ -486,7 +154,7 @@ pub struct Live {
     pub boned: bool,
 }
 
-fn shape_grid<'a>(chosen: Drawing) -> Panel<'a> {
+fn shape_grid<'a>(chosen: Drawing) -> Element<'a, Message> {
     let mut curves = row![].spacing(4);
     for kind in curve::ALL {
         let kind = *kind;
@@ -524,6 +192,7 @@ fn shape_grid<'a>(chosen: Drawing) -> Panel<'a> {
         .card(i18n::shapes_line_and_curve(), curves)
         .plain(grid)
         .hint(hint)
+        .into()
 }
 
 fn shape_style_panel<'a>(
@@ -533,7 +202,7 @@ fn shape_style_panel<'a>(
     typed: Option<(Field, &'a str)>,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
-) -> Panel<'a> {
+) -> Element<'a, Message> {
     let mut panel = Panel::new(live.name);
     if let Some(count) = live.points {
         panel = panel.hint(i18n::point_count(count));
@@ -637,7 +306,7 @@ fn shape_style_panel<'a>(
         );
     }
 
-    panel.card(i18n::colour(), paint).hint(hint)
+    panel.card(i18n::colour(), paint).hint(hint).into()
 }
 
 fn wide_button<'a>(label: &'a str, press: Message) -> Element<'a, Message> {
@@ -710,7 +379,7 @@ fn text_panel<'a>(
     style: &'a TextStyle,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
-) -> Panel<'a> {
+) -> Element<'a, Message> {
     let family = iced::widget::pick_list(
         crate::text::FAMILIES.as_slice(),
         Some(&style.family),
@@ -788,6 +457,7 @@ fn text_panel<'a>(
         )
         .card(i18n::colour(), swatches(style.colour, custom, custom_menu))
         .hint(i18n::text_hint())
+        .into()
 }
 
 fn letter<'a>(glyph: &'a str, active: bool, press: Message) -> Element<'a, Message> {
@@ -841,9 +511,9 @@ fn tile<'a>(
 
 // Every panel is a title with a stack of cards under it, in the same order throughout: what is
 // selected, then its options, then colour.
-pub struct Panel<'a> {
-    pub title: &'a str,
-    pub items: Vec<Element<'a, Message>>,
+struct Panel<'a> {
+    title: &'a str,
+    items: Vec<Element<'a, Message>>,
 }
 
 impl<'a> Panel<'a> {
@@ -877,6 +547,16 @@ impl<'a> Panel<'a> {
                 .color(theme::colours().text_dim)
                 .width(Length::Fill),
         )
+    }
+}
+
+impl<'a> From<Panel<'a>> for Element<'a, Message> {
+    fn from(panel: Panel<'a>) -> Self {
+        column![heading(panel.title)]
+            .extend(panel.items)
+            .spacing(12)
+            .align_x(iced::Alignment::Center)
+            .into()
     }
 }
 
@@ -1022,7 +702,7 @@ fn brushes<'a>(
     typed: Option<(Field, &'a str)>,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
-) -> Panel<'a> {
+) -> Element<'a, Message> {
     let mut options: Vec<Element<'a, Message>> = Vec::new();
 
     if brush.tool.profile().is_some() {
@@ -1135,17 +815,19 @@ fn brushes<'a>(
         panel = panel.card(i18n::options(), column![].extend(options).spacing(8));
     }
 
-    panel.card(
-        i18n::colour(),
-        column![
-            current_colour(brush),
-            swatches(brush.colour, custom, custom_menu),
-        ]
-        .spacing(8),
-    )
+    panel
+        .card(
+            i18n::colour(),
+            column![
+                current_colour(brush),
+                swatches(brush.colour, custom, custom_menu),
+            ]
+            .spacing(8),
+        )
+        .into()
 }
 
-fn symmetry_panel<'a>(mirror: Mirror) -> Panel<'a> {
+fn symmetry_panel<'a>(mirror: Mirror) -> Element<'a, Message> {
     Panel::new(i18n::symmetry())
         .card(
             i18n::symmetry_axes(),
@@ -1164,6 +846,7 @@ fn symmetry_panel<'a>(mirror: Mirror) -> Panel<'a> {
             .spacing(8),
         )
         .hint(i18n::symmetry_hint())
+        .into()
 }
 
 fn placement_rows<'a>(
@@ -1404,7 +1087,7 @@ fn stickers<'a>(
     blur_active: bool,
     settings: blur::Settings,
     typed: Option<(Field, &'a str)>,
-) -> Panel<'a> {
+) -> Element<'a, Message> {
     let mut panel = Panel::new(i18n::stickers_heading())
         .hint(i18n::stickers_hint())
         .card(
@@ -1618,10 +1301,14 @@ fn stickers<'a>(
         panel = panel.card(i18n::stickers_added(), grid);
     }
 
-    panel
+    panel.into()
 }
 
-fn canvas_panel<'a>(state: &CanvasPanel, size: (u32, u32), transparent: bool) -> Panel<'a> {
+fn canvas_panel<'a>(
+    state: &CanvasPanel,
+    size: (u32, u32),
+    transparent: bool,
+) -> Element<'a, Message> {
     let unit = if state.percent {
         i18n::unit_percent_sign()
     } else {
@@ -1738,24 +1425,10 @@ fn canvas_panel<'a>(state: &CanvasPanel, size: (u32, u32), transparent: bool) ->
             ]
             .spacing(4),
         )
+        .into()
 }
 
 // The only accent-filled buttons in the panel, so they carry the wash the tabs use when lit.
-// An icon on the panel itself, lit only under the pointer.
-fn quiet_style(status: button::Status) -> button::Style {
-    let c = theme::colours();
-    button::Style {
-        background: matches!(status, button::Status::Hovered | button::Status::Pressed)
-            .then(|| c.control_hover.into()),
-        text_color: c.text,
-        border: iced::Border {
-            radius: 4.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
 fn action_style(status: button::Status) -> button::Style {
     let c = theme::colours();
     button::Style {
@@ -1934,7 +1607,7 @@ pub fn crop_panel<'a>(
     framing: Option<Framing>,
     lock: bool,
     fields: (&'a str, &'a str),
-) -> Panel<'a> {
+) -> Element<'a, Message> {
     let mut grid = column![].spacing(4);
     for row_of in Framing::ALL.chunks(3) {
         let mut line = row![].spacing(4);
@@ -1970,6 +1643,7 @@ pub fn crop_panel<'a>(
             ]
             .spacing(8),
         )
+        .into()
 }
 
 fn framing_tile<'a>(kind: Option<Framing>, chosen: Option<Framing>) -> Element<'a, Message> {
@@ -2033,7 +1707,7 @@ fn size_field<'a>(
 pub fn cutout_panel<'a>(
     cutout: &'a crate::app::CuttingOut,
     typed: Option<(Field, &'a str)>,
-) -> Panel<'a> {
+) -> Element<'a, Message> {
     let (refining, adding, autofill) = (cutout.refining, cutout.adding, cutout.autofill);
     if !refining {
         return Panel::new(i18n::smart_cutout())
@@ -2046,7 +1720,8 @@ pub fn cutout_panel<'a>(
                     wide_button(i18n::cutout_next(), Message::CutoutNext),
                 ]
                 .spacing(8),
-            );
+            )
+            .into();
     }
 
     let hint = if adding {
@@ -2150,6 +1825,7 @@ pub fn cutout_panel<'a>(
             ]
             .spacing(8),
         )
+        .into()
 }
 
 fn cutout_target<'a>(

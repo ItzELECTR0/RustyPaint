@@ -73,6 +73,8 @@ catalogue! {
         settings_accent => "settings-accent",
         settings_acrylic => "settings-acrylic",
         settings_acrylic_note => "settings-acrylic-note",
+        settings_reduced_motion => "settings-reduced-motion",
+        settings_reduced_motion_note => "settings-reduced-motion-note",
         settings_rotation_dial => "settings-rotation-dial",
         settings_rotation_dial_note => "settings-rotation-dial-note",
         settings_unsaved => "settings-unsaved",
@@ -308,10 +310,7 @@ catalogue! {
         layer_flatten => "layer-flatten",
         layer_show => "layer-show",
         layer_hide => "layer-hide",
-        layer_rename => "layer-rename",
         layer_hidden => "layer-hidden",
-        section_collapse => "section-collapse",
-        section_expand => "section-expand",
         layers_flat_note => "layers-flat-note",
 
         // Crop

@@ -264,9 +264,11 @@ fn mean(v: &[Duration]) -> Duration {
 }
 
 fn fresh(canvas: (u32, u32), tip: Tip) -> App {
+    // The layers bar is out, so a release pays for redrawing its thumbnail as it would in use.
     let config = Config {
         theme: crate::ui::theme::Choice::Light,
         cutout_object: false,
+        layers_shown: true,
         ..Config::default()
     };
     let (mut app, _boot) = App::boot(config, None, None, None);

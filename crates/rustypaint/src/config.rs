@@ -45,7 +45,8 @@ pub struct Config {
     pub cutout_object: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cutout_model: Option<PathBuf>,
-    pub sidebar: crate::ui::sidebar::Layout,
+    pub layers_shown: bool,
+    pub reduced_motion: bool,
 }
 
 impl Default for Config {
@@ -66,7 +67,8 @@ impl Default for Config {
             custom_colours: Vec::new(),
             cutout_object: true,
             cutout_model: None,
-            sidebar: crate::ui::sidebar::Layout::default(),
+            layers_shown: false,
+            reduced_motion: false,
         }
     }
 }
@@ -178,11 +180,8 @@ mod tests {
             custom_colours: vec![[254, 168, 69, 255]],
             cutout_object: false,
             cutout_model: Some(PathBuf::from("models/custom")),
-            sidebar: crate::ui::sidebar::Layout {
-                tools_share: 0.4,
-                tools_open: false,
-                layers_open: true,
-            },
+            layers_shown: true,
+            reduced_motion: true,
         };
         let text = toml::to_string_pretty(&config).unwrap();
         assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
@@ -207,18 +206,11 @@ mod tests {
             OpenIn::Tab,
             "a build that never had windows opens tabs"
         );
-        assert_eq!(
-            config.sidebar,
-            crate::ui::sidebar::Layout::default(),
-            "a build that never had layers shares the side panel the default way"
+        assert!(
+            !config.layers_shown,
+            "a build that never had layers keeps the canvas clear"
         );
-    }
-
-    #[test]
-    fn half_a_sidebar_table_keeps_the_rest_of_its_defaults() {
-        let config: Config = toml::from_str("[sidebar]\nlayers_open = false\n").unwrap();
-        assert!(!config.sidebar.layers_open);
-        assert!(config.sidebar.tools_open);
+        assert!(!config.reduced_motion);
     }
 
     #[test]

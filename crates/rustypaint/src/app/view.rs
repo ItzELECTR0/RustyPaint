@@ -5,7 +5,9 @@ use crate::i18n;
 use crate::paint::Tool;
 use crate::select::{Lasso, Xform};
 use crate::ui::dialog;
+use crate::ui::drawer::drawer;
 use crate::ui::icons::{self, icon};
+use crate::ui::layers;
 use crate::ui::menu::{self};
 use crate::ui::picker::{self};
 use crate::ui::sidebar;
@@ -515,7 +517,18 @@ impl App {
         let steps = self.view.zoom.log2();
         let range = gpu::MIN_ZOOM.log2()..=gpu::MAX_ZOOM.log2();
 
+        let layers = self.config.layers_shown;
         row![
+            hint(
+                bar_button(crate::ui::centred(icon(
+                    icons::LAYERS,
+                    16.0,
+                    colour_on_strip(layers)
+                )))
+                .style(move |_t, _s| tool_style(layers))
+                .on_press(Message::LayersToggled),
+                strings::with_key(i18n::layers(), "F7"),
+            ),
             hint(
                 strip(icons::FIT, Message::ZoomFit),
                 strings::with_key(i18n::fit_to_window(), &strings::command_key("0")),
@@ -783,12 +796,45 @@ impl App {
             self.tool_strip(),
             row![
                 self.canvas_view(),
-                sidebar::split(
-                    self.config.sidebar,
-                    metrics::SIDE_PANEL_WIDTH,
-                    move || self.tools_panel(),
-                    move || self.layers_panel(),
-                ),
+                match (&self.cropping, &self.cutting_out) {
+                    (_, Some(cutting_out)) => sidebar::shell(
+                        sidebar::cutout_panel(
+                            cutting_out,
+                            self.typed
+                                .as_ref()
+                                .map(|typed| (typed.field, typed.text.as_str())),
+                        ),
+                        metrics::SIDE_PANEL_WIDTH,
+                    ),
+                    (Some(cropping), None) => sidebar::shell(
+                        sidebar::crop_panel(
+                            cropping.framing,
+                            cropping.lock,
+                            (&cropping.fields.0, &cropping.fields.1),
+                        ),
+                        metrics::SIDE_PANEL_WIDTH,
+                    ),
+                    (None, None) => sidebar::panel(
+                        self.tab,
+                        &self.brush,
+                        self.mirror,
+                        self.typed_field(),
+                        &self.panel,
+                        self.resize_preview.unwrap_or(self.doc.size()),
+                        self.doc.transparent(),
+                        self.drawing,
+                        self.shape_style,
+                        self.blur_settings,
+                        &self.text_style,
+                        metrics::SIDE_PANEL_WIDTH,
+                        self.colour_target,
+                        self.live_drawing(),
+                        self.live_placement(),
+                        &self.config.custom_colours,
+                        self.custom_colour_menu,
+                        &self.stickers,
+                    ),
+                },
             ]
             .height(Length::Fill),
             self.bottom_bar(),
@@ -796,50 +842,16 @@ impl App {
         .into()
     }
 
-    pub(super) fn tools_panel(&self) -> sidebar::Panel<'_> {
-        match (&self.cropping, &self.cutting_out) {
-            (_, Some(cutting_out)) => sidebar::cutout_panel(
-                cutting_out,
-                self.typed
-                    .as_ref()
-                    .map(|typed| (typed.field, typed.text.as_str())),
-            ),
-            (Some(cropping), None) => sidebar::crop_panel(
-                cropping.framing,
-                cropping.lock,
-                (&cropping.fields.0, &cropping.fields.1),
-            ),
-            (None, None) => sidebar::panel(
-                self.tab,
-                &self.brush,
-                self.mirror,
-                self.typed_field(),
-                &self.panel,
-                self.resize_preview.unwrap_or(self.doc.size()),
-                self.doc.transparent(),
-                self.drawing,
-                self.shape_style,
-                self.blur_settings,
-                &self.text_style,
-                self.colour_target,
-                self.live_drawing(),
-                self.live_placement(),
-                &self.config.custom_colours,
-                self.custom_colour_menu,
-                &self.stickers,
-            ),
-        }
-    }
-
-    pub(super) fn layers_panel(&self) -> sidebar::Panel<'_> {
-        let rows = self
+    pub(super) fn layers_bar(&self) -> Option<Element<'_, Message>> {
+        let shift = self.layers_shift()?;
+        let tiles = self
             .doc
             .layers()
             .iter()
-            .map(|layer| sidebar::LayerRow {
-                name: &layer.name,
+            .enumerate()
+            .map(|(index, layer)| layers::Tile {
                 visible: layer.visible,
-                opacity: layer.opacity,
+                mergeable: self.doc.can_merge(index),
                 thumbnail: self
                     .thumbnails
                     .iter()
@@ -847,19 +859,19 @@ impl App {
                     .map(|thumbnail| thumbnail.handle.clone()),
             })
             .collect();
-        sidebar::layers_panel(sidebar::Layers {
-            rows,
+        let bar = layers::bar(layers::Bar {
+            tiles,
             active: self.doc.active(),
-            renaming: self.renaming.as_deref(),
+            opacity: self.doc.active_layer().opacity,
             typed: self
                 .typed
                 .as_ref()
                 .filter(|typed| typed.field == Field::LayerOpacity)
-                .map(|typed| (typed.field, typed.text.as_str())),
-            can_merge: self.doc.can_merge_down(),
+                .map(|typed| typed.text.as_str()),
             layered: self.doc.layered(),
             held: self.cropping.is_some() || self.cutting_out.is_some(),
-        })
+        });
+        Some(drawer(bar, layers::WIDTH, layers::MARGIN, shift))
     }
 
     pub(super) fn tab_strip(&self) -> Element<'_, Message> {
@@ -1107,7 +1119,7 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill);
 
-        iced::widget::stack![
+        let mut layered = iced::widget::stack![
             viewport,
             iced::widget::canvas(Outline {
                 drawn: self.being_drawn(),
@@ -1118,8 +1130,11 @@ impl App {
             })
             .width(Length::Fill)
             .height(Length::Fill),
-        ]
-        .into()
+        ];
+        if let Some(bar) = self.layers_bar() {
+            layered = layered.push(bar);
+        }
+        layered.into()
     }
 
     pub(super) fn rotation_dial(&self) -> Option<((f32, f32), f32)> {
