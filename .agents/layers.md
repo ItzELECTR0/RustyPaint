@@ -25,12 +25,13 @@ Photoshop is the behavioural reference; Paint's layers panel is the approachabil
 - Delete hands over to the layer below, or the one above when the bottom layer goes. The last
   layer cannot be deleted.
 - Merge down composites the active layer into the one below at both layers' opacities and leaves
-  the result fully opaque, so the picture looks the same. Like Photoshop, it is refused while either
-  layer is hidden. Flatten drops hidden layers, as Photoshop's does; undo brings them back.
+  the result fully opaque, so the picture looks the same. It is refused while either layer is
+  hidden, because there is no answer that keeps both what shows and what is hidden. Flatten drops
+  hidden layers, which Photoshop asks about first; here undo brings them back.
 - Painting, filling, selecting, drawing a shape or starting text on a hidden layer is refused with a
   status message, because nothing would show.
-- The eyedropper samples what the layers show together; the fill reads only the active layer. These
-  are Photoshop's defaults for the two tools.
+- The eyedropper samples what the layers show together, so it picks the colour you see. The fill
+  reads only the active layer, as Photoshop's paint bucket does unless told otherwise.
 - Selecting a layer is not an undo step. Adding, duplicating, deleting, moving, merging, flattening,
   hiding, renaming and opacity are. An opacity drag is one step: `set_opacity` changes the layer
   live and remembers where the stack stood, and `settle` files the step when the slider is released
@@ -41,8 +42,8 @@ Photoshop is the behavioural reference; Paint's layers panel is the approachabil
 - A live object (selection, paste, sticker, shape, curve, text) belongs to the layer it was made on.
   Anything that changes the active layer or the stack's structure commits it there first, the way
   picking another tool does. Visibility, opacity and renaming leave it alone.
-- Crop and Smart cutout hold the stack still: the layers panel is shown but inert until they end,
-  because cutout's analysis and crop's frame belong to the active layer as it was.
+- Crop and Smart cutout hold the stack still: the layers panel is shown but inert until they end.
+  Cutout's analysis belongs to the active layer as it was, and a crop is about to change every layer.
 - Double-clicking a name edits it; Enter, or moving on to anything else, keeps the new name.
 - Shortcuts are Photoshop's: Ctrl+Shift+N new layer, Ctrl+J duplicate, Ctrl+E merge down, Ctrl+] and
   Ctrl+[ move the layer up and down.
@@ -138,12 +139,34 @@ Save and open timings, release build on 4 cores, `cargo test --release -p rustyp
 
 | Canvas | Layers | Project | Save | Open | Flat PNG |
 |---|---|---|---|---|---|
-| 1920x1080 | 5 | 12.4 MB | 112 ms | 80 ms | 5.8 MB, 37 ms |
-| 4000x3000 | 5 | 71.5 MB | 633 ms | 560 ms | 33.5 MB, 217 ms |
-| 6000x4000 | 3 | 139.6 MB | 1227 ms | 789 ms | 67.5 MB, 440 ms |
+| 1920x1080 | 5 | 12.4 MB | 112 ms | 79 ms | 5.8 MB, 37 ms |
+| 4000x3000 | 5 | 71.5 MB | 626 ms | 556 ms | 33.5 MB, 246 ms |
+| 6000x4000 | 3 | 139.6 MB | 1184 ms | 820 ms | 67.5 MB, 427 ms |
 
 A project is about twice the flat PNG, because the merged picture is stored as well as the layers.
 Saving runs off the interface thread, so the cost is only how long until the file is complete.
+
+## Cost
+
+Strokes pay nothing for layers: the canvas texture is still the one layer being painted, and the
+layer thumbnails wait for a stroke to end. Against the branch point on the same machine, with real
+uploads to a software Vulkan device, `stroke_timings` keeps zero whole uploads, canvas copies and
+missed pixels in all 72 cases, with the median frame within 4% (noise) and a release about 0.2 ms
+slower for the one thumbnail redraw.
+
+Anything that changes the layers under or over the active one recomposites both sides on the CPU,
+in parallel above a million pixels. `cargo test --release -p rustypaint layer_timings -- --ignored
+--nocapture`, sparse layers over an opaque one:
+
+| Canvas | Layers | Select | Hide another | Add | Merge down |
+|---|---|---|---|---|---|
+| 1920x1080 | 5 | 8 ms | 6 ms | 8 ms | 18 ms |
+| 4000x3000 | 8 | 86 ms | 84 ms | 130 ms | 214 ms |
+| 6000x4000 | 8 | 183 ms | 176 ms | 246 ms | 386 ms |
+
+That is fine at ordinary sizes and a visible pause on very large, deep stacks. Tracking each layer's
+content bounds, or a texture per layer composited on the GPU, are the two ways out; neither is
+needed yet.
 
 ## Game engines
 

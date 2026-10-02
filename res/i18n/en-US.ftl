@@ -312,7 +312,6 @@ document-size = { $width } x { $height }
 ## Layers
 
 layers = Layers
-tools = Tools
 layer-background = Background
 layer-numbered = Layer { $number }
 layer-copy = { $name } copy

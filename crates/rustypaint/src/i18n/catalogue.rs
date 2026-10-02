@@ -298,7 +298,6 @@ catalogue! {
 
         // Layers
         layers => "layers",
-        tools => "tools",
         layer_background => "layer-background",
         layer_new => "layer-new",
         layer_duplicate => "layer-duplicate",

@@ -312,7 +312,6 @@ document-size = { $width } x { $height }
 ## Layers
 
 layers = Straturi
-tools = Unelte
 layer-background = Fundal
 layer-numbered = Stratul { $number }
 layer-copy = { $name } copie

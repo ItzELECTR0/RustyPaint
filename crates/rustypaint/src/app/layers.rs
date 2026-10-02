@@ -90,8 +90,12 @@ impl App {
         hidden
     }
 
-    // The active layer's picture changes with every stamp; the others only when the stack does.
+    // The others change only when the stack does. The active one changes with every stamp, so
+    // it waits for the stroke to end rather than costing every pointer sample.
     pub(super) fn refresh_thumbnails(&mut self) {
+        if self.stroke.is_some() {
+            return;
+        }
         let active = self.doc.active();
         let mut kept = Vec::with_capacity(self.doc.layers().len());
         for (index, layer) in self.doc.layers().iter().enumerate() {
