@@ -76,10 +76,17 @@ impl Document {
 
     // Every layer has to be the canvas's size; the readers crop and pad them to it first.
     pub fn from_stack(stack: Stack, path: Option<PathBuf>) -> Self {
+        let mut doc = Self::unshown(stack, path);
+        doc.restack();
+        doc
+    }
+
+    // Without the viewport's composites, for a document nothing will draw.
+    fn unshown(stack: Stack, path: Option<PathBuf>) -> Self {
         assert!(!stack.layers.is_empty(), "a document always has a layer");
         let next_id = stack.layers.iter().map(|layer| layer.id).max().unwrap_or(0) + 1;
         let version = next_version();
-        let mut doc = Self {
+        Self {
             stack,
             below: None,
             above: None,
@@ -93,9 +100,7 @@ impl Document {
             history: History::default(),
             next_id,
             arranging: None,
-        };
-        doc.restack();
-        doc
+        }
     }
 
     // Restored work is unsaved by definition, whatever the file it came from says.
@@ -107,7 +112,7 @@ impl Document {
 
     // A copy sharing every pixel, for committing a live object into without touching this one.
     pub fn detached(&self) -> Self {
-        Self::from_stack(self.stack.clone(), None)
+        Self::unshown(self.stack.clone(), None)
     }
 
     pub fn pixels(&self) -> &Rgba8 {
@@ -404,6 +409,10 @@ impl Document {
         if before == after && kept.is_empty() {
             return;
         }
+        // The canvas texture holds the active layer, so it is sent again only when that changes.
+        if before.active != after.active {
+            self.version = next_version();
+        }
         self.history.push(
             label,
             Edit::Layers {
@@ -413,7 +422,6 @@ impl Document {
             },
         );
         self.touched = false;
-        self.version = next_version();
         self.restack();
     }
 
@@ -995,5 +1003,38 @@ mod tests {
         assert!(!d.layered());
         d.set_opacity(0, 100);
         assert!(d.layered(), "saving it flat would bake the opacity in");
+    }
+
+    // `cargo test --release -p rustypaint layer_timings -- --ignored --nocapture`
+    #[test]
+    #[ignore = "a measurement, not a check"]
+    fn layer_timings() {
+        for (size, count) in [((1920, 1080), 5), ((4000, 3000), 8), ((6000, 4000), 8)] {
+            let mut d = Document::from_image(Rgba8::new(size.0, size.1, [90, 120, 200, 255]), None);
+            for _ in 1..count {
+                d.add_layer();
+                let at = d.size().0 as usize * 4 * (size.1 as usize / 2);
+                d.edit().pixels_mut()[at..at + 4 * 400].fill(200);
+                d.commit_parts("Marker", Vec::new());
+            }
+            let time = |d: &mut Document, change: &dyn Fn(&mut Document)| {
+                let start = std::time::Instant::now();
+                change(d);
+                start.elapsed().as_secs_f64() * 1e3
+            };
+            let select = time(&mut d, &|d| {
+                d.select_layer(count / 2);
+            });
+            let hide = time(&mut d, &|d| d.set_visible(count - 1, false));
+            let add = time(&mut d, &|d| d.add_layer());
+            let merge = time(&mut d, &|d| {
+                d.merge_down();
+            });
+            println!(
+                "{}x{} {count} layers: select {select:.0} ms, hide another {hide:.0} ms, \
+                 add {add:.0} ms, merge down {merge:.0} ms",
+                size.0, size.1
+            );
+        }
     }
 }

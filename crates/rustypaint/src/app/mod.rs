@@ -355,9 +355,7 @@ impl Message {
                 interaction,
                 gpu::Interaction::Viewed(_) | gpu::Interaction::CaretTick
             ),
-            Message::Layer(
-                LayerAction::NameEdited(_) | LayerAction::Renamed | LayerAction::RenameStarted(_),
-            )
+            Message::Layer(LayerAction::NameEdited(_) | LayerAction::Renamed)
             | Message::SnapshotTick
             | Message::Snapshotted(..)
             | Message::ParkedSnapshotted(_)

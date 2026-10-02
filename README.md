@@ -22,6 +22,17 @@ It also has some QoL features like dark mode, editable curve and shape points, s
 
 It detects image types from their contents, opens several icon and obscure bitmap formats, and Save as can convert between the formats it writes.
 
+## How do layers work?
+
+A picture starts flat, like it did in Paint 3D. Add a layer from the Layers half of the side panel and
+it turns into a project: every layer has its own name, visibility and opacity, and the brushes, fill,
+shapes, text and pastes all land on the highlighted one. Save keeps the layers as an OpenRaster
+(`.ora`) project, which Krita opens too. Picking a flat format in Save as exports a flattened copy
+and leaves the layers alone, and Flatten image takes you back to one layer on purpose.
+
+Drag the bar between the tools and the layers to share the panel, or click either heading to fold
+that half away.
+
 ## How do I cut something out?
 
 Open Smart cutout, draw a box around what you want, and choose Next. You can keep the subject, keep

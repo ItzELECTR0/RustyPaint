@@ -66,6 +66,9 @@ is fixed.
   commit time would bake in whatever language was active and leave the list stale after a switch.
   Nothing displays them yet; the history flyout should translate them at render time when it lands.
 - Config file values, file extensions, and `expect` messages. None of them are read by a user.
+- Layer names after they are made. A new layer's default name is translated once, at creation,
+  because from then on it is the document's content and travels in its file; switching language
+  renames nothing.
 
 ## Choosing the locale
 

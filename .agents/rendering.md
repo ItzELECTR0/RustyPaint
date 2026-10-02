@@ -3,6 +3,19 @@
 The viewport is an iced shader widget backed by one wgpu pipeline, uniform buffer, and canvas
 texture. Pan, zoom, caret animation, and marching ants should require uniform updates only.
 
+The canvas texture holds only the active layer, so a stroke uploads what it did before layers
+existed. What the visible layers under and over it come to are two more textures, `below` and
+`above` (`gpu::Surround`), keyed by `Document::composites` and uploaded whole only when the stack
+changes. Source-over is associative, which is what lets the stack be split there. The active layer's
+opacity is a uniform, so a slider drag uploads nothing. Either texture is dropped when its side is
+empty, so a flat picture costs one texture as it always did.
+
+The live object belongs to the active layer: the shader composites it over that layer's texel and
+fades the two together by the layer's opacity, between `below` and `above`, which is what the commit
+will produce. Smart cutout's shading is a view of the picture rather than part of a layer and stays
+on top. `the_layers_on_screen_are_the_layers_that_are_saved` holds the shader to `doc::layers::blend`
+within two levels.
+
 The canvas texture is keyed by document version. Regions may be uploaded only when they describe
 every change since the version already on the GPU; the first frame, a version the application no
 longer remembers, or a shape change requires a full upload. This keeps brush strokes on large images

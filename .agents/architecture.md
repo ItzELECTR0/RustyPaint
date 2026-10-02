@@ -6,8 +6,8 @@
 state that has no better home; `update.rs` handles messages; `input.rs` turns pointer, key, and
 shortcut events into them; `live.rs` owns the live object's whole life from creation to commit,
 including crop and Smart cutout; `cutout.rs` owns asynchronous analysis and refinement history;
-`document.rs` covers saving, history, and whole-canvas pixel work;
-`view.rs` builds the widget tree.
+`document.rs` covers saving, history, and whole-canvas pixel work; `layers.rs` runs the layers
+panel's commands and keeps its thumbnails; `view.rs` builds the widget tree.
 
 Methods on `App` are spread across those files, so anything used outside the file it lives in needs
 `pub(super)`, which reaches every `app` submodule and no further. The tests are still one module
@@ -15,21 +15,25 @@ because they were written against the whole application and reach freely across 
 
 ## Document ownership
 
-The document owns one non-premultiplied RGBA8 bitmap in sRGB. White is a backing behind those
-pixels, not initial pixel data. Turning transparency on removes the backing without changing the
-bitmap; turning it off composites onto white and is therefore a recorded edit.
+The document owns a stack of canvas-sized layers, each a non-premultiplied RGBA8 bitmap in sRGB.
+Tools only ever touch the active layer, so `Document::pixels` and `Document::edit` name that layer
+and every tool works as it did on a single bitmap; how layers are added, ordered, saved and undone
+is in `.agents/layers.md`. White is a backing behind all the layers, not initial pixel data.
+Turning transparency on or off changes only that flag, as a recorded edit.
 
-There are no layers. The canvas holds committed pixels and the application may hold one live object:
-a selection, sticker, shape, curve, or text box. Committing composites that object into the document.
-Cancelling a lifted selection restores its hole; cancelling a newly created object simply discards
-it.
+The application may hold one live object: a selection, sticker, shape, curve, or text box. It
+belongs to the active layer, and committing composites it into that layer, so anything that would
+change the active layer commits it first. Cancelling a lifted selection restores its hole;
+cancelling a newly created object simply discards it.
 
 Live drawing labels follow the current source and point count, not the preset used to start it.
 Open paths with two points are lines, longer ones are curves, and closed paths are shapes. The
 picker keeps the original curve presets; editable paths show their point count separately.
 
-Document history stores before-and-after regions for local edits and copy-on-write whole buffers for
-canvas-wide changes. Brush strokes store only the tiles they changed (see `.agents/brushes.md`).
+Document history stores before-and-after regions for local edits, naming the layer they changed, and
+copy-on-write whole stacks for canvas-wide changes. Brush strokes store only the tiles they changed
+(see `.agents/brushes.md`); layer changes store only pixels no layer still owns (see
+`.agents/layers.md`).
 Live objects sit outside that history. Undo first resolves live state: text uses its own edit
 journal, while another live object is cancelled before committed document history moves.
 
@@ -75,13 +79,13 @@ turns the question off for people who would rather not be asked.
 ## Crash recovery
 
 A running editor is a session, and the session is every picture it has open. `recovery/<session>/`
-holds one PNG per unsaved document, plus `session.toml` naming the tab order, which tab was in
-front, and which documents were at risk. Saved pictures are listed but not copied, because their
-pixels are already on disk; they come back off their own path. Restoring reopens the whole
-workspace, tab by tab, in the order it was left in.
+holds a PNG for each unsaved flat document and an OpenRaster project for each layered one, plus
+`session.toml` naming the tab order, which tab was in front, and which documents were at risk.
+Saved pictures are listed but not copied, because their pixels are already on disk; they come back
+off their own path. Restoring reopens the whole workspace, tab by tab, in the order it was left in.
 
-The PNGs are the documents rather than the flattened pictures `for_saving` produces, so a restore
-puts back exactly what was on screen, live object committed and all.
+The snapshots are the documents rather than flattened pictures, so a restore puts back exactly what
+was on screen, layers, backing and committed live object all.
 
 A crashed session is told from a running one by a lock, not by a clock. The editor holds an
 exclusive lock on `<session>/lock` for as long as it lives, and the kernel drops that lock however
@@ -105,65 +109,6 @@ rewrites the index, which is what drops a saved document's copy.
 Discarding on the way out clears the whole session and puts recovery down with it, because work
 thrown away on purpose is not work to restore. Keeping the session is the separate answer for
 leaving everything to be picked up next time.
-
-## Several documents
-
-The open document's state stays on `App` itself, so every tool keeps reaching for `self.doc` and
-friends directly. Other open documents are parked as `Sheet` values and swapped in whole. `collapse`
-puts the open document back into the tab order and hands over the full list; `expand` takes one back
-out. Every tab operation is written as collapse, change the list, expand, so the ordering rules live
-in one place instead of being spread through index arithmetic.
-
-`open_in` decides whether a second document joins this window or gets its own. A window is a second
-process rather than a second iced window, which keeps the single-window shell and gives each
-document its own crash-recovery identity for free.
-
-New and Open no longer replace what is open, so neither one can throw work away and neither asks. An
-untouched blank canvas is treated as a slot rather than as work, so the first file opened takes it
-over instead of leaving an empty tab behind. Closing a tab switches to it first, which is what lets
-the save prompt act on the right document without a second code path.
-
-Each sheet carries its own recovery identity and its own lock, so a parked tab is still visibly
-owned by this editor. A parked sheet cannot change, so it is snapshotted once as it is parked and
-afterwards only swept when its work reaches disk. Closing the window with unsaved work in a parked
-tab leaves that snapshot behind on purpose: the next launch offers it back.
-
-## Unsaved work
-
-There is no stored "modified" flag. Every history entry carries a serial, the current position names
-the state the canvas is in, and a save records that name; the document is modified when the position
-has a different name, so undoing back to what is on disk really is no change. A serial from a
-discarded redo branch or from an entry trimmed off the bottom can never be reached again, which is
-what should happen. Between an edit and the commit that files it the canvas is ahead of its history,
-so `touched` covers that gap and a commit clears it. A commit whose region comes out byte for byte
-the same records nothing at all.
-
-Anything that would throw away unsaved work goes through one in-window dialog rather than an OS
-message box, which on Linux costs a portal round trip the editor should not have to wait for. New,
-Open and closing the window all raise the same question and share the answer, and `confirm_discard`
-turns the question off for people who would rather not be asked.
-
-## Crash recovery
-
-Unsaved work is snapshotted into `recovery/` beside the settings file: the document's own pixels as
-PNG, plus a small TOML file holding the file it came from, whether it has a backing, and a stamp.
-The pixels are the document rather than the flattened picture `for_saving` produces, so a restore
-puts back exactly what was on screen, live object committed and all.
-
-A crashed session is told from a running one by a lock, not by a clock. Each sheet holds an
-exclusive lock on its own `.lock` file for as long as its editor lives, and the kernel drops that
-lock however the process dies, a kill included. A snapshot whose lock can be taken therefore belongs
-to an editor that is gone, and the work is offered back the instant the next launch happens rather
-than after a timeout. A filesystem that cannot lock at all is treated as not running, because
-refusing to offer the work would be the worse failure. Recovering brings every abandoned document
-back, each in its own tab; declining clears the lot. Nothing is deleted that has not either been
-recovered or explicitly thrown away.
-
-Saving, and anything that goes through `carry_on`, clears the running session's snapshot, because
-the work behind it is either on disk or deliberately gone.
-
-Recovery identities carry a per-process counter as well as the clock, because two documents opened
-in the same second would otherwise share one snapshot.
 
 The beat runs on its own thread feeding a channel, because iced's `thread-pool` executor has no
 interval helper and `iced::time::every` needs the `tokio` or `smol` backend.
@@ -234,9 +179,17 @@ Card padding and `SIDE_PANEL_GUTTER_MARGIN` are tuned against the brush grid, wh
 tiles with 4px between them and therefore needs 216px inside the card. Widening either one clips the
 last column.
 
-`sidebar::shell` is the panel surround: the gutter, the scroll area and the veil. Crop and smart
-cutout go through it too, so they cannot drift from the tabs. The padding sits inside the scroll
-area so the bar rides the gutter rather than the cards.
+`sidebar::split` is the panel surround: tools above, layers below, each half with a header that folds
+it away and a scroll area of its own, and the veil behind both. Crop and Smart cutout are the tools
+half while they run, so they cannot drift from the tabs. Panels hand back their title and cards
+separately (`sidebar::Panel`) so the title can sit in the header and stay put while the cards
+scroll. The padding sits inside each scroll area so the bar rides the gutter rather than the cards.
+
+The sash between the halves is a canvas `Program` (`ui::sash`) because a drag that strays off a
+mouse area stops, and this one has to follow the pointer anywhere. It works out the share from where
+the drag began rather than from absolute positions, so `split` measures the room with `responsive`.
+Neither half can be dragged below `LEAST`; folding a half away is what its header is for. The share
+and both folds are saved in the settings' `[sidebar]` table, on release rather than on every move.
 
 `ui::segmented` is a canvas `Program` rather than a widget, so the pill's slide keeps its state and
 asks for its own redraws instead of going through the application update loop. The first frame
@@ -261,9 +214,12 @@ smithay-clipboard when it opens the window, so drops never arrive there.
 Opening guesses the format from the file header before falling back to its extension. `image` owns
 the standard codecs, `image-extras` registers the read-only obscure codecs, and ICNS is handled
 directly so its largest embedded icon can also be decoded when it uses JPEG 2000. Multi-image files
-still enter the single-canvas document as one image.
+still enter the document as one flat image. OpenRaster is the exception: `io::open` hands back its
+layers through `doc::ora`. A dropped or inserted file always floats as one picture, so `io::load`
+still reads a project's merged image.
 
-`doc::io::SaveFormat` is the source of truth for Save As choices, extensions, and encoders. The
+`doc::io::SaveFormat` is the source of truth for Save As choices, extensions, and encoders, and
+`io::save_document` writes a stack: as a project for OpenRaster, flattened for everything else. The
 selected format overrides an old filename extension, and the native dialog receives a matching
 default name and filter so Linux and macOS do not need to report which filter was selected.
 
