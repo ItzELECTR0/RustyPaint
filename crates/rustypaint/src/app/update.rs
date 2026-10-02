@@ -19,10 +19,14 @@ use super::*;
 impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let zoom = self.view.zoom;
+        if self.renaming.is_some() && message.ends_renaming() {
+            self.finish_renaming();
+        }
         let task = self.dispatch(message);
         if self.config.auto_pixel_grid && self.view.zoom != zoom {
             self.config.pixel_grid = self.view.zoom >= 8.0;
         }
+        self.refresh_thumbnails();
         Task::batch([task, self.snapshot()])
     }
 
@@ -50,6 +54,17 @@ impl App {
             self.typed = None;
         }
         match message {
+            Message::ToolsFolded => {
+                self.config.sidebar.tools_open = !self.config.sidebar.tools_open;
+                self.save_config();
+            }
+            Message::LayersFolded => {
+                self.config.sidebar.layers_open = !self.config.sidebar.layers_open;
+                self.save_config();
+            }
+            Message::SidebarSplit(share) => self.config.sidebar.tools_share = share,
+            Message::SidebarSplitSettled => self.save_config(),
+            Message::Layer(action) => return self.layer_action(action),
             Message::SnapshotTick => return self.snapshot(),
             Message::Snapshotted(at, result) => {
                 self.snapshotting = false;
@@ -491,7 +506,6 @@ impl App {
                 }
                 self.picking_field = None;
             }
-            Message::PickerFieldPressed => self.picking_field = Some(true),
             Message::PickerFieldStarted(saturation, value) => {
                 self.picking_field = Some(true);
                 if let Some(picker) = &mut self.picker {
@@ -500,7 +514,6 @@ impl App {
                     picker.clear_typed();
                 }
             }
-            Message::PickerStripPressed => self.picking_field = Some(false),
             Message::PickerHueStarted(hue) => {
                 self.picking_field = Some(false);
                 if let Some(picker) = &mut self.picker {
@@ -655,12 +668,6 @@ impl App {
                         c.aim.tone = sampled.unwrap_or(c.aim.tone);
                     }
                     c.aim.target = target;
-                }
-            }
-            Message::CutoutToneSampled(x, y) => {
-                self.sample_cutout_tone(x, y);
-                if self.refining() {
-                    return self.run_cutout();
                 }
             }
             Message::CutoutObjectToggled(on) => {

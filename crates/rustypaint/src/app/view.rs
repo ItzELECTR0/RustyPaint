@@ -782,50 +782,83 @@ impl App {
             self.tool_strip(),
             row![
                 self.canvas_view(),
-                match (&self.cropping, &self.cutting_out) {
-                    (_, Some(cutting_out)) => sidebar::shell(
-                        sidebar::cutout_panel(
-                            cutting_out,
-                            self.typed
-                                .as_ref()
-                                .map(|typed| (typed.field, typed.text.as_str())),
-                        ),
-                        metrics::SIDE_PANEL_WIDTH,
-                    ),
-                    (Some(cropping), None) => sidebar::shell(
-                        sidebar::crop_panel(
-                            cropping.framing,
-                            cropping.lock,
-                            (&cropping.fields.0, &cropping.fields.1),
-                        ),
-                        metrics::SIDE_PANEL_WIDTH,
-                    ),
-                    (None, None) => sidebar::panel(
-                        self.tab,
-                        &self.brush,
-                        self.mirror,
-                        self.typed_field(),
-                        &self.panel,
-                        self.resize_preview.unwrap_or(self.doc.size()),
-                        self.doc.transparent(),
-                        self.drawing,
-                        self.shape_style,
-                        self.blur_settings,
-                        &self.text_style,
-                        metrics::SIDE_PANEL_WIDTH,
-                        self.colour_target,
-                        self.live_drawing(),
-                        self.live_placement(),
-                        &self.config.custom_colours,
-                        self.custom_colour_menu,
-                        &self.stickers,
-                    ),
-                },
+                sidebar::split(
+                    self.config.sidebar,
+                    metrics::SIDE_PANEL_WIDTH,
+                    move || self.tools_panel(),
+                    move || self.layers_panel(),
+                ),
             ]
             .height(Length::Fill),
             self.bottom_bar(),
         ]
         .into()
+    }
+
+    pub(super) fn tools_panel(&self) -> sidebar::Panel<'_> {
+        match (&self.cropping, &self.cutting_out) {
+            (_, Some(cutting_out)) => sidebar::cutout_panel(
+                cutting_out,
+                self.typed
+                    .as_ref()
+                    .map(|typed| (typed.field, typed.text.as_str())),
+            ),
+            (Some(cropping), None) => sidebar::crop_panel(
+                cropping.framing,
+                cropping.lock,
+                (&cropping.fields.0, &cropping.fields.1),
+            ),
+            (None, None) => sidebar::panel(
+                self.tab,
+                &self.brush,
+                self.mirror,
+                self.typed_field(),
+                &self.panel,
+                self.resize_preview.unwrap_or(self.doc.size()),
+                self.doc.transparent(),
+                self.drawing,
+                self.shape_style,
+                self.blur_settings,
+                &self.text_style,
+                self.colour_target,
+                self.live_drawing(),
+                self.live_placement(),
+                &self.config.custom_colours,
+                self.custom_colour_menu,
+                &self.stickers,
+            ),
+        }
+    }
+
+    pub(super) fn layers_panel(&self) -> sidebar::Panel<'_> {
+        let rows = self
+            .doc
+            .layers()
+            .iter()
+            .map(|layer| sidebar::LayerRow {
+                name: &layer.name,
+                visible: layer.visible,
+                opacity: layer.opacity,
+                thumbnail: self
+                    .thumbnails
+                    .iter()
+                    .find(|thumbnail| thumbnail.layer == layer.id)
+                    .map(|thumbnail| thumbnail.handle.clone()),
+            })
+            .collect();
+        sidebar::layers_panel(sidebar::Layers {
+            rows,
+            active: self.doc.active(),
+            renaming: self.renaming.as_deref(),
+            typed: self
+                .typed
+                .as_ref()
+                .filter(|typed| typed.field == Field::LayerOpacity)
+                .map(|typed| (typed.field, typed.text.as_str())),
+            can_merge: self.doc.can_merge_down(),
+            layered: self.doc.layered(),
+            held: self.cropping.is_some() || self.cutting_out.is_some(),
+        })
     }
 
     pub(super) fn tab_strip(&self) -> Element<'_, Message> {

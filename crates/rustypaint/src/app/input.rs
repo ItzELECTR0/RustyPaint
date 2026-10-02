@@ -235,6 +235,9 @@ impl App {
                     self.cutout_dab(x, y, true);
                     return;
                 }
+                if self.brush.tool != Tool::Pipette && self.on_hidden_layer() {
+                    return;
+                }
                 self.last_point = Some((x, y));
                 self.begin(x, y)
             }
@@ -271,7 +274,7 @@ impl App {
             gpu::Interaction::SelectBegan(x, y) => {
                 let typing = self.typing();
                 self.commit_floating();
-                if typing {
+                if typing || self.on_hidden_layer() {
                     return;
                 }
                 self.selecting = Some(((x, y), (x, y)));

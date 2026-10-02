@@ -20,6 +20,7 @@ use std::path::PathBuf;
 mod cutout;
 mod document;
 mod input;
+mod layers;
 mod live;
 mod update;
 mod view;
@@ -201,6 +202,7 @@ pub enum Field {
     CutoutShift,
     CutoutBrush,
     CutoutTolerance,
+    LayerOpacity,
 }
 
 impl Field {
@@ -241,7 +243,8 @@ impl Field {
             | Field::Opacity
             | Field::Stabilizer
             | Field::Tolerance
-            | Field::FloatOpacity => (0.0, 1.0),
+            | Field::FloatOpacity
+            | Field::LayerOpacity => (0.0, 1.0),
         }
     }
 
@@ -255,6 +258,7 @@ impl Field {
                 | Field::Tolerance
                 | Field::BlurDetail
                 | Field::FloatOpacity
+                | Field::LayerOpacity
         )
     }
 
@@ -338,11 +342,37 @@ impl Field {
             Field::FloatY => Message::FloatSideChanged(Side::Y, value),
             Field::FloatWidth => Message::FloatSideChanged(Side::Width, value),
             Field::FloatHeight => Message::FloatSideChanged(Side::Height, value),
+            Field::LayerOpacity => Message::Layer(LayerAction::Opacity(value)),
         }
     }
 }
 
 impl Message {
+    // A name being typed is kept the moment the hand moves on to anything else.
+    fn ends_renaming(&self) -> bool {
+        match self {
+            Message::Canvas(interaction) => !matches!(
+                interaction,
+                gpu::Interaction::Viewed(_) | gpu::Interaction::CaretTick
+            ),
+            Message::Layer(
+                LayerAction::NameEdited(_) | LayerAction::Renamed | LayerAction::RenameStarted(_),
+            )
+            | Message::SnapshotTick
+            | Message::Snapshotted(..)
+            | Message::ParkedSnapshotted(_)
+            | Message::ModifiersChanged(_)
+            | Message::WindowResized(_)
+            | Message::WindowFocused
+            | Message::WindowUnfocused
+            | Message::SprayTick
+            | Message::NudgeTick(_)
+            | Message::CutoutFinished(..)
+            | Message::SidebarSplit(_) => false,
+            _ => true,
+        }
+    }
+
     // A slider drag or a nudge takes the value back, so half-typed text in its box is gone.
     fn moves_a_field(&self) -> bool {
         matches!(
@@ -362,6 +392,7 @@ impl Message {
                 | Message::BlurBladesChanged(_)
                 | Message::FloatOpacityChanged(_)
                 | Message::FloatSideChanged(_, _)
+                | Message::Layer(LayerAction::Opacity(_))
         )
     }
 }
@@ -445,6 +476,16 @@ pub struct App {
     parked: Vec<Sheet>,
     active: usize,
     tab_menu: Option<usize>,
+    // The draft name of the active layer while its name is being edited.
+    renaming: Option<String>,
+    thumbnails: Vec<Thumbnail>,
+}
+
+// A layer's picture in the layers list, redrawn only when what it shows can have changed.
+struct Thumbnail {
+    layer: doc::LayerId,
+    drawn_at: Version,
+    handle: iced::widget::image::Handle,
 }
 
 // A held arrow key walking a selection along, slowly at first and then at a rate you can still read.
@@ -522,9 +563,7 @@ pub enum Message {
     PickerOpened(Picking),
     PickerClosed,
     PickerConfirmed,
-    PickerFieldPressed,
     PickerFieldStarted(f32, f32),
-    PickerStripPressed,
     PickerHueStarted(f32),
     PickerFieldPicked(f32, f32),
     PickerHuePicked(f32),
@@ -554,7 +593,6 @@ pub enum Message {
     CutoutAutofillToggled(bool),
     CutoutObjectToggled(bool),
     CutoutTargetPicked(crate::select::cutout::workflow::Target),
-    CutoutToneSampled(f32, f32),
     CutoutModelRequested,
     CutoutModelPicked(Option<PathBuf>),
     CutoutModelReset,
@@ -636,6 +674,28 @@ pub enum Message {
     ModifiersChanged(iced::keyboard::Modifiers),
     Rotate(bool),
     Flip(bool),
+    ToolsFolded,
+    LayersFolded,
+    SidebarSplit(f32),
+    SidebarSplitSettled,
+    Layer(LayerAction),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayerAction {
+    Select(usize),
+    Add,
+    Duplicate,
+    Delete,
+    Move(bool),
+    Merge,
+    Flatten,
+    ToggleVisible(usize),
+    Opacity(f32),
+    OpacitySettled,
+    RenameStarted(usize),
+    NameEdited(String),
+    Renamed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -821,6 +881,8 @@ impl App {
             parked: Vec::new(),
             active: 0,
             tab_menu: None,
+            renaming: None,
+            thumbnails: Vec::new(),
             config,
             accent,
             custom_accent,

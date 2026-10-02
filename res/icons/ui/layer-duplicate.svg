@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- One sheet with its copy laid over it. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 11.5 11.5 H 26.5 V 26.5 H 11.5 Z"/>
+    <path d="M 20.5 5.5 H 5.5 V 20.5"/>
+  </g>
+</svg>

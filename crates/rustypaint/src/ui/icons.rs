@@ -49,6 +49,18 @@ pub const LINK: &[u8] = ui_icon!("link");
 pub const IMAGE: &[u8] = ui_icon!("image");
 pub const BLUR: &[u8] = ui_icon!("blur");
 
+pub const LAYER_NEW: &[u8] = ui_icon!("layer-new");
+pub const LAYER_DUPLICATE: &[u8] = ui_icon!("layer-duplicate");
+pub const LAYER_DELETE: &[u8] = ui_icon!("layer-delete");
+pub const LAYER_UP: &[u8] = ui_icon!("layer-up");
+pub const LAYER_DOWN: &[u8] = ui_icon!("layer-down");
+pub const LAYER_MERGE: &[u8] = ui_icon!("layer-merge");
+pub const LAYER_FLATTEN: &[u8] = ui_icon!("layer-flatten");
+pub const EYE: &[u8] = ui_icon!("eye");
+pub const EYE_CLOSED: &[u8] = ui_icon!("eye-closed");
+pub const CHEVRON_UP: &[u8] = ui_icon!("chevron-up");
+pub const CHEVRON_DOWN: &[u8] = ui_icon!("chevron-down");
+
 pub fn for_tool(tool: crate::paint::Tool) -> &'static [u8] {
     use crate::assets::tool_icons as art;
     use crate::paint::Tool;

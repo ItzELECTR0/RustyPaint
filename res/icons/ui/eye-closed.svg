@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- A closed eye: the layer is hidden. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 3.5 13 C 7 19.5 11.5 21.5 16 21.5 C 20.5 21.5 25 19.5 28.5 13"/>
+    <path d="M 16 21.5 V 26"/>
+    <path d="M 8.5 19.5 L 6 23.5"/>
+    <path d="M 23.5 19.5 L 26 23.5"/>
+  </g>
+</svg>

@@ -3728,7 +3728,7 @@ fn the_gradients_only_move_while_they_are_being_dragged() {
         "nothing was held down"
     );
 
-    send(&mut app, Message::PickerFieldPressed);
+    send(&mut app, Message::PickerFieldStarted(0.5, 0.25));
     send(&mut app, Message::PickerFieldPicked(0.5, 0.25));
     let picker = app.picker.as_ref().unwrap();
     assert_eq!((picker.saturation, picker.value), (0.5, 0.25));

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Two arrows pressing the whole stack down into one sheet. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 9.5 4 V 13"/>
+    <path d="M 6.5 10 L 9.5 13 L 12.5 10"/>
+    <path d="M 22.5 4 V 13"/>
+    <path d="M 19.5 10 L 22.5 13 L 25.5 10"/>
+    <path d="M 16 17.5 L 27 22.5 L 16 27.5 L 5 22.5 Z"/>
+  </g>
+</svg>

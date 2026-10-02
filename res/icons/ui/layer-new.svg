@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- A sheet laid on the stack, with a plus beside it. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 14 5 L 24.5 10.5 L 14 16 L 3.5 10.5 Z"/>
+    <path d="M 3.5 16 L 14 21.5 L 16.5 20.2"/>
+    <path d="M 24.5 18.5 V 28"/>
+    <path d="M 19.75 23.25 H 29.25"/>
+  </g>
+</svg>

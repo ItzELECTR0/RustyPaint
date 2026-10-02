@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- An arrow pressing one sheet into the one below it. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 16 4 V 14.5"/>
+    <path d="M 11.5 10 L 16 14.5 L 20.5 10"/>
+    <path d="M 16 17.5 L 27 22.5 L 16 27.5 L 5 22.5 Z"/>
+  </g>
+</svg>
