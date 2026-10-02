@@ -807,7 +807,7 @@ impl App {
                         self.typed_field(),
                         &self.panel,
                         self.resize_preview.unwrap_or(self.doc.size()),
-                        self.doc.transparent,
+                        self.doc.transparent(),
                         self.drawing,
                         self.shape_style,
                         self.blur_settings,
@@ -969,11 +969,18 @@ impl App {
     }
 
     pub(super) fn frame(&self) -> gpu::CanvasFrame {
+        let layer = self.doc.active_layer();
         gpu::CanvasFrame {
             pixels: self.doc.pixels().bytes_arc(),
             size: self.doc.size(),
             version: self.doc.version(),
             damage: self.damage.clone(),
+            surround: gpu::Surround {
+                below: self.doc.below().map(Rgba8::bytes_arc),
+                above: self.doc.above().map(Rgba8::bytes_arc),
+                version: self.doc.composites(),
+            },
+            layer_opacity: layer.strength() as f32 / 255.0,
             view: self.view,
             show_canvas: self.panel.show_canvas,
             pixel_grid: self.config.pixel_grid,

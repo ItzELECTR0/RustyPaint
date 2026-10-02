@@ -478,12 +478,13 @@ pub enum Message {
     OpenedElsewhere(Result<PathBuf, String>),
     RecoveryAnswered(bool),
     OpenRequested,
-    Opened(Result<(PathBuf, Rgba8), String>),
+    Opened(Result<(PathBuf, Opening), String>),
     SaveRequested,
     SaveAsRequested,
     SaveAsConfirmed,
     SaveFormatPicked(doc::io::SaveFormat),
     Saved(Result<PathBuf, String>),
+    Exported(Result<PathBuf, String>),
     Canvas(gpu::Interaction),
     WindowResized(Size),
     ZoomIn,
@@ -839,7 +840,7 @@ impl App {
         let start = Task::batch([measure, watch_drops, watch_handovers]);
 
         let task = match crate::open_with::first() {
-            Some(path) => Task::batch([start, Task::perform(load(path), Message::Opened)]),
+            Some(path) => Task::batch([start, Task::perform(open_file(path), Message::Opened)]),
             None => start,
         };
         (app, task)

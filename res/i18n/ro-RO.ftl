@@ -309,6 +309,31 @@ size-in-pixels = { $value } px
 degrees-value = { $value }°
 document-size = { $width } x { $height }
 
+## Layers
+
+layers = Straturi
+tools = Unelte
+layer-background = Fundal
+layer-numbered = Stratul { $number }
+layer-copy = { $name } copie
+layer-new = Strat nou
+layer-duplicate = Duplică stratul
+layer-delete = Șterge stratul
+layer-move-up = Mută stratul în sus
+layer-move-down = Mută stratul în jos
+layer-merge-down = Unește cu stratul de dedesubt
+layer-flatten = Aplatizează imaginea
+layer-show = Arată stratul
+layer-hide = Ascunde stratul
+layer-rename = Fă dublu clic pe un nume ca să-l redenumești
+layer-hidden = Stratul acesta este ascuns. Arată-l ca să desenezi pe el.
+section-collapse = Restrânge
+section-expand = Extinde
+layers-flat-note = Formatele plate păstrează doar imaginea vizibilă. Alege OpenRaster ca să păstrezi straturile.
+layers-exported = S-a salvat o copie plată ca { $name }. Straturile sunt încă aici.
+layers-opened-flat = { $name } folosește funcții de straturi pe care RustyPaint nu le poate edita încă, așa că s-a deschis ca imagine plată.
+layers-trimmed = Părțile din { $name } aflate în afara canvas-ului au fost tăiate.
+
 ## Crop
 
 crop-framing = Alege încadrarea
@@ -383,6 +408,7 @@ format-icns = Iconiță Apple
 format-qoi = Imagine Quite OK
 format-pnm = Anymap portabil
 format-farbfeld = Imagine Farbfeld
+format-ora = Proiect OpenRaster
 format-with-extension = { $label } (.{ $extension })
 
 ## Errors

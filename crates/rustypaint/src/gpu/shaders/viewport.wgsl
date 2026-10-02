@@ -32,9 +32,11 @@ struct Uniforms {
     float_masked: f32,
     pixel_grid: f32,
     float_blur: f32,
+    layer_opacity: f32,
     brush_ring: vec4<f32>,
     crop: vec4<f32>,
     marquee: vec4<f32>,
+    surround: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -42,6 +44,8 @@ struct Uniforms {
 @group(0) @binding(2) var canvas_sampler: sampler;
 @group(0) @binding(3) var float_tex: texture_2d<f32>;
 @group(0) @binding(4) var blur_tex: texture_2d<f32>;
+@group(0) @binding(5) var below_tex: texture_2d<f32>;
+@group(0) @binding(6) var above_tex: texture_2d<f32>;
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -328,6 +332,15 @@ fn dash_along(along: f32, period: f32, phase: f32) -> vec3<f32> {
     return vec3<f32>(smoothstep(-0.5, 0.5, edge));
 }
 
+// Straight-alpha source-over, the same composite `doc::layers::blend` makes on the CPU.
+fn over(under: vec4<f32>, top: vec4<f32>) -> vec4<f32> {
+    let a = top.a + under.a * (1.0 - top.a);
+    if (a <= 0.0) {
+        return vec4<f32>(0.0);
+    }
+    return vec4<f32>((top.rgb * top.a + under.rgb * under.a * (1.0 - top.a)) / a, a);
+}
+
 fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     let cutoff = c <= vec3<f32>(0.04045);
     let low = c / 12.92;
@@ -349,32 +362,57 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     colour = colour * (1.0 - shadow);
 
     let inside = sd_box(local - centre, half_size);
-    if (inside <= 0.0 && u.show_canvas > 0.5) {
-        let behind = canvas_backdrop(local);
-
-        var uv = (local - u.canvas_pos) / u.canvas_size;
-        if (u.zoom >= 1.0) {
-            uv = (floor(uv * u.texture_size) + 0.5) / u.texture_size;
-        }
-        let texel = textureSample(canvas_tex, canvas_sampler, uv);
-        colour = mix(behind, texel.rgb, texel.a);
+    let on_canvas = inside <= 0.0 && u.show_canvas > 0.5;
+    var canvas_uv = (local - u.canvas_pos) / u.canvas_size;
+    if (u.zoom >= 1.0) {
+        canvas_uv = (floor(canvas_uv * u.texture_size) + 0.5) / u.texture_size;
     }
 
-    if (u.float_present > 0.5) {
+    // The active layer and whatever floats in it are one layer, faded together by its opacity.
+    var layer = vec4<f32>(0.0);
+    if (on_canvas) {
+        colour = canvas_backdrop(local);
+        if (u.surround.x > 0.5) {
+            let below = textureSampleLevel(below_tex, canvas_sampler, canvas_uv, 0.0);
+            colour = mix(colour, below.rgb, below.a);
+        }
+        layer = textureSample(canvas_tex, canvas_sampler, canvas_uv);
+    }
+
+    if (u.float_present > 0.5 && u.float_masked < 1.5) {
         let precise_uv = float_local(local);
         let uv = select(float_local(canvas_probe(local)), precise_uv, u.float_blur > 0.0);
         if (uv.x >= 0.0 && uv.x < 1.0 && uv.y >= 0.0 && uv.y < 1.0) {
-            if (u.float_blur > 0.0 && inside <= 0.0) {
-                var canvas_uv = (local - u.canvas_pos) / u.canvas_size;
-                if (u.zoom >= 1.0) {
-                    canvas_uv = (floor(canvas_uv * u.texture_size) + 0.5) / u.texture_size;
+            if (u.float_blur > 0.0) {
+                if (on_canvas) {
+                    layer = textureSample(blur_tex, canvas_sampler, canvas_uv);
                 }
-                let blurred = textureSample(blur_tex, canvas_sampler, canvas_uv);
-                colour = mix(canvas_backdrop(local), blurred.rgb, blurred.a);
             } else {
                 let texel = textureSampleLevel(float_tex, canvas_sampler, float_texel(uv), 0.0);
-                colour = mix(colour, texel.rgb, texel.a * u.float_opacity);
+                let lifted = vec4<f32>(texel.rgb, texel.a * u.float_opacity);
+                if (on_canvas) {
+                    layer = over(layer, lifted);
+                } else {
+                    colour = mix(colour, lifted.rgb, lifted.a);
+                }
             }
+        }
+    }
+
+    if (on_canvas) {
+        colour = mix(colour, layer.rgb, layer.a * u.layer_opacity);
+        if (u.surround.y > 0.5) {
+            let above = textureSampleLevel(above_tex, canvas_sampler, canvas_uv, 0.0);
+            colour = mix(colour, above.rgb, above.a);
+        }
+    }
+
+    // Smart cutout's shading is a view of the whole picture rather than part of a layer.
+    if (u.float_present > 0.5 && u.float_masked > 1.5) {
+        let uv = float_local(canvas_probe(local));
+        if (uv.x >= 0.0 && uv.x < 1.0 && uv.y >= 0.0 && uv.y < 1.0) {
+            let texel = textureSampleLevel(float_tex, canvas_sampler, float_texel(uv), 0.0);
+            colour = mix(colour, texel.rgb, texel.a * u.float_opacity);
         }
     }
 

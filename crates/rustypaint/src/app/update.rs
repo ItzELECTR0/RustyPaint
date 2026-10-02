@@ -3,6 +3,7 @@ use crate::doc::clipboard::Clip;
 use crate::doc::transform::Anchor;
 use crate::doc::{self, Document, Rect};
 use crate::gpu::View;
+use crate::i18n;
 use crate::paint::{Tool, shapes};
 use crate::select::{self};
 use crate::ui::menu::Page as MenuPage;
@@ -124,13 +125,31 @@ impl App {
                 if self.config.open_in == crate::config::OpenIn::Window && !self.untouched() {
                     return Task::perform(pick_path(), Message::OpenedElsewhere);
                 }
-                return Task::perform(pick_and_load(), Message::Opened);
+                return Task::perform(pick_and_open(), Message::Opened);
             }
 
-            Message::Opened(Ok((path, pixels))) => {
+            Message::Opened(Ok((path, opening))) => {
                 let format = doc::io::SaveFormat::from_path(&path).unwrap_or_default();
-                let doc = Document::from_image(pixels, Some(path));
-                return self.open_document(doc, format);
+                let name = path.file_name().unwrap_or_default().display().to_string();
+                let (doc, note) = match &*opening.0 {
+                    doc::io::Loaded::Image(pixels) => {
+                        (Document::from_image(pixels.clone(), Some(path)), None)
+                    }
+                    doc::io::Loaded::Layers { stack, trimmed } => (
+                        Document::from_stack(stack.clone(), Some(path)),
+                        trimmed.then(|| i18n::layers_trimmed(&name)),
+                    ),
+                    doc::io::Loaded::Merged(pixels) => {
+                        let mut doc = Document::from_image(pixels.clone(), Some(path));
+                        doc.merged_only = true;
+                        (doc, Some(i18n::layers_opened_flat(&name)))
+                    }
+                };
+                let task = self.open_document(doc, format);
+                if let Some(note) = note {
+                    self.status = note;
+                }
+                return task;
             }
             Message::Opened(Err(e)) => self.status = e,
 
@@ -144,15 +163,21 @@ impl App {
                 }
                 self.doc.mark_saved();
                 self.doc.path = Some(path);
+                self.doc.merged_only = false;
                 self.status.clear();
                 self.record_session();
                 if let Some(pending) = self.after_save.take() {
                     return self.carry_on(pending);
                 }
             }
-            Message::Saved(Err(e)) => {
+            Message::Saved(Err(e)) | Message::Exported(Err(e)) => {
                 self.after_save = None;
                 self.status = e;
+            }
+            Message::Exported(Ok(path)) => {
+                self.after_save = None;
+                let name = path.file_name().unwrap_or_default().display().to_string();
+                self.status = i18n::layers_exported(&name);
             }
 
             Message::Canvas(interaction) => {

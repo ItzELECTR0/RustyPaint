@@ -296,6 +296,25 @@ catalogue! {
         selection_width => "selection-width",
         selection_height => "selection-height",
 
+        // Layers
+        layers => "layers",
+        tools => "tools",
+        layer_background => "layer-background",
+        layer_new => "layer-new",
+        layer_duplicate => "layer-duplicate",
+        layer_delete => "layer-delete",
+        layer_move_up => "layer-move-up",
+        layer_move_down => "layer-move-down",
+        layer_merge_down => "layer-merge-down",
+        layer_flatten => "layer-flatten",
+        layer_show => "layer-show",
+        layer_hide => "layer-hide",
+        layer_rename => "layer-rename",
+        layer_hidden => "layer-hidden",
+        section_collapse => "section-collapse",
+        section_expand => "section-expand",
+        layers_flat_note => "layers-flat-note",
+
         // Crop
         crop_framing => "crop-framing",
         crop_custom => "crop-custom",
@@ -357,6 +376,7 @@ catalogue! {
         format_qoi => "format-qoi",
         format_pnm => "format-pnm",
         format_farbfeld => "format-farbfeld",
+        format_ora => "format-ora",
 
         // Errors
         error_impossible_size => "error-impossible-size",
@@ -407,6 +427,11 @@ catalogue! {
         "error-cannot-open-window",
         "error-settings-unreadable",
         "error-settings-malformed",
+        "layer-numbered",
+        "layer-copy",
+        "layers-exported",
+        "layers-opened-flat",
+        "layers-trimmed",
     }
 }
 
@@ -528,4 +553,24 @@ pub fn error_settings_unreadable(reason: &str) -> String {
 
 pub fn error_settings_malformed(reason: &str) -> String {
     tr!("error-settings-malformed", reason = reason)
+}
+
+pub fn layer_numbered(number: u64) -> String {
+    tr!("layer-numbered", number = number.to_string())
+}
+
+pub fn layer_copy(name: &str) -> String {
+    tr!("layer-copy", name = name)
+}
+
+pub fn layers_exported(name: &str) -> String {
+    tr!("layers-exported", name = name)
+}
+
+pub fn layers_opened_flat(name: &str) -> String {
+    tr!("layers-opened-flat", name = name)
+}
+
+pub fn layers_trimmed(name: &str) -> String {
+    tr!("layers-trimmed", name = name)
 }

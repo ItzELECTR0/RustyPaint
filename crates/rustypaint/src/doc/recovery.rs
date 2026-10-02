@@ -1,5 +1,6 @@
-use super::Rgba8;
-use super::io::{self, SaveFormat};
+use super::io::{self, Loaded, SaveFormat};
+use super::layers::Stack;
+use super::ora;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -24,6 +25,7 @@ struct Entry {
     path: Option<PathBuf>,
     transparent: bool,
     unsaved: bool,
+    merged_only: bool,
 }
 
 // One open picture as the session index records it.
@@ -32,6 +34,7 @@ pub struct Open {
     pub path: Option<PathBuf>,
     pub transparent: bool,
     pub unsaved: bool,
+    pub merged_only: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -43,10 +46,10 @@ struct Index {
 }
 
 pub struct Document {
-    pub pixels: Rgba8,
+    pub stack: Stack,
     pub path: Option<PathBuf>,
-    pub transparent: bool,
     pub unsaved: bool,
+    pub merged_only: bool,
 }
 
 // One editor's whole set of open pictures, which is what a session is.
@@ -68,10 +71,63 @@ pub fn hold(root: &Path, id: &str) -> Option<Guard> {
     Some(Guard(file))
 }
 
-pub fn write_document(root: &Path, id: &str, slot: &str, pixels: &Rgba8) -> Result<(), String> {
+// A flat picture is kept as a PNG and anything with layers as an OpenRaster project, and whichever
+// is written replaces the other so a slot never comes back as an older picture.
+pub fn write_document(root: &Path, id: &str, slot: &str, stack: &Stack) -> Result<(), String> {
     let dir = root.join(id);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    io::save_as(pixels, &dir.join(format!("{slot}.png")), SaveFormat::Png)
+    let (format, other) = if stack.layered() {
+        (SaveFormat::Ora, SaveFormat::Png)
+    } else {
+        (SaveFormat::Png, SaveFormat::Ora)
+    };
+    let written = dir.join(format!("{slot}.{}", format.extension()));
+    io::save_document(stack, &written, format)?;
+    let _ = std::fs::remove_file(dir.join(format!("{slot}.{}", other.extension())));
+    Ok(())
+}
+
+fn read_document(dir: &Path, slot: &str, transparent: bool) -> Option<(Stack, bool)> {
+    let project = dir.join(format!("{slot}.{}", ora::EXTENSION));
+    let (mut stack, merged_only) = if project.exists() {
+        match io::open(&project).ok()? {
+            Loaded::Layers { stack, .. } => (stack, false),
+            Loaded::Merged(pixels) | Loaded::Image(pixels) => (flat(pixels), true),
+        }
+    } else {
+        (
+            flat(io::load(&dir.join(format!("{slot}.png"))).ok()?),
+            false,
+        )
+    };
+    stack.transparent = transparent;
+    Some((stack, merged_only))
+}
+
+fn from_disk(path: &Path, transparent: bool) -> Option<(Stack, bool)> {
+    Some(match io::open(path).ok()? {
+        Loaded::Image(pixels) => {
+            let mut stack = flat(pixels);
+            stack.transparent = transparent;
+            (stack, false)
+        }
+        Loaded::Layers { stack, .. } => (stack, false),
+        Loaded::Merged(pixels) => (flat(pixels), true),
+    })
+}
+
+fn flat(pixels: super::Rgba8) -> Stack {
+    Stack {
+        layers: vec![super::Layer {
+            id: 1,
+            name: crate::i18n::layer_background().to_owned(),
+            visible: true,
+            opacity: super::layers::OPAQUE,
+            pixels,
+        }],
+        active: 0,
+        transparent: false,
+    }
 }
 
 // The index is the tab order. Slots with no entry here are no longer open and their pixels go.
@@ -88,6 +144,7 @@ pub fn write_index(root: &Path, id: &str, open: &[Open], active: usize) -> Resul
                 path: one.path.clone(),
                 transparent: one.transparent,
                 unsaved: one.unsaved,
+                merged_only: one.merged_only,
             })
             .collect(),
     };
@@ -102,7 +159,10 @@ pub fn write_index(root: &Path, id: &str, open: &[Open], active: usize) -> Resul
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_none_or(|e| e != "png") {
+            if path
+                .extension()
+                .is_none_or(|e| e != "png" && e != ora::EXTENSION)
+            {
                 continue;
             }
             let stale = path
@@ -145,16 +205,16 @@ pub fn abandoned(root: &Path) -> Vec<Session> {
                 .iter()
                 .filter_map(|one| {
                     // Saved pictures are not copied into the session; they come back off disk.
-                    let pixels = if one.unsaved {
-                        io::load(&entry.path().join(format!("{}.png", one.slot))).ok()?
+                    let (stack, merged_only) = if one.unsaved {
+                        read_document(&entry.path(), &one.slot, one.transparent)?
                     } else {
-                        io::load(one.path.as_deref()?).ok()?
+                        from_disk(one.path.as_deref()?, one.transparent)?
                     };
                     Some(Document {
-                        pixels,
+                        stack,
                         path: one.path.clone(),
-                        transparent: one.transparent,
                         unsaved: one.unsaved,
+                        merged_only: one.merged_only || merged_only,
                     })
                 })
                 .collect();
@@ -225,8 +285,12 @@ mod tests {
         dir
     }
 
-    fn shade(v: u8) -> Rgba8 {
-        Rgba8::new(4, 3, [v, 0, 0, 255])
+    fn shade(v: u8) -> super::super::Rgba8 {
+        super::super::Rgba8::new(4, 3, [v, 0, 0, 255])
+    }
+
+    fn picture(v: u8) -> Stack {
+        flat(shade(v))
     }
 
     fn open(slot: &str, path: Option<PathBuf>, unsaved: bool) -> Open {
@@ -235,12 +299,13 @@ mod tests {
             path,
             transparent: false,
             unsaved,
+            merged_only: false,
         }
     }
 
     fn seed(root: &Path, id: &str, docs: &[(&str, u8)]) {
         for (slot, v) in docs {
-            write_document(root, id, slot, &shade(*v)).unwrap();
+            write_document(root, id, slot, &picture(*v)).unwrap();
         }
         let open: Vec<Open> = docs
             .iter()
@@ -257,15 +322,15 @@ mod tests {
         let found = abandoned(&root);
         assert_eq!(found.len(), 1, "one session, not three loose pictures");
         assert_eq!(found[0].documents.len(), 3);
-        assert_eq!(found[0].documents[1].pixels, shade(20));
+        assert_eq!(found[0].documents[1].stack.layers[0].pixels, shade(20));
         std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
     fn the_tab_that_was_in_front_comes_back_in_front() {
         let root = scratch("active");
-        write_document(&root, "dead", "0", &shade(1)).unwrap();
-        write_document(&root, "dead", "1", &shade(2)).unwrap();
+        write_document(&root, "dead", "0", &picture(1)).unwrap();
+        write_document(&root, "dead", "1", &picture(2)).unwrap();
         write_index(
             &root,
             "dead",
@@ -313,7 +378,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         io::save_as(&shade(77), &file, SaveFormat::Png).unwrap();
 
-        write_document(&root, "dead", "1", &shade(9)).unwrap();
+        write_document(&root, "dead", "1", &picture(9)).unwrap();
         write_index(
             &root,
             "dead",
@@ -328,7 +393,7 @@ mod tests {
             2,
             "the workspace comes back whole"
         );
-        assert_eq!(found[0].documents[0].pixels, shade(77));
+        assert_eq!(found[0].documents[0].stack.layers[0].pixels, shade(77));
         assert!(!found[0].documents[0].unsaved, "it was already on disk");
         assert!(found[0].documents[1].unsaved);
         std::fs::remove_dir_all(&root).unwrap();
@@ -337,7 +402,7 @@ mod tests {
     #[test]
     fn a_saved_picture_is_not_copied_into_the_session() {
         let root = scratch("nocopy");
-        write_document(&root, "dead", "0", &shade(1)).unwrap();
+        write_document(&root, "dead", "0", &picture(1)).unwrap();
         write_index(&root, "dead", &[open("0", None, false)], 0).unwrap();
         assert!(
             !root.join("dead").join("0.png").exists(),
@@ -390,5 +455,41 @@ mod tests {
     #[test]
     fn a_missing_directory_is_not_an_error() {
         assert!(abandoned(&scratch("missing")).is_empty());
+    }
+
+    #[test]
+    fn layered_work_comes_back_with_its_layers() {
+        let root = scratch("layers");
+        let mut stack = picture(10);
+        stack.layers.push(super::super::Layer {
+            id: 2,
+            name: "Ink".into(),
+            visible: false,
+            opacity: 99,
+            pixels: shade(200),
+        });
+        stack.active = 1;
+        write_document(&root, "dead", "0", &picture(5)).unwrap();
+        write_document(&root, "dead", "0", &stack).unwrap();
+        assert!(
+            !root.join("dead").join("0.png").exists(),
+            "the flat snapshot it replaced is gone"
+        );
+        write_index(&root, "dead", &[open("0", None, true)], 0).unwrap();
+
+        let found = abandoned(&root);
+        let back = &found[0].documents[0].stack;
+        assert_eq!(back.layers.len(), 2);
+        assert_eq!(back.active, 1);
+        assert_eq!(
+            (
+                back.layers[1].name.as_str(),
+                back.layers[1].visible,
+                back.layers[1].opacity
+            ),
+            ("Ink", false, 99)
+        );
+        assert_eq!(back.layers[1].pixels, shade(200));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

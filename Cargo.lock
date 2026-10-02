@@ -3715,6 +3715,7 @@ dependencies = [
  "ort",
  "pollster 1.0.1",
  "rfd",
+ "roxmltree",
  "serde",
  "sys-locale",
  "tiny-skia",
@@ -3727,6 +3728,7 @@ dependencies = [
  "wayland-client",
  "wgpu",
  "winresource",
+ "zip",
 ]
 
 [[package]]

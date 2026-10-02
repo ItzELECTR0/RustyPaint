@@ -93,12 +93,22 @@ impl View {
     }
 }
 
+// What the visible layers under and over the active one come to, keyed by one version.
+#[derive(Clone, Default)]
+pub struct Surround {
+    pub below: Option<Arc<Vec<u8>>>,
+    pub above: Option<Arc<Vec<u8>>>,
+    pub version: u64,
+}
+
 #[derive(Clone)]
 pub struct CanvasFrame {
     pub pixels: Arc<Vec<u8>>,
     pub size: (u32, u32),
     pub version: u64,
     pub damage: Damage,
+    pub surround: Surround,
+    pub layer_opacity: f32,
     pub view: View,
     pub show_canvas: bool,
     pub pixel_grid: bool,
@@ -300,6 +310,7 @@ impl shader::Primitive for Primitive {
                 &pixels,
             );
         }
+        pipeline.sync_surround(device, queue, self.frame.size, &self.frame.surround);
         pipeline.sync_blur(
             device,
             queue,
@@ -362,7 +373,21 @@ impl shader::Primitive for Primitive {
                 float_masked: float.masked,
                 pixel_grid: if self.frame.pixel_grid { 1.0 } else { 0.0 },
                 float_blur: float.blur,
-                _pad3: 0.0,
+                layer_opacity: self.frame.layer_opacity,
+                surround: [
+                    if self.frame.surround.below.is_some() {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                    if self.frame.surround.above.is_some() {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                    0.0,
+                    0.0,
+                ],
             },
         );
     }
@@ -872,6 +897,8 @@ mod tests {
                 size: CANVAS,
                 version: 0,
                 damage: Damage::default(),
+                surround: Surround::default(),
+                layer_opacity: 1.0,
                 view: View::default(),
                 show_canvas: true,
                 pixel_grid: false,

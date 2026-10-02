@@ -1,3 +1,4 @@
+use crate::doc::layers::Stack;
 use crate::doc::{self, Document, Rect, Rgba8};
 use crate::gpu::View;
 use crate::i18n;
@@ -20,6 +21,20 @@ pub(super) async fn load(path: PathBuf) -> Result<(PathBuf, Rgba8), String> {
     doc::io::load(&path).map(|pixels| (path, pixels))
 }
 
+pub(super) async fn open_file(path: PathBuf) -> Result<(PathBuf, Opening), String> {
+    doc::io::open(&path).map(|loaded| (path, Opening(std::sync::Arc::new(loaded))))
+}
+
+// Messages are cloned, a whole stack of layers is not worth copying to do it.
+#[derive(Clone)]
+pub struct Opening(pub std::sync::Arc<doc::io::Loaded>);
+
+impl std::fmt::Debug for Opening {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Opening")
+    }
+}
+
 pub(super) async fn pick_path() -> Result<PathBuf, String> {
     rfd::AsyncFileDialog::new()
         .add_filter(i18n::dialog_images(), doc::io::READABLE)
@@ -31,18 +46,17 @@ pub(super) async fn pick_path() -> Result<PathBuf, String> {
 }
 
 pub(super) async fn pick_and_load() -> Result<(PathBuf, Rgba8), String> {
-    let handle = rfd::AsyncFileDialog::new()
-        .add_filter(i18n::dialog_images(), doc::io::READABLE)
-        .set_title(i18n::open_title())
-        .pick_file()
-        .await
-        .ok_or_else(String::new)?;
+    let path = pick_path().await?;
+    load(path).await
+}
 
-    load(handle.path().to_path_buf()).await
+pub(super) async fn pick_and_open() -> Result<(PathBuf, Opening), String> {
+    let path = pick_path().await?;
+    open_file(path).await
 }
 
 pub(super) async fn pick_and_save(
-    pixels: Rgba8,
+    stack: Stack,
     stem: String,
     format: doc::io::SaveFormat,
 ) -> Result<PathBuf, String> {
@@ -55,11 +69,15 @@ pub(super) async fn pick_and_save(
         .ok_or_else(String::new)?;
 
     let path = doc::io::with_extension(handle.path().to_path_buf(), format);
-    doc::io::save_as(&pixels, &path, format).map(|()| path)
+    doc::io::save_document(&stack, &path, format).map(|()| path)
 }
 
-pub(super) async fn save_to(pixels: Rgba8, path: PathBuf) -> Result<PathBuf, String> {
-    doc::io::save(&pixels, &path).map(|()| path)
+pub(super) async fn save_to(
+    stack: Stack,
+    path: PathBuf,
+    format: doc::io::SaveFormat,
+) -> Result<PathBuf, String> {
+    doc::io::save_document(&stack, &path, format).map(|()| path)
 }
 
 impl App {
@@ -72,13 +90,25 @@ impl App {
             .unwrap_or(i18n::untitled())
     }
 
-    pub(super) fn save(&self) -> Task<Message> {
-        let pixels = self.for_saving();
-        match self.doc.path.clone() {
-            Some(path) if doc::io::SaveFormat::from_path(&path).is_some() => {
-                Task::perform(save_to(pixels, path), Message::Saved)
+    // Saving never flattens layers on its own: a layered picture that came from a flat file is
+    // offered as an OpenRaster project instead, and Save As can still export a flat copy.
+    pub(super) fn save(&mut self) -> Task<Message> {
+        let target = self
+            .doc
+            .path
+            .clone()
+            .filter(|_| !self.doc.merged_only)
+            .and_then(|path| Some((doc::io::SaveFormat::from_path(&path)?, path)));
+        match target {
+            Some((format, path)) if format.is_project() || !self.doc.layered() => {
+                Task::perform(save_to(self.for_saving(), path, format), Message::Saved)
             }
-            _ => self.save_as(),
+            _ => {
+                if self.doc.layered() {
+                    self.save_format = doc::io::SaveFormat::Ora;
+                }
+                self.save_as()
+            }
         }
     }
 
@@ -90,21 +120,22 @@ impl App {
             .and_then(|path| path.file_stem())
             .map(|stem| stem.to_string_lossy().into_owned())
             .unwrap_or_else(|| i18n::untitled().into());
-        Task::perform(
-            pick_and_save(self.for_saving(), stem, self.save_format),
-            Message::Saved,
-        )
+        let save = pick_and_save(self.for_saving(), stem, self.save_format);
+        if self.exporting() {
+            Task::perform(save, Message::Exported)
+        } else {
+            Task::perform(save, Message::Saved)
+        }
     }
 
-    // Recovery keeps the document as it stands, backing and all, rather than a flattened picture.
-    pub(super) fn for_recovery(&self) -> Rgba8 {
-        let Some(floating) = &self.floating else {
-            return self.doc.pixels().clone();
-        };
-        let mut scratch = Document::from_image(self.doc.pixels().clone(), None);
-        scratch.transparent = self.doc.transparent;
-        floating.commit(&mut scratch);
-        scratch.pixels().clone()
+    // A flat format chosen for layered work writes a copy and leaves the tab as it is.
+    pub(super) fn exporting(&self) -> bool {
+        self.doc.layered() && !self.save_format.is_project()
+    }
+
+    // Recovery keeps the document as it stands, backing and layers and all.
+    pub(super) fn for_recovery(&self) -> Stack {
+        with_live(&self.doc, self.floating.as_ref())
     }
 
     pub(super) fn snapshot_parked(&self, sheet: &Sheet) -> Task<Message> {
@@ -115,9 +146,9 @@ impl App {
             return Task::none();
         }
         let (id, slot) = (self.session.clone(), sheet.slot.clone());
-        let pixels = sheet.for_recovery();
+        let stack = sheet.for_recovery();
         Task::perform(
-            async move { doc::recovery::write_document(&root, &id, &slot, &pixels) },
+            async move { doc::recovery::write_document(&root, &id, &slot, &stack) },
             Message::ParkedSnapshotted,
         )
     }
@@ -132,16 +163,18 @@ impl App {
                 None => doc::recovery::Open {
                     slot: self.slot.clone(),
                     path: self.doc.path.clone(),
-                    transparent: self.doc.transparent,
+                    transparent: self.doc.transparent(),
                     unsaved: self.unsaved(),
+                    merged_only: self.doc.merged_only,
                 },
                 Some(i) => {
                     let sheet = &self.parked[i];
                     doc::recovery::Open {
                         slot: sheet.slot.clone(),
                         path: sheet.doc.path.clone(),
-                        transparent: sheet.doc.transparent,
+                        transparent: sheet.doc.transparent(),
                         unsaved: sheet.unsaved(),
+                        merged_only: sheet.doc.merged_only,
                     }
                 }
             })
@@ -159,7 +192,7 @@ impl App {
             self.record_session();
         }
 
-        let at = (self.doc.version(), self.float_version);
+        let at = (self.doc.revision(), self.float_version);
         if !self.unsaved() || self.snapshotted == Some(at) || self.snapshotting {
             return Task::none();
         }
@@ -174,9 +207,9 @@ impl App {
         self.snapshotting = true;
         self.last_snapshot = Instant::now();
         let (id, slot) = (self.session.clone(), self.slot.clone());
-        let pixels = self.for_recovery();
+        let stack = self.for_recovery();
         Task::perform(
-            async move { doc::recovery::write_document(&root, &id, &slot, &pixels) },
+            async move { doc::recovery::write_document(&root, &id, &slot, &stack) },
             move |result| Message::Snapshotted(at, result),
         )
     }
@@ -296,25 +329,20 @@ impl App {
                 .as_deref()
                 .and_then(doc::io::SaveFormat::from_path)
                 .unwrap_or_default();
-            let doc = if one.unsaved {
-                Document::recovered(one.pixels, one.path, one.transparent)
+            let mut doc = if one.unsaved {
+                Document::recovered(one.stack, one.path)
             } else {
-                Document::from_image(one.pixels, one.path)
+                Document::from_stack(one.stack, one.path)
             };
+            doc.merged_only = one.merged_only;
             tasks.push(self.open_document(doc, format));
         }
         tasks.push(self.switch_to(active));
         Task::batch(tasks)
     }
 
-    pub(super) fn for_saving(&self) -> Rgba8 {
-        let Some(floating) = &self.floating else {
-            return self.doc.flattened();
-        };
-        let mut scratch = Document::from_image(self.doc.pixels().clone(), None);
-        scratch.transparent = self.doc.transparent;
-        floating.commit(&mut scratch);
-        scratch.flattened()
+    pub(super) fn for_saving(&self) -> Stack {
+        with_live(&self.doc, self.floating.as_ref())
     }
 
     pub(super) fn discarding(&mut self, pending: Pending) -> Task<Message> {
@@ -385,7 +413,7 @@ impl App {
     }
 
     pub(super) fn eyedropper(&mut self, x: f32, y: f32) {
-        if let Some(colour) = fill::pick(self.doc.pixels(), x.floor() as i64, y.floor() as i64)
+        if let Some(colour) = self.doc.sample(x.floor() as i64, y.floor() as i64)
             && colour[3] > 0
         {
             self.brush.colour = colour;
@@ -467,13 +495,17 @@ impl Sheet {
         self.doc.modified() || self.floating.is_some()
     }
 
-    pub(super) fn for_recovery(&self) -> Rgba8 {
-        let Some(floating) = &self.floating else {
-            return self.doc.pixels().clone();
-        };
-        let mut scratch = Document::from_image(self.doc.pixels().clone(), None);
-        scratch.transparent = self.doc.transparent;
-        floating.commit(&mut scratch);
-        scratch.pixels().clone()
+    pub(super) fn for_recovery(&self) -> Stack {
+        with_live(&self.doc, self.floating.as_ref())
     }
+}
+
+// The stack as it would be with the live object committed into the layer it belongs to.
+fn with_live(doc: &Document, floating: Option<&select::Floating>) -> Stack {
+    let Some(floating) = floating else {
+        return doc.stack().clone();
+    };
+    let mut scratch = doc.detached();
+    floating.commit(&mut scratch);
+    scratch.stack().clone()
 }

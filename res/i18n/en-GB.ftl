@@ -310,6 +310,31 @@ size-in-pixels = { $value } px
 degrees-value = { $value }°
 document-size = { $width } x { $height }
 
+## Layers
+
+layers = Layers
+tools = Tools
+layer-background = Background
+layer-numbered = Layer { $number }
+layer-copy = { $name } copy
+layer-new = New layer
+layer-duplicate = Duplicate layer
+layer-delete = Delete layer
+layer-move-up = Move layer up
+layer-move-down = Move layer down
+layer-merge-down = Merge down
+layer-flatten = Flatten image
+layer-show = Show layer
+layer-hide = Hide layer
+layer-rename = Double-click a name to rename it
+layer-hidden = This layer is hidden. Show it to draw on it.
+section-collapse = Collapse
+section-expand = Expand
+layers-flat-note = Flat formats keep only the visible picture. Pick OpenRaster to keep the layers.
+layers-exported = Saved a flat copy as { $name }. The layers are still here.
+layers-opened-flat = { $name } uses layer features RustyPaint can't edit yet, so it opened as a flat picture.
+layers-trimmed = Parts of { $name } outside the canvas were trimmed.
+
 ## Crop
 
 crop-framing = Choose your framing
@@ -383,6 +408,7 @@ format-icns = Apple icon
 format-qoi = Quite OK Image
 format-pnm = Portable anymap
 format-farbfeld = Farbfeld image
+format-ora = OpenRaster project
 format-with-extension = { $label } (.{ $extension })
 
 ## Errors

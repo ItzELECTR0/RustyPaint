@@ -1,32 +1,47 @@
+use super::layers::{Arrangement, LayerId, Stack};
 use super::rect::Rect;
 use super::{Rgba8, image::CHANNELS};
 
 const BUDGET_BYTES: usize = 256 << 20;
 
-#[derive(Clone)]
-pub struct Snapshot {
-    pub pixels: Rgba8,
-    pub transparent: bool,
-}
-
 pub enum Edit {
     Region {
+        layer: LayerId,
         rect: Rect,
         before: Vec<u8>,
         after: Vec<u8>,
     },
     // Kept apart so a long stroke costs what it touched, not the box around it.
-    Regions(Vec<Part>),
-    Whole {
-        before: Snapshot,
-        after: Snapshot,
+    Regions {
+        layer: LayerId,
+        parts: Vec<Part>,
     },
+    Whole {
+        before: Stack,
+        after: Stack,
+    },
+    // Pixels are kept only for layers missing from one side, so hiding or renaming a layer holds
+    // no copy of anything the canvas still owns. See `.agents/layers.md`.
+    Layers {
+        before: Arrangement,
+        after: Arrangement,
+        kept: Vec<(LayerId, Rgba8)>,
+    },
+    // Undone last to first.
+    Many(Vec<Edit>),
 }
 
 pub struct Part {
     pub rect: Rect,
     pub before: Vec<u8>,
     pub after: Vec<u8>,
+}
+
+// What a step through history changed, so the canvas texture can catch up with the least work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Changed {
+    Region(Rect),
+    Everything,
 }
 
 impl Edit {
@@ -52,12 +67,21 @@ impl Edit {
     }
 
     fn bytes(&self) -> usize {
+        let stack = |stack: &Stack| -> usize {
+            stack
+                .layers
+                .iter()
+                .map(|layer| layer.pixels.as_bytes().len())
+                .sum()
+        };
         match self {
             Edit::Region { before, after, .. } => before.len() + after.len(),
-            Edit::Regions(parts) => parts.iter().map(|p| p.before.len() + p.after.len()).sum(),
-            Edit::Whole { before, after } => {
-                before.pixels.as_bytes().len() + after.pixels.as_bytes().len()
+            Edit::Regions { parts, .. } => {
+                parts.iter().map(|p| p.before.len() + p.after.len()).sum()
             }
+            Edit::Whole { before, after } => stack(before) + stack(after),
+            Edit::Layers { kept, .. } => kept.iter().map(|(_, p)| p.as_bytes().len()).sum(),
+            Edit::Many(edits) => edits.iter().map(Edit::bytes).sum(),
         }
     }
 }
@@ -130,56 +154,128 @@ impl History {
             .map(|e| e.label)
     }
 
-    pub fn undo(&mut self, image: &mut Rgba8, transparent: &mut bool) -> Option<Option<Rect>> {
+    pub fn undo(&mut self, stack: &mut Stack) -> Option<Changed> {
         let entry = self.entries.get(self.depth.checked_sub(1)?)?;
         self.depth -= 1;
-        Some(restore(&entry.edit, image, transparent, false))
+        Some(restore(&entry.edit, stack, false))
     }
 
-    pub fn redo(&mut self, image: &mut Rgba8, transparent: &mut bool) -> Option<Option<Rect>> {
+    pub fn redo(&mut self, stack: &mut Stack) -> Option<Changed> {
         let entry = self.entries.get(self.depth)?;
         self.depth += 1;
-        Some(restore(&entry.edit, image, transparent, true))
+        Some(restore(&entry.edit, stack, true))
     }
 }
 
-fn restore(edit: &Edit, image: &mut Rgba8, transparent: &mut bool, forwards: bool) -> Option<Rect> {
+// A step on another layer brings that layer forward, so the change happens where it can be seen
+// and the next stroke lands on the layer that was just put back.
+fn reach(stack: &mut Stack, layer: LayerId) -> Option<(usize, bool)> {
+    let index = stack.index_of(layer)?;
+    let moved = index != stack.active;
+    stack.active = index;
+    Some((index, moved))
+}
+
+fn restore(edit: &Edit, stack: &mut Stack, forwards: bool) -> Changed {
     match edit {
         Edit::Region {
+            layer,
             rect,
             before,
             after,
         } => {
+            let Some((index, moved)) = reach(stack, *layer) else {
+                return Changed::Everything;
+            };
+            let image = &mut stack.layers[index].pixels;
             Edit::apply(image, *rect, if forwards { after } else { before });
-            Some(*rect)
+            if moved {
+                Changed::Everything
+            } else {
+                Changed::Region(*rect)
+            }
         }
-        Edit::Regions(parts) => {
+        Edit::Regions { layer, parts } => {
+            let Some((index, moved)) = reach(stack, *layer) else {
+                return Changed::Everything;
+            };
+            let image = &mut stack.layers[index].pixels;
             let mut changed = Rect::new(0, 0, 0, 0);
             for part in parts {
                 let pixels = if forwards { &part.after } else { &part.before };
                 Edit::apply(image, part.rect, pixels);
                 changed = changed.union(part.rect);
             }
-            Some(changed)
+            if moved {
+                Changed::Everything
+            } else {
+                Changed::Region(changed)
+            }
         }
         Edit::Whole { before, after } => {
-            let target = if forwards { after } else { before };
-            *image = target.pixels.clone();
-            *transparent = target.transparent;
-            None
+            *stack = if forwards { after } else { before }.clone();
+            Changed::Everything
+        }
+        Edit::Layers {
+            before,
+            after,
+            kept,
+        } => {
+            stack.rearrange(if forwards { after } else { before }, kept);
+            Changed::Everything
+        }
+        Edit::Many(edits) => {
+            let mut changed = None;
+            let mut step = |edit: &Edit| {
+                let now = restore(edit, stack, forwards);
+                changed = match (changed, now) {
+                    (None, now) => Some(now),
+                    (Some(Changed::Region(a)), Changed::Region(b)) => {
+                        Some(Changed::Region(a.union(b)))
+                    }
+                    _ => Some(Changed::Everything),
+                };
+            };
+            if forwards {
+                edits.iter().for_each(&mut step);
+            } else {
+                edits.iter().rev().for_each(&mut step);
+            }
+            changed.unwrap_or(Changed::Everything)
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::layers::{Layer, OPAQUE};
     use super::*;
 
-    fn image(fill: [u8; 4]) -> Rgba8 {
-        Rgba8::new(8, 8, fill)
+    fn layer(id: LayerId, fill: [u8; 4]) -> Layer {
+        Layer {
+            id,
+            name: format!("Layer {id}"),
+            visible: true,
+            opacity: OPAQUE,
+            pixels: Rgba8::new(8, 8, fill),
+        }
     }
 
-    fn paint(image: &mut Rgba8, rect: Rect, colour: [u8; 4]) -> Edit {
+    fn image(fill: [u8; 4]) -> Stack {
+        Stack {
+            layers: vec![layer(1, fill)],
+            active: 0,
+            transparent: false,
+        }
+    }
+
+    fn pixels(stack: &Stack) -> &[u8] {
+        stack.layers[stack.active].pixels.as_bytes()
+    }
+
+    fn paint(stack: &mut Stack, rect: Rect, colour: [u8; 4]) -> Edit {
+        let layer = stack.active_id();
+        let image = &mut stack.layers[stack.active].pixels;
         let before = Edit::extract(image, rect);
         let stride = image.width() as usize * CHANNELS;
         let dst = image.pixels_mut();
@@ -191,6 +287,7 @@ mod tests {
         }
         let after = Edit::extract(image, rect);
         Edit::Region {
+            layer,
             rect,
             before,
             after,
@@ -204,15 +301,15 @@ mod tests {
     #[test]
     fn undo_restores_the_original_bytes_exactly() {
         let mut img = image(WHITE);
-        let original = img.clone();
+        let original = pixels(&img).to_vec();
         let mut h = History::default();
 
         let edit = paint(&mut img, Rect::new(2, 2, 5, 5), RED);
         h.push("Marker", edit);
-        assert_ne!(img.as_bytes(), original.as_bytes());
+        assert_ne!(pixels(&img), original);
 
-        h.undo(&mut img, &mut false).unwrap();
-        assert_eq!(img.as_bytes(), original.as_bytes());
+        h.undo(&mut img).unwrap();
+        assert_eq!(pixels(&img), original);
     }
 
     #[test]
@@ -221,31 +318,27 @@ mod tests {
         let mut h = History::default();
         let edit = paint(&mut img, Rect::new(1, 1, 4, 4), RED);
         h.push("Marker", edit);
-        let painted = img.clone();
+        let painted = pixels(&img).to_vec();
 
-        h.undo(&mut img, &mut false).unwrap();
-        h.redo(&mut img, &mut false).unwrap();
-        assert_eq!(img.as_bytes(), painted.as_bytes());
+        h.undo(&mut img).unwrap();
+        h.redo(&mut img).unwrap();
+        assert_eq!(pixels(&img), painted);
     }
 
     #[test]
     fn a_stack_of_edits_unwinds_in_order() {
         let mut img = image(WHITE);
-        let states = {
-            let mut v = vec![img.clone()];
-            let mut h = History::default();
-            for colour in [RED, BLUE, [0, 255, 0, 255]] {
-                let edit = paint(&mut img, Rect::new(0, 0, 8, 8), colour);
-                h.push("Marker", edit);
-                v.push(img.clone());
-            }
-            for expected in v.iter().rev().skip(1) {
-                h.undo(&mut img, &mut false).unwrap();
-                assert_eq!(img.as_bytes(), expected.as_bytes());
-            }
-            v
-        };
-        assert_eq!(states.len(), 4);
+        let mut states = vec![pixels(&img).to_vec()];
+        let mut h = History::default();
+        for colour in [RED, BLUE, [0, 255, 0, 255]] {
+            let edit = paint(&mut img, Rect::new(0, 0, 8, 8), colour);
+            h.push("Marker", edit);
+            states.push(pixels(&img).to_vec());
+        }
+        for expected in states.iter().rev().skip(1) {
+            h.undo(&mut img).unwrap();
+            assert_eq!(pixels(&img), expected);
+        }
     }
 
     #[test]
@@ -253,7 +346,7 @@ mod tests {
         let mut img = image(WHITE);
         let mut h = History::default();
         h.push("Marker", paint(&mut img, Rect::new(0, 0, 4, 4), RED));
-        h.undo(&mut img, &mut false).unwrap();
+        h.undo(&mut img).unwrap();
         assert!(h.can_redo());
 
         h.push("Marker", paint(&mut img, Rect::new(0, 0, 4, 4), BLUE));
@@ -271,9 +364,9 @@ mod tests {
         let painted = h.mark();
         assert_ne!(painted, pristine);
 
-        h.undo(&mut img, &mut false).unwrap();
+        h.undo(&mut img).unwrap();
         assert_eq!(h.mark(), pristine, "undo comes back to where it started");
-        h.redo(&mut img, &mut false).unwrap();
+        h.redo(&mut img).unwrap();
         assert_eq!(h.mark(), painted, "and redo goes back to the edit");
     }
 
@@ -284,7 +377,7 @@ mod tests {
         h.push("Marker", paint(&mut img, Rect::new(0, 0, 4, 4), RED));
         let dropped = h.mark();
 
-        h.undo(&mut img, &mut false).unwrap();
+        h.undo(&mut img).unwrap();
         h.push("Marker", paint(&mut img, Rect::new(0, 0, 4, 4), BLUE));
         assert_ne!(h.mark(), dropped);
     }
@@ -294,31 +387,117 @@ mod tests {
         let mut img = image(WHITE);
         let mut h = History::default();
         assert!(!h.can_undo());
-        assert!(h.undo(&mut img, &mut false).is_none());
+        assert!(h.undo(&mut img).is_none());
     }
 
     #[test]
     fn a_whole_canvas_edit_reports_no_region() {
         let mut img = image(WHITE);
         let before = img.clone();
-        let after = Rgba8::new(4, 4, RED);
+        let mut after = image(RED);
+        after.layers[0].pixels = Rgba8::new(4, 4, RED);
         let mut h = History::default();
         h.push(
             "Resize canvas",
             Edit::Whole {
-                before: Snapshot {
-                    pixels: before,
-                    transparent: false,
-                },
-                after: Snapshot {
-                    pixels: after.clone(),
-                    transparent: false,
-                },
+                before,
+                after: after.clone(),
             },
         );
 
-        img = after.clone();
-        assert_eq!(h.undo(&mut img, &mut false).unwrap(), None);
+        img = after;
+        assert_eq!(h.undo(&mut img).unwrap(), Changed::Everything);
         assert_eq!(img.size(), (8, 8));
+    }
+
+    #[test]
+    fn undoing_a_stroke_on_another_layer_brings_that_layer_forward() {
+        let mut img = image(WHITE);
+        img.layers.push(layer(2, [0, 0, 0, 0]));
+        let mut h = History::default();
+        h.push("Marker", paint(&mut img, Rect::new(0, 0, 2, 2), RED));
+        img.active = 1;
+
+        assert_eq!(h.undo(&mut img).unwrap(), Changed::Everything);
+        assert_eq!(img.active, 0, "the stroke was on the bottom layer");
+        assert_eq!(img.layers[0].pixels, Rgba8::new(8, 8, WHITE));
+        assert_eq!(
+            h.redo(&mut img).unwrap(),
+            Changed::Region(Rect::new(0, 0, 2, 2))
+        );
+    }
+
+    #[test]
+    fn a_deleted_layer_comes_back_with_its_pixels_and_place() {
+        let mut img = image(WHITE);
+        img.layers.push(layer(2, BLUE));
+        img.layers.push(layer(3, RED));
+        img.active = 1;
+        let before = img.arrangement();
+        let gone = img.layers.remove(1);
+        img.active = 1;
+        let after = img.arrangement();
+        let mut h = History::default();
+        h.push(
+            "Delete layer",
+            Edit::Layers {
+                before,
+                after,
+                kept: vec![(gone.id, gone.pixels)],
+            },
+        );
+
+        h.undo(&mut img).unwrap();
+        let ids: Vec<_> = img.layers.iter().map(|l| l.id).collect();
+        assert_eq!(ids, [1, 2, 3]);
+        assert_eq!(img.active_id(), 2);
+        assert_eq!(img.layers[1].pixels, Rgba8::new(8, 8, BLUE));
+
+        h.redo(&mut img).unwrap();
+        let ids: Vec<_> = img.layers.iter().map(|l| l.id).collect();
+        assert_eq!(ids, [1, 3]);
+    }
+
+    #[test]
+    fn hiding_a_layer_holds_no_pixels() {
+        let mut img = image(WHITE);
+        let before = img.arrangement();
+        img.layers[0].visible = false;
+        let mut h = History::default();
+        h.push(
+            "Hide layer",
+            Edit::Layers {
+                before,
+                after: img.arrangement(),
+                kept: Vec::new(),
+            },
+        );
+        assert_eq!(h.bytes(), 0);
+        h.undo(&mut img).unwrap();
+        assert!(img.layers[0].visible);
+        assert_eq!(img.layers[0].pixels, Rgba8::new(8, 8, WHITE));
+    }
+
+    #[test]
+    fn a_layer_that_was_only_added_comes_back_blank() {
+        let mut img = image(WHITE);
+        let before = img.arrangement();
+        img.layers.push(layer(2, [0, 0, 0, 0]));
+        img.active = 1;
+        let mut h = History::default();
+        h.push(
+            "New layer",
+            Edit::Layers {
+                before,
+                after: img.arrangement(),
+                kept: Vec::new(),
+            },
+        );
+        h.undo(&mut img).unwrap();
+        assert_eq!(img.layers.len(), 1);
+        h.redo(&mut img).unwrap();
+        assert_eq!(img.layers.len(), 2);
+        assert_eq!(img.active_id(), 2);
+        assert_eq!(img.layers[1].pixels, Rgba8::transparent(8, 8));
     }
 }

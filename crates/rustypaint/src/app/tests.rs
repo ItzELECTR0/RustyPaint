@@ -203,7 +203,16 @@ fn dead_entry(slot: &str) -> crate::doc::recovery::Open {
         path: None,
         transparent: false,
         unsaved: true,
+        merged_only: false,
     }
+}
+
+fn picture(pixels: Rgba8) -> crate::doc::layers::Stack {
+    Document::from_image(pixels, None).stack().clone()
+}
+
+fn opened(pixels: Rgba8) -> Opening {
+    Opening(std::sync::Arc::new(crate::doc::io::Loaded::Image(pixels)))
 }
 
 fn recovering(dir: &std::path::Path) -> App {
@@ -232,12 +241,12 @@ fn a_snapshot_keeps_the_document_rather_than_a_flattened_picture() {
     app.doc.edit().pixels_mut()[..4].copy_from_slice(&[255, 0, 0, 128]);
 
     assert_eq!(
-        app.for_recovery().as_bytes()[..4],
+        app.for_recovery().layers[0].pixels.as_bytes()[..4],
         [255, 0, 0, 128],
         "half-transparent pixels come back exactly as they were"
     );
     assert_eq!(
-        app.for_saving().as_bytes()[3],
+        app.for_saving().flattened().as_bytes()[3],
         255,
         "saving composites onto the backing, which is why recovery cannot reuse it"
     );
@@ -246,10 +255,20 @@ fn a_snapshot_keeps_the_document_rather_than_a_flattened_picture() {
 #[test]
 fn a_session_left_by_a_dead_editor_comes_back_whole() {
     let root = recovery_scratch("session");
-    crate::doc::recovery::write_document(&root, "dead", "0", &Rgba8::new(9, 9, [1, 0, 0, 255]))
-        .unwrap();
-    crate::doc::recovery::write_document(&root, "dead", "1", &Rgba8::new(7, 7, [2, 0, 0, 255]))
-        .unwrap();
+    crate::doc::recovery::write_document(
+        &root,
+        "dead",
+        "0",
+        &picture(Rgba8::new(9, 9, [1, 0, 0, 255])),
+    )
+    .unwrap();
+    crate::doc::recovery::write_document(
+        &root,
+        "dead",
+        "1",
+        &picture(Rgba8::new(7, 7, [2, 0, 0, 255])),
+    )
+    .unwrap();
     crate::doc::recovery::write_index(&root, "dead", &[dead_entry("0"), dead_entry("1")], 0)
         .unwrap();
 
@@ -269,8 +288,13 @@ fn a_session_left_by_a_dead_editor_comes_back_whole() {
 #[test]
 fn recovered_work_is_still_unsaved() {
     let root = recovery_scratch("stillunsaved");
-    crate::doc::recovery::write_document(&root, "dead", "0", &Rgba8::new(9, 9, [1, 0, 0, 255]))
-        .unwrap();
+    crate::doc::recovery::write_document(
+        &root,
+        "dead",
+        "0",
+        &picture(Rgba8::new(9, 9, [1, 0, 0, 255])),
+    )
+    .unwrap();
     crate::doc::recovery::write_index(&root, "dead", &[dead_entry("0")], 0).unwrap();
 
     let mut app = recovering(&root);
@@ -284,8 +308,13 @@ fn recovered_work_is_still_unsaved() {
 #[test]
 fn turning_the_offer_down_throws_the_session_away() {
     let root = recovery_scratch("declined");
-    crate::doc::recovery::write_document(&root, "dead", "0", &Rgba8::new(3, 3, [4, 0, 0, 255]))
-        .unwrap();
+    crate::doc::recovery::write_document(
+        &root,
+        "dead",
+        "0",
+        &picture(Rgba8::new(3, 3, [4, 0, 0, 255])),
+    )
+    .unwrap();
     crate::doc::recovery::write_index(&root, "dead", &[dead_entry("0")], 0).unwrap();
 
     let mut app = recovering(&root);
@@ -4177,7 +4206,7 @@ fn opening_a_file_joins_the_window_rather_than_replacing_what_is_open() {
     click(&mut app, 10.0, 10.0);
     assert!(app.unsaved());
 
-    let opened = Rgba8::new(9, 7, [1, 2, 3, 255]);
+    let opened = opened(Rgba8::new(9, 7, [1, 2, 3, 255]));
     send(
         &mut app,
         Message::Opened(Ok((PathBuf::from("/tmp/x.png"), opened))),
@@ -4199,7 +4228,7 @@ fn opening_a_file_joins_the_window_rather_than_replacing_what_is_open() {
 #[test]
 fn a_file_opened_over_an_untouched_canvas_takes_its_place() {
     let mut app = app(64, 48);
-    let opened = Rgba8::new(9, 7, [1, 2, 3, 255]);
+    let opened = opened(Rgba8::new(9, 7, [1, 2, 3, 255]));
     send(
         &mut app,
         Message::Opened(Ok((PathBuf::from("/tmp/x.png"), opened))),
@@ -4217,7 +4246,7 @@ fn opening_a_file_lets_go_of_what_was_floating() {
     );
     assert!(app.floating.is_some());
 
-    let opened = Rgba8::new(40, 20, RED);
+    let opened = opened(Rgba8::new(40, 20, RED));
     send(
         &mut app,
         Message::Opened(Ok((PathBuf::from("/tmp/y.png"), opened))),
@@ -4242,7 +4271,7 @@ fn opening_a_file_from_the_menu_returns_to_the_canvas() {
         &mut app,
         Message::Opened(Ok((
             PathBuf::from("/tmp/opened.png"),
-            Rgba8::new(40, 20, RED),
+            opened(Rgba8::new(40, 20, RED)),
         ))),
     );
 
@@ -4397,7 +4426,7 @@ fn a_save_takes_what_is_floating_with_it_without_putting_it_down() {
     );
     assert!(app.floating.is_some());
 
-    let written = app.for_saving();
+    let written = app.for_saving().flattened();
     let (w, h) = app.doc.size();
     let middle = |image: &Rgba8, x: u32, y: u32| {
         let i = ((y * image.size().0 + x) * 4) as usize;
@@ -4470,14 +4499,14 @@ fn a_closed_tab_leaves_the_order_of_the_rest_alone() {
         &mut app,
         Message::Opened(Ok((
             PathBuf::from("/tmp/middle.png"),
-            Rgba8::new(22, 22, [0, 0, 0, 255]),
+            opened(Rgba8::new(22, 22, [0, 0, 0, 255])),
         ))),
     );
     send(
         &mut app,
         Message::Opened(Ok((
             PathBuf::from("/tmp/last.png"),
-            Rgba8::new(33, 33, [0, 0, 0, 255]),
+            opened(Rgba8::new(33, 33, [0, 0, 0, 255])),
         ))),
     );
     assert_eq!(app.sheets(), 3);
@@ -4653,14 +4682,14 @@ fn rotating_and_flipping_go_through_history_as_one_step_each() {
 fn turning_transparency_off_flattens_and_can_be_undone() {
     let mut app = app(4, 4);
     send(&mut app, Message::TransparencyToggled(true));
-    assert!(app.doc.transparent);
+    assert!(app.doc.transparent());
 
     send(&mut app, Message::TransparencyToggled(false));
-    assert!(!app.doc.transparent);
+    assert!(!app.doc.transparent());
 
     send(&mut app, Message::Undo);
     assert!(
-        app.doc.transparent,
+        app.doc.transparent(),
         "undo should restore the flag, not just the pixels"
     );
 }

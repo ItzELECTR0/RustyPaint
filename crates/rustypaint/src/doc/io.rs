@@ -1,4 +1,6 @@
 use super::Rgba8;
+use super::layers::Stack;
+use super::ora;
 use crate::i18n;
 use image::ImageDecoder;
 use std::fmt;
@@ -27,6 +29,7 @@ pub enum SaveFormat {
     Qoi,
     Pnm,
     Farbfeld,
+    Ora,
 }
 
 impl SaveFormat {
@@ -43,6 +46,7 @@ impl SaveFormat {
         Self::Qoi,
         Self::Pnm,
         Self::Farbfeld,
+        Self::Ora,
     ];
 
     pub fn label(self) -> &'static str {
@@ -59,6 +63,7 @@ impl SaveFormat {
             Self::Qoi => i18n::format_qoi(),
             Self::Pnm => i18n::format_pnm(),
             Self::Farbfeld => i18n::format_farbfeld(),
+            Self::Ora => i18n::format_ora(),
         }
     }
 
@@ -76,6 +81,7 @@ impl SaveFormat {
             Self::Qoi => "qoi",
             Self::Pnm => "pam",
             Self::Farbfeld => "ff",
+            Self::Ora => ora::EXTENSION,
         }
     }
 
@@ -93,6 +99,7 @@ impl SaveFormat {
             Self::Qoi => &["qoi"],
             Self::Pnm => &["pam", "pbm", "pgm", "pnm", "ppm"],
             Self::Farbfeld => &["ff"],
+            Self::Ora => &[ora::EXTENSION],
         }
     }
 
@@ -114,7 +121,7 @@ impl SaveFormat {
             Self::Tiff => image::ImageFormat::Tiff,
             Self::Tga => image::ImageFormat::Tga,
             Self::Ico => image::ImageFormat::Ico,
-            Self::Icns => return None,
+            Self::Icns | Self::Ora => return None,
             Self::Qoi => image::ImageFormat::Qoi,
             Self::Pnm => image::ImageFormat::Pnm,
             Self::Farbfeld => image::ImageFormat::Farbfeld,
@@ -122,9 +129,55 @@ impl SaveFormat {
     }
 }
 
+impl SaveFormat {
+    // Keeps layers, names, visibility and opacity rather than the picture they make.
+    pub fn is_project(self) -> bool {
+        self == Self::Ora
+    }
+}
+
 impl fmt::Display for SaveFormat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&i18n::format_with_extension(self.label(), self.extension()))
+    }
+}
+
+pub enum Loaded {
+    Image(Rgba8),
+    Layers { stack: Stack, trimmed: bool },
+    // A project holding more than its layers can show here, opened as its merged picture.
+    Merged(Rgba8),
+}
+
+// Opens anything the editor reads, keeping a project's layers where it has them.
+pub fn open(path: &Path) -> Result<Loaded, String> {
+    if !is_openraster(path) {
+        return load(path).map(Loaded::Image);
+    }
+    Ok(match ora::load(path)? {
+        ora::Opened::Layers { stack, trimmed } => Loaded::Layers { stack, trimmed },
+        ora::Opened::Flat(pixels) => Loaded::Merged(pixels),
+    })
+}
+
+fn is_openraster(path: &Path) -> bool {
+    if extension(path).as_deref() == Some(ora::EXTENSION) {
+        return true;
+    }
+    // The archive's first entry is an uncompressed `mimetype`, so its contents sit at a fixed spot.
+    let mut header = [0u8; 54];
+    File::open(path)
+        .and_then(|mut file| file.read_exact(&mut header))
+        .is_ok_and(|()| {
+            &header[..4] == b"PK\x03\x04" && &header[30..54] == b"mimetypeimage/openraster"
+        })
+}
+
+pub fn save_document(stack: &Stack, path: &Path, format: SaveFormat) -> Result<(), String> {
+    if format.is_project() {
+        ora::save(stack, path)
+    } else {
+        save_as(&stack.flattened(), path, format)
     }
 }
 
@@ -155,6 +208,7 @@ pub fn load(path: &Path) -> Result<Rgba8, String> {
     Rgba8::from_raw(w, h, rgba.into_raw()).ok_or_else(|| i18n::error_impossible_size().to_owned())
 }
 
+#[allow(dead_code, reason = "the examples write their sheets through it")]
 pub fn save(pixels: &Rgba8, path: &Path) -> Result<(), String> {
     let format = SaveFormat::from_path(path)
         .ok_or_else(|| i18n::error_unsupported_format(&path.display().to_string()))?;
@@ -162,6 +216,9 @@ pub fn save(pixels: &Rgba8, path: &Path) -> Result<(), String> {
 }
 
 pub fn save_as(pixels: &Rgba8, path: &Path, format: SaveFormat) -> Result<(), String> {
+    if format.is_project() {
+        return save_document(&single(pixels), path, format);
+    }
     if format == SaveFormat::Icns {
         return save_icns(pixels, path);
     }
@@ -196,6 +253,20 @@ pub fn with_extension(mut path: PathBuf, format: SaveFormat) -> PathBuf {
         path.set_extension(format.extension());
     }
     path
+}
+
+fn single(pixels: &Rgba8) -> Stack {
+    Stack {
+        layers: vec![super::Layer {
+            id: 1,
+            name: i18n::layer_background().to_owned(),
+            visible: true,
+            opacity: super::layers::OPAQUE,
+            pixels: pixels.clone(),
+        }],
+        active: 0,
+        transparent: true,
+    }
 }
 
 fn has_header(path: &Path, expected: &[u8]) -> Result<bool, String> {

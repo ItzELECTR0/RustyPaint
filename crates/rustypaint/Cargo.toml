@@ -30,6 +30,8 @@ cosmic-text = "0.15"
 
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.4"
+zip = { version = "5.1.1", default-features = false, features = ["deflate"] }
+roxmltree = "0.20.0"
 tract-onnx = "0.23.7"
 tract-linalg = { version = "0.23.7", features = ["multithread-mm"] }
 

@@ -35,10 +35,11 @@ pub struct Uniforms {
     pub float_masked: f32,
     pub pixel_grid: f32,
     pub float_blur: f32,
-    pub _pad3: f32,
+    pub layer_opacity: f32,
     pub brush_ring: [f32; 4],
     pub crop: [f32; 4],
     pub marquee: [f32; 4],
+    pub surround: [f32; 4],
 }
 
 #[repr(C)]
@@ -67,6 +68,8 @@ pub struct Viewport {
     sampler: wgpu::Sampler,
     srgb_target: bool,
     canvas: Option<Texture>,
+    below: Option<Texture>,
+    above: Option<Texture>,
     floating: Option<Texture>,
     blur: Option<BlurTextures>,
     blank: Option<wgpu::Texture>,
@@ -168,6 +171,26 @@ impl iced::widget::shader::Pipeline for Viewport {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -306,6 +329,8 @@ impl iced::widget::shader::Pipeline for Viewport {
             sampler,
             srgb_target: format.is_srgb(),
             canvas: None,
+            below: None,
+            above: None,
             floating: None,
             blur: None,
             blank: None,
@@ -378,6 +403,41 @@ impl Viewport {
             }
             Upload::Whole => {
                 Self::upload(queue, &texture.handle, wgpu::Origin3d::ZERO, size, pixels)
+            }
+        }
+    }
+
+    // The layers under and over the active one change only when the stack does, so each is
+    // uploaded whole and dropped as soon as there is nothing on that side.
+    pub fn sync_surround(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        size: (u32, u32),
+        surround: &super::Surround,
+    ) {
+        let limit = device.limits().max_texture_dimension_2d;
+        if size.0 > limit || size.1 > limit {
+            return;
+        }
+        for (slot, pixels, label) in [
+            (&mut self.below, &surround.below, "rustypaint below"),
+            (&mut self.above, &surround.above, "rustypaint above"),
+        ] {
+            let Some(pixels) = pixels else {
+                if slot.take().is_some() {
+                    self.bind_group = None;
+                }
+                continue;
+            };
+            if slot.as_ref().is_none_or(|texture| texture.size != size) {
+                *slot = Some(Self::allocate(device, size, label));
+                self.bind_group = None;
+            }
+            let Some(texture) = slot else { continue };
+            if texture.uploaded != surround.version {
+                texture.uploaded = surround.version;
+                Self::upload(queue, &texture.handle, wgpu::Origin3d::ZERO, size, pixels);
             }
         }
     }
@@ -635,6 +695,17 @@ impl Viewport {
 
         let canvas_view = canvas.handle.create_view(&Default::default());
         let float_view = floating.create_view(&Default::default());
+        let blank = self.blank.as_ref().expect("allocated above");
+        let below_view = self
+            .below
+            .as_ref()
+            .map_or(blank, |texture| &texture.handle)
+            .create_view(&Default::default());
+        let above_view = self
+            .above
+            .as_ref()
+            .map_or(blank, |texture| &texture.handle)
+            .create_view(&Default::default());
         let blur_view = self
             .blur
             .as_ref()
@@ -669,6 +740,14 @@ impl Viewport {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: wgpu::BindingResource::TextureView(&blur_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&below_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(&above_view),
                 },
             ],
         }));
@@ -731,7 +810,7 @@ mod tests {
 
     #[test]
     fn the_uniform_block_is_the_size_the_shader_expects() {
-        assert_eq!(std::mem::size_of::<Uniforms>(), 464);
+        assert_eq!(std::mem::size_of::<Uniforms>(), 480);
         assert_eq!(std::mem::align_of::<Uniforms>(), 4);
     }
 
@@ -809,9 +888,14 @@ mod tests {
             ("float_masked", std::mem::offset_of!(Uniforms, float_masked)),
             ("pixel_grid", std::mem::offset_of!(Uniforms, pixel_grid)),
             ("float_blur", std::mem::offset_of!(Uniforms, float_blur)),
+            (
+                "layer_opacity",
+                std::mem::offset_of!(Uniforms, layer_opacity),
+            ),
             ("brush_ring", std::mem::offset_of!(Uniforms, brush_ring)),
             ("crop", std::mem::offset_of!(Uniforms, crop)),
             ("marquee", std::mem::offset_of!(Uniforms, marquee)),
+            ("surround", std::mem::offset_of!(Uniforms, surround)),
         ];
 
         assert_eq!(
