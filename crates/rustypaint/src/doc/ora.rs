@@ -169,6 +169,16 @@ fn opacity(node: roxmltree::Node) -> u8 {
         })
 }
 
+// Krita truncates opacity to 8 bits as it reads, so each value is written a quarter step up:
+// a truncating reader lands on the same level and a rounding one still does.
+fn written_opacity(opacity: u8) -> String {
+    match opacity {
+        0 => "0".into(),
+        OPAQUE => "1".into(),
+        level => format!("{:.6}", (f64::from(level) + 0.25) / 255.0),
+    }
+}
+
 fn entry<R: Read + Seek>(archive: &mut zip::ZipArchive<R>, name: &str) -> Result<Vec<u8>, String> {
     let mut file = archive
         .by_name(name)
@@ -260,12 +270,12 @@ pub fn write<W: Write + Seek>(stack: &Stack, out: W) -> Result<W, String> {
     for (index, layer) in stack.layers.iter().enumerate().rev() {
         let (offset, _) = &pngs[index];
         entries.push_str(&format!(
-            "  <layer name=\"{}\" src=\"data/layer{index}.png\" x=\"{}\" y=\"{}\" opacity=\"{:.6}\" \
+            "  <layer name=\"{}\" src=\"data/layer{index}.png\" x=\"{}\" y=\"{}\" opacity=\"{}\" \
              visibility=\"{}\" composite-op=\"svg:src-over\"{}/>\n",
             escape(&layer.name),
             offset.0,
             offset.1,
-            layer.opacity as f32 / 255.0,
+            written_opacity(layer.opacity),
             if layer.visible { "visible" } else { "hidden" },
             if index == stack.active {
                 " selected=\"true\""
@@ -553,10 +563,18 @@ mod tests {
     }
 
     #[test]
-    fn opacity_survives_an_eight_bit_round_trip_through_krita() {
-        for opacity in [0u8, 1, 127, 128, 200, 255] {
-            let written = format!("{:.6}", opacity as f32 / 255.0);
-            let krita = format!("{:.6}", written.parse::<f32>().unwrap());
+    fn every_opacity_survives_readers_that_round_and_readers_that_truncate() {
+        for level in 0..=255u8 {
+            let written: f64 = written_opacity(level).parse().unwrap();
+            assert_eq!((written * 255.0).floor() as u8, level, "truncated {level}");
+            assert_eq!((written * 255.0).round() as u8, level, "rounded {level}");
+        }
+    }
+
+    #[test]
+    fn what_krita_writes_back_opens_at_the_same_opacity() {
+        // Krita writes the level it read as level / 255 to six significant digits.
+        for (krita, level) in [("0.65098", 166u8), ("0.494118", 126), ("0.00392157", 1)] {
             let xml = format!(
                 "<image version=\"0.0.6\" w=\"1\" h=\"1\"><stack>\
                  <layer src=\"data/a.png\" opacity=\"{krita}\"/></stack></image>"
@@ -567,7 +585,7 @@ mod tests {
             else {
                 panic!("a normal layer opens as a layer");
             };
-            assert_eq!(stack.layers[0].opacity, opacity);
+            assert_eq!(stack.layers[0].opacity, level);
         }
     }
 
@@ -591,5 +609,92 @@ mod tests {
         let mut out = zip.finish().unwrap();
         out.set_position(0);
         out
+    }
+
+    fn photo(size: (u32, u32), seed: u32) -> Rgba8 {
+        let mut pixels = Rgba8::transparent(size.0, size.1);
+        let mut state = seed;
+        for (i, px) in pixels
+            .pixels_mut()
+            .as_chunks_mut::<CHANNELS>()
+            .0
+            .iter_mut()
+            .enumerate()
+        {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            let (x, y) = (i as u32 % size.0, i as u32 / size.0);
+            let grain = (state >> 27) as u8;
+            *px = [
+                (x * 255 / size.0) as u8 / 2 + grain,
+                (y * 255 / size.1) as u8 / 2 + grain,
+                128 + grain,
+                255,
+            ];
+        }
+        pixels
+    }
+
+    fn strokes(size: (u32, u32), every: u32) -> Rgba8 {
+        let mut pixels = Rgba8::transparent(size.0, size.1);
+        for (i, px) in pixels
+            .pixels_mut()
+            .as_chunks_mut::<CHANNELS>()
+            .0
+            .iter_mut()
+            .enumerate()
+        {
+            let (x, y) = (i as u32 % size.0, i as u32 / size.0);
+            if (x + 3 * y) % every < 6 && y > size.1 / 4 && y < size.1 * 3 / 4 {
+                *px = [20, 30, 90, 220];
+            }
+        }
+        pixels
+    }
+
+    // `cargo test --release -p rustypaint ora_timings -- --ignored --nocapture`
+    #[test]
+    #[ignore = "a measurement, not a check"]
+    fn ora_timings() {
+        for (size, count) in [((1920, 1080), 5), ((4000, 3000), 5), ((6000, 4000), 3)] {
+            let mut layers = vec![layer(1, "Photo", photo(size, 7), true, OPAQUE)];
+            for id in 2..=count {
+                layers.push(layer(
+                    id,
+                    "Ink",
+                    strokes(size, 40 + id as u32 * 13),
+                    true,
+                    200,
+                ));
+            }
+            let stack = Stack {
+                layers,
+                active: 1,
+                transparent: true,
+            };
+            let start = std::time::Instant::now();
+            let bytes = write(&stack, std::io::Cursor::new(Vec::new()))
+                .unwrap()
+                .into_inner();
+            let saved = start.elapsed();
+            let start = std::time::Instant::now();
+            let Opened::Layers { .. } = read(std::io::Cursor::new(&bytes)).unwrap() else {
+                panic!("it opens as layers");
+            };
+            let opened = start.elapsed();
+            let start = std::time::Instant::now();
+            let flat = png(&stack.flattened()).unwrap();
+            let flat_time = start.elapsed();
+            println!(
+                "{}x{} {count} layers: ORA {:.1} MB saved in {:.0} ms, opened in {:.0} ms; \
+                 flat PNG {:.1} MB in {:.0} ms",
+                size.0,
+                size.1,
+                bytes.len() as f64 / 1e6,
+                saved.as_secs_f64() * 1e3,
+                opened.as_secs_f64() * 1e3,
+                flat.len() as f64 / 1e6,
+                flat_time.as_secs_f64() * 1e3,
+            );
+        }
     }
 }
