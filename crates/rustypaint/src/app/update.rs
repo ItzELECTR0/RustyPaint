@@ -169,7 +169,13 @@ impl App {
             Message::Opened(Err(e)) => self.status = e,
 
             Message::SaveRequested => return self.save(),
-            Message::SaveAsRequested => self.menu = Some(MenuPage::SaveAs),
+            Message::SaveAsRequested => {
+                // Layered work is offered as a project first; a flat format is still one pick away.
+                if self.doc.layered() {
+                    self.save_format = doc::io::SaveFormat::Ora;
+                }
+                self.menu = Some(MenuPage::SaveAs);
+            }
             Message::SaveAsConfirmed => return self.save_as(),
             Message::SaveFormatPicked(format) => self.save_format = format,
             Message::Saved(Ok(path)) => {
@@ -921,6 +927,9 @@ impl App {
                 self.menu = Some(MenuPage::About);
             }
             Message::MenuClosed => self.menu = None,
+            Message::MenuPagePicked(MenuPage::SaveAs) => {
+                return self.dispatch(Message::SaveAsRequested);
+            }
             Message::MenuPagePicked(page) => self.menu = Some(page),
             Message::LinkOpened(url) => {
                 if let Err(e) = open_link(url) {

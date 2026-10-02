@@ -315,8 +315,11 @@ pub fn write<W: Write + Seek>(stack: &Stack, out: W) -> Result<W, String> {
     zip.finish().map_err(|e| e.to_string())
 }
 
+// Where a layer's cropped picture sits on the canvas, and the PNG holding it.
+type Encoded = ((u32, u32), Vec<u8>);
+
 // Each layer is cropped to what it holds, as Krita writes them, and encoded on its own thread.
-fn encode_layers(stack: &Stack) -> Result<Vec<((u32, u32), Vec<u8>)>, String> {
+fn encode_layers(stack: &Stack) -> Result<Vec<Encoded>, String> {
     std::thread::scope(|scope| {
         let jobs: Vec<_> = stack
             .layers

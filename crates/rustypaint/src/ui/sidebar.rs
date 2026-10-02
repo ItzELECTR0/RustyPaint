@@ -200,7 +200,7 @@ fn scroll_body<'a>(panel: Panel<'a>, height: Length) -> Element<'a, Message> {
 
 fn note_below<'a>(
     control: impl Into<Element<'a, Message>>,
-    label: &'a str,
+    label: impl iced::widget::text::IntoFragment<'a>,
 ) -> Element<'a, Message> {
     iced::widget::tooltip(
         control,
@@ -237,7 +237,7 @@ pub fn layers_panel<'a>(layers: Layers<'a>) -> Panel<'a> {
     let count = layers.rows.len();
     let open = !layers.held;
     let active = layers.active;
-    let action = |drawing, label, press: Message, enabled: bool| {
+    let action = |drawing, label: String, press: Message, enabled: bool| {
         note_below(
             button(crate::ui::centred(icon(
                 drawing,
@@ -256,46 +256,48 @@ pub fn layers_panel<'a>(layers: Layers<'a>) -> Panel<'a> {
             label,
         )
     };
+    let keyed = |label: &str, key: String| crate::ui::strings::with_key(label, &key);
+    let command = crate::ui::strings::command_key;
     let actions = row![
         action(
             icons::LAYER_NEW,
-            i18n::layer_new(),
+            keyed(i18n::layer_new(), crate::ui::strings::shift_key("N")),
             Message::Layer(LayerAction::Add),
             true
         ),
         action(
             icons::LAYER_DUPLICATE,
-            i18n::layer_duplicate(),
+            keyed(i18n::layer_duplicate(), command("J")),
             Message::Layer(LayerAction::Duplicate),
             true
         ),
         action(
             icons::LAYER_DELETE,
-            i18n::layer_delete(),
+            i18n::layer_delete().to_owned(),
             Message::Layer(LayerAction::Delete),
             count > 1
         ),
         action(
             icons::LAYER_UP,
-            i18n::layer_move_up(),
+            keyed(i18n::layer_move_up(), command("]")),
             Message::Layer(LayerAction::Move(true)),
             active + 1 < count
         ),
         action(
             icons::LAYER_DOWN,
-            i18n::layer_move_down(),
+            keyed(i18n::layer_move_down(), command("[")),
             Message::Layer(LayerAction::Move(false)),
             active > 0
         ),
         action(
             icons::LAYER_MERGE,
-            i18n::layer_merge_down(),
+            keyed(i18n::layer_merge_down(), command("E")),
             Message::Layer(LayerAction::Merge),
             layers.can_merge
         ),
         action(
             icons::LAYER_FLATTEN,
-            i18n::layer_flatten(),
+            i18n::layer_flatten().to_owned(),
             Message::Layer(LayerAction::Flatten),
             layers.layered
         ),

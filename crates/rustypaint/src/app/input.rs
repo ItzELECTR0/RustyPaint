@@ -97,6 +97,11 @@ pub(super) fn shortcut(event: iced::keyboard::Event) -> Option<Message> {
     }
 
     match key.as_ref() {
+        Key::Character("n") if modifiers.shift() => Some(Message::Layer(LayerAction::Add)),
+        Key::Character("j") => Some(Message::Layer(LayerAction::Duplicate)),
+        Key::Character("e") => Some(Message::Layer(LayerAction::Merge)),
+        Key::Character("]") => Some(Message::Layer(LayerAction::Move(true))),
+        Key::Character("[") => Some(Message::Layer(LayerAction::Move(false))),
         Key::Character("n") => Some(Message::NewRequested),
         Key::Character("w" | "q") => Some(Message::TabCloseRequested),
         Key::Character("c") if modifiers.shift() => Some(Message::CopyCanvas),

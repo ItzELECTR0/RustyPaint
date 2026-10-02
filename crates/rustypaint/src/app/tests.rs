@@ -5039,3 +5039,267 @@ fn a_stroke_in_progress_is_written_out_when_it_ends() {
     );
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+fn layer_pixel(app: &App, layer: usize, x: u32, y: u32) -> [u8; 4] {
+    crate::paint::fill::pick(&app.doc.layers()[layer].pixels, x as i64, y as i64).unwrap()
+}
+
+fn layered(width: u32, height: u32) -> App {
+    let mut app = app(width, height);
+    app.brush.tool = Tool::Fill;
+    app.brush.colour = RED;
+    click(&mut app, 1.0, 1.0);
+    send(&mut app, Message::Layer(LayerAction::Add));
+    app
+}
+
+#[test]
+fn a_new_layer_takes_the_next_stroke_and_the_one_below_keeps_its_own() {
+    let mut app = layered(16, 16);
+    assert_eq!(app.doc.active(), 1);
+    app.brush.colour = BLUE;
+    click(&mut app, 1.0, 1.0);
+
+    assert_eq!(layer_pixel(&app, 0, 1, 1), RED);
+    assert_eq!(layer_pixel(&app, 1, 1, 1), BLUE);
+    assert_eq!(app.doc.sample(1, 1), Some(BLUE), "the top layer shows");
+}
+
+#[test]
+fn moving_to_another_layer_lands_a_paste_in_the_layer_it_was_made_on() {
+    let mut app = layered(32, 32);
+    send(&mut app, Message::Layer(LayerAction::Select(0)));
+    send(
+        &mut app,
+        Message::Pasted(Some(Clip::Image(Rgba8::new(8, 8, BLUE)))),
+    );
+    assert!(app.floating.is_some());
+
+    send(&mut app, Message::Layer(LayerAction::Select(1)));
+    assert!(app.floating.is_none(), "it was put down first");
+    assert_eq!(app.doc.active(), 1);
+    assert_eq!(layer_pixel(&app, 0, 16, 16), BLUE, "in the bottom layer");
+    assert_eq!(layer_pixel(&app, 1, 16, 16), [0, 0, 0, 0]);
+}
+
+#[test]
+fn a_hidden_layer_refuses_the_brush() {
+    let mut app = layered(16, 16);
+    send(&mut app, Message::Layer(LayerAction::ToggleVisible(1)));
+    app.brush.tool = Tool::Marker;
+    click(&mut app, 5.0, 5.0);
+
+    assert_eq!(layer_pixel(&app, 1, 5, 5), [0, 0, 0, 0]);
+    assert_eq!(app.status, crate::i18n::layer_hidden());
+    assert!(app.stroke.is_none());
+}
+
+#[test]
+fn layer_changes_wait_for_crop_to_finish() {
+    let mut app = layered(16, 16);
+    send(&mut app, Message::CropOpened);
+    send(&mut app, Message::Layer(LayerAction::Delete));
+    send(&mut app, Message::Layer(LayerAction::ToggleVisible(0)));
+    assert_eq!(app.doc.layers().len(), 2);
+    assert!(app.doc.layers()[0].visible);
+}
+
+#[test]
+fn layered_work_is_offered_as_a_project_rather_than_saved_flat() {
+    let mut app = app(8, 8);
+    app.doc.path = Some(PathBuf::from("/tmp/flat.png"));
+    assert!(
+        app.save_target().is_some(),
+        "a flat picture still saves straight back to its file"
+    );
+
+    send(&mut app, Message::Layer(LayerAction::Add));
+    assert_eq!(
+        app.save_target(),
+        None,
+        "writing PNG would throw the layers away, so Save asks where the project goes"
+    );
+    send(&mut app, Message::SaveRequested);
+    assert_eq!(app.save_format, crate::doc::io::SaveFormat::Ora);
+
+    app.doc.path = Some(PathBuf::from("/tmp/work.ora"));
+    assert_eq!(
+        app.save_target(),
+        Some((
+            crate::doc::io::SaveFormat::Ora,
+            PathBuf::from("/tmp/work.ora")
+        ))
+    );
+}
+
+#[test]
+fn a_flat_export_of_layered_work_leaves_the_tab_on_its_project() {
+    let mut app = layered(8, 8);
+    app.doc.path = Some(PathBuf::from("/tmp/work.ora"));
+    send(&mut app, Message::SaveAsRequested);
+    assert_eq!(app.save_format, crate::doc::io::SaveFormat::Ora);
+    send(
+        &mut app,
+        Message::SaveFormatPicked(crate::doc::io::SaveFormat::Png),
+    );
+    assert!(app.exporting());
+
+    send(
+        &mut app,
+        Message::Exported(Ok(PathBuf::from("/tmp/work-flat.png"))),
+    );
+    assert_eq!(app.doc.path, Some(PathBuf::from("/tmp/work.ora")));
+    assert!(app.doc.modified(), "the project itself was not saved");
+    assert_eq!(app.status, crate::i18n::layers_exported("work-flat.png"));
+}
+
+fn opening(loaded: crate::doc::io::Loaded) -> Opening {
+    Opening(std::sync::Arc::new(loaded))
+}
+
+#[test]
+fn opening_a_project_brings_its_layers() {
+    let mut app = app(8, 8);
+    let mut stack = Document::from_image(Rgba8::new(6, 4, RED), None)
+        .stack()
+        .clone();
+    stack.layers.push(crate::doc::Layer {
+        id: 2,
+        name: "Ink".into(),
+        visible: false,
+        opacity: 100,
+        pixels: Rgba8::new(6, 4, BLUE),
+    });
+    stack.active = 1;
+    send(
+        &mut app,
+        Message::Opened(Ok((
+            PathBuf::from("/tmp/art.ora"),
+            opening(crate::doc::io::Loaded::Layers {
+                stack,
+                trimmed: true,
+            }),
+        ))),
+    );
+    assert_eq!(app.doc.layers().len(), 2);
+    assert_eq!(app.doc.active(), 1);
+    assert_eq!(app.doc.layers()[1].name, "Ink");
+    assert!(!app.doc.modified(), "opening is not an edit");
+    assert_eq!(app.save_format, crate::doc::io::SaveFormat::Ora);
+    assert_eq!(app.status, crate::i18n::layers_trimmed("art.ora"));
+    assert_eq!(app.thumbnails.len(), 2, "each layer has its picture");
+}
+
+#[test]
+fn a_project_that_only_opened_as_its_picture_is_never_saved_over() {
+    let mut app = app(8, 8);
+    send(
+        &mut app,
+        Message::Opened(Ok((
+            PathBuf::from("/tmp/krita.ora"),
+            opening(crate::doc::io::Loaded::Merged(Rgba8::new(6, 4, RED))),
+        ))),
+    );
+    assert!(app.doc.merged_only);
+    assert_eq!(app.save_target(), None, "Save asks for a new name");
+    assert_eq!(app.status, crate::i18n::layers_opened_flat("krita.ora"));
+
+    send(
+        &mut app,
+        Message::Saved(Ok(PathBuf::from("/tmp/krita-copy.ora"))),
+    );
+    assert!(!app.doc.merged_only, "the new file is this picture's own");
+}
+
+#[test]
+fn layered_work_comes_back_from_a_crash_with_its_layers() {
+    let root = recovery_scratch("layers");
+    let mut work = layered(9, 9);
+    send(&mut work, Message::Layer(LayerAction::Add));
+    let stack = work.for_recovery();
+    crate::doc::recovery::write_document(&root, "dead", "0", &stack).unwrap();
+    crate::doc::recovery::write_index(&root, "dead", &[dead_entry("0")], 0).unwrap();
+
+    let mut app = recovering(&root);
+    send(&mut app, Message::RecoveryAnswered(true));
+    assert_eq!(app.doc.layers().len(), 3);
+    assert_eq!(app.doc.active(), 2);
+    assert_eq!(layer_pixel(&app, 0, 1, 1), RED);
+    assert!(app.unsaved());
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_name_being_typed_is_kept_when_the_hand_moves_on() {
+    let mut app = layered(16, 16);
+    send(&mut app, Message::Layer(LayerAction::RenameStarted(0)));
+    assert_eq!(app.doc.active(), 0, "renaming a layer selects it");
+    assert_eq!(app.renaming.as_deref(), Some("Background"));
+    send(
+        &mut app,
+        Message::Layer(LayerAction::NameEdited("Sky".into())),
+    );
+    send(&mut app, Message::Canvas(gpu::Interaction::CaretTick));
+    assert!(app.renaming.is_some(), "a blink is not the hand moving on");
+
+    click(&mut app, 3.0, 3.0);
+    assert!(app.renaming.is_none());
+    assert_eq!(app.doc.layers()[0].name, "Sky");
+}
+
+#[test]
+fn an_opacity_drag_is_one_undo_step() {
+    let mut app = layered(8, 8);
+    for opacity in [0.8, 0.5, 0.25] {
+        send(&mut app, Message::Layer(LayerAction::Opacity(opacity)));
+    }
+    send(&mut app, Message::Layer(LayerAction::OpacitySettled));
+    assert_eq!(app.doc.layers()[1].opacity, 64);
+
+    send(&mut app, Message::Undo);
+    assert_eq!(app.doc.layers()[1].opacity, 255);
+    assert_eq!(app.doc.layers().len(), 2, "and only that step");
+}
+
+#[test]
+fn the_side_panel_remembers_how_it_was_shared() {
+    let mut app = app(8, 8);
+    send(&mut app, Message::SidebarSplit(0.3));
+    send(&mut app, Message::LayersFolded);
+    assert_eq!(app.config.sidebar.tools_share, 0.3);
+    assert!(!app.config.sidebar.layers_open);
+    send(&mut app, Message::LayersFolded);
+    assert!(app.config.sidebar.layers_open);
+}
+
+#[test]
+fn layer_shortcuts_follow_photoshop() {
+    use iced::keyboard::{Event, Key, Location, Modifiers, key};
+    let press = |c: &str, modifiers: Modifiers| {
+        shortcut(Event::KeyPressed {
+            key: Key::Character(c.into()),
+            modified_key: Key::Character(c.into()),
+            physical_key: key::Physical::Unidentified(key::NativeCode::Unidentified),
+            location: Location::Standard,
+            modifiers,
+            text: None,
+            repeat: false,
+        })
+    };
+    assert!(matches!(
+        press("n", Modifiers::COMMAND | Modifiers::SHIFT),
+        Some(Message::Layer(LayerAction::Add))
+    ));
+    assert!(
+        matches!(press("n", Modifiers::COMMAND), Some(Message::NewRequested)),
+        "a new picture is still Ctrl+N"
+    );
+    assert!(matches!(
+        press("j", Modifiers::COMMAND),
+        Some(Message::Layer(LayerAction::Duplicate))
+    ));
+    assert!(matches!(
+        press("e", Modifiers::COMMAND),
+        Some(Message::Layer(LayerAction::Merge))
+    ));
+}

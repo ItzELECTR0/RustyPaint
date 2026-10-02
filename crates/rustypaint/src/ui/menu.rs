@@ -43,6 +43,7 @@ pub fn view<'a>(
     modified: bool,
     settings: Settings<'a>,
     save_format: SaveFormat,
+    layered: bool,
 ) -> Element<'a, Message> {
     let name = i18n::window_title(title, modified);
     let heading =
@@ -120,7 +121,7 @@ pub fn view<'a>(
         Page::About => pane_about(),
         Page::Licences => scrollable(text(crate::select::cutout::model::NOTICES).size(13)).into(),
         Page::Open => pane_open(),
-        Page::SaveAs => pane_save_as(save_format),
+        Page::SaveAs => pane_save_as(save_format, layered),
         Page::Settings => pane_settings(settings),
     };
     let pane_right_padding = if page == Page::Settings { 8.0 } else { 40.0 };
@@ -231,8 +232,8 @@ fn pane_open<'a>() -> Element<'a, Message> {
     .into()
 }
 
-fn pane_save_as<'a>(format: SaveFormat) -> Element<'a, Message> {
-    column![
+fn pane_save_as<'a>(format: SaveFormat, layered: bool) -> Element<'a, Message> {
+    let mut pane = column![
         title(i18n::save_as_title()),
         text(i18n::save_as_choose())
             .size(14)
@@ -242,10 +243,17 @@ fn pane_save_as<'a>(format: SaveFormat) -> Element<'a, Message> {
             .menu_style(controls::menu_style)
             .text_size(13)
             .width(Length::Fixed(280.0)),
-        format_tile(format),
     ]
-    .spacing(12)
-    .into()
+    .spacing(12);
+    if layered && !format.is_project() {
+        pane = pane.push(
+            text(i18n::layers_flat_note())
+                .size(13)
+                .color(theme::colours().text_dim)
+                .width(Length::Fixed(280.0)),
+        );
+    }
+    pane.push(format_tile(format)).into()
 }
 
 fn pane_settings<'a>(settings: Settings<'a>) -> Element<'a, Message> {

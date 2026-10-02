@@ -775,6 +775,7 @@ impl App {
                     custom_canvas: (&self.custom_canvas.0, &self.custom_canvas.1),
                 },
                 self.save_format,
+                self.doc.layered(),
             );
         }
         column![

@@ -133,7 +133,7 @@ fn thumbnail(pixels: &Rgba8) -> iced::widget::image::Handle {
         for x in 0..w {
             let sx = (((x as f32 + 0.5) / fit) as usize).min(width as usize - 1);
             let at = (sy * width as usize + sx) * CHANNELS;
-            let shade = if (x / CHECKER + y / CHECKER) % 2 == 0 {
+            let shade = if (x / CHECKER + y / CHECKER).is_multiple_of(2) {
                 235
             } else {
                 200

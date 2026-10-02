@@ -1473,6 +1473,101 @@ mod tests {
         );
     }
 
+    // The viewport splits the stack around the active layer; whatever it shows has to be what
+    // `doc::layers` saves, live paste and layer opacity included.
+    #[test]
+    fn the_layers_on_screen_are_the_layers_that_are_saved() {
+        const NAME: &str = "layer-stack";
+        const ZOOM: f32 = 16.0;
+        let size = (6u32, 4u32);
+        let (w, h) = (300u32, 200u32);
+        let fill = |pick: &dyn Fn(u32, u32) -> [u8; 4]| -> Vec<u8> {
+            (0..size.1)
+                .flat_map(|y| (0..size.0).flat_map(move |x| pick(x, y)))
+                .collect()
+        };
+        let below = fill(&|x, _| if x < 3 { [220, 30, 30, 255] } else { [0; 4] });
+        let active = fill(&|_, y| {
+            if y < 2 {
+                [30, 30, 220, 255]
+            } else {
+                [30, 30, 220, 90]
+            }
+        });
+        let above = fill(&|x, y| {
+            if (x + y) % 2 == 0 {
+                [250, 230, 20, 140]
+            } else {
+                [0; 4]
+            }
+        });
+        let lifted = [[20u8, 200, 60, 200]; 4].concat();
+        let (layer_opacity, float_opacity) = (128u8, 0.75f32);
+
+        let mut program = floating_program(Vec::new());
+        program.frame.size = size;
+        program.frame.pixels = Arc::new(active.clone());
+        program.frame.view = View {
+            pan: Vector::ZERO,
+            zoom: ZOOM,
+        };
+        program.frame.surround = Surround {
+            below: Some(Arc::new(below.clone())),
+            above: Some(Arc::new(above.clone())),
+            version: 1,
+        };
+        program.frame.layer_opacity = layer_opacity as f32 / 255.0;
+        let floating = program.frame.floating.as_mut().unwrap();
+        floating.pixels = Arc::new(lifted.clone());
+        floating.size = (2, 2);
+        floating.grips = false;
+        floating.opacity = float_opacity;
+        floating.xform = Xform {
+            x: 2.0,
+            y: 1.0,
+            width: 2.0,
+            height: 2.0,
+            rotation: 0.0,
+        };
+
+        let Some(pixels) = render_offscreen(&program, (w, h), NAME, mouse::Cursor::Unavailable)
+        else {
+            eprintln!("no GPU available, skipping");
+            return;
+        };
+        let canvas = program.canvas_rect(Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: w as f32,
+            height: h as f32,
+        });
+        let faded = (200.0 * float_opacity).round() as u8;
+        for y in 0..size.1 {
+            for x in 0..size.0 {
+                let at = (y * size.0 + x) as usize * 4;
+                let mut expected = [255u8, 255, 255, 255];
+                crate::doc::layers::blend(&mut expected, &below[at..at + 4], 255);
+                let mut layer: [u8; 4] = active[at..at + 4].try_into().unwrap();
+                if (2..4).contains(&x) && (1..3).contains(&y) {
+                    crate::doc::layers::blend(&mut layer, &[20, 200, 60, faded], 255);
+                }
+                crate::doc::layers::blend(&mut expected, &layer, layer_opacity);
+                crate::doc::layers::blend(&mut expected, &above[at..at + 4], 255);
+
+                let sx = (canvas.x + (x as f32 + 0.5) * ZOOM) as usize;
+                let sy = (canvas.y + (y as f32 + 0.5) * ZOOM) as usize;
+                let i = (sy * w as usize + sx) * 4;
+                let shown = &pixels[i..i + 4];
+                for c in 0..3 {
+                    assert!(
+                        shown[c].abs_diff(expected[c]) <= 2,
+                        "pixel {x},{y} shows {shown:?}, saving gives {expected:?}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn a_preview_is_drawn_in_canvas_pixels() {
         const NAME: &str = "float-pixels";

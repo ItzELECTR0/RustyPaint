@@ -9,15 +9,12 @@ const GRIP: Size = Size::new(32.0, 4.0);
 
 // The bar between two stacked sections. It follows the pointer anywhere once grabbed, which a
 // mouse area cannot, so a drag that strays off the bar does not stop.
-pub fn sash<'a, Message: 'a>(
+pub fn sash<'a, Message: Clone + 'a>(
     above: f32,
     room: f32,
     resize: impl Fn(f32) -> Message + 'a,
     settle: Message,
-) -> Element<'a, Message>
-where
-    Message: Clone,
-{
+) -> Element<'a, Message> {
     draw(Sash {
         above,
         room,

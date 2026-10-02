@@ -93,23 +93,24 @@ impl App {
     // Saving never flattens layers on its own: a layered picture that came from a flat file is
     // offered as an OpenRaster project instead, and Save As can still export a flat copy.
     pub(super) fn save(&mut self) -> Task<Message> {
-        let target = self
-            .doc
-            .path
-            .clone()
-            .filter(|_| !self.doc.merged_only)
-            .and_then(|path| Some((doc::io::SaveFormat::from_path(&path)?, path)));
-        match target {
-            Some((format, path)) if format.is_project() || !self.doc.layered() => {
+        match self.save_target() {
+            Some((format, path)) => {
                 Task::perform(save_to(self.for_saving(), path, format), Message::Saved)
             }
-            _ => {
+            None => {
                 if self.doc.layered() {
                     self.save_format = doc::io::SaveFormat::Ora;
                 }
                 self.save_as()
             }
         }
+    }
+
+    // Where Save can write without asking, if anywhere.
+    pub(super) fn save_target(&self) -> Option<(doc::io::SaveFormat, PathBuf)> {
+        let path = self.doc.path.clone().filter(|_| !self.doc.merged_only)?;
+        let format = doc::io::SaveFormat::from_path(&path)?;
+        (format.is_project() || !self.doc.layered()).then_some((format, path))
     }
 
     pub(super) fn save_as(&self) -> Task<Message> {
