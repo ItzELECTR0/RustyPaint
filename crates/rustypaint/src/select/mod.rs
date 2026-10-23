@@ -85,7 +85,11 @@ impl Floating {
             let start = y as usize * stride + rect.x0 as usize * CHANNELS;
             let span = rect.width() as usize * CHANNELS;
             match mask {
-                None => bytes[start..start + span].fill(0),
+                None => {
+                    for pixel in bytes[start..start + span].as_chunks_mut::<4>().0 {
+                        pixel[3] = 0;
+                    }
+                }
                 Some(mask) => {
                     for (column, px) in bytes[start..start + span]
                         .as_chunks_mut::<4>()
@@ -658,6 +662,16 @@ impl Floating {
     }
 
     pub fn commit(&self, doc: &mut Document) -> Option<Rect> {
+        if let Some(rect) = self.lifted_from
+            && self.xform == Xform::from_rect(rect)
+            && self.opacity == 1.0
+            && self.turns == 0
+            && self.flip == (false, false)
+        {
+            doc.restore_live(self.backup.clone(), self.backup_touched);
+            return None;
+        }
+
         let size = doc.size();
         let rect = self.xform.bounds(size)?;
 
@@ -1050,7 +1064,7 @@ mod tests {
         let f = Floating::lift_masked(&mut d, Rect::new(2, 2, 5, 5), None).unwrap();
 
         assert_eq!(f.pixels.size(), (3, 3));
-        assert_eq!(at(&d, 3, 3), [0, 0, 0, 0], "the source region is emptied");
+        assert_eq!(at(&d, 3, 3), [255, 0, 0, 0], "the source region is emptied");
         assert_eq!(at(&d, 0, 0), RED, "everything else is untouched");
     }
 
@@ -1064,13 +1078,24 @@ mod tests {
     }
 
     #[test]
+    fn cancelling_a_masked_selection_at_its_origin_restores_every_pixel() {
+        let mut d = doc_of(RED);
+        let before = d.pixels().clone();
+        let mask = vec![255, 128, 0, 64, 200, 255, 0, 90, 255];
+        let f = Floating::lift_masked(&mut d, Rect::new(2, 2, 5, 5), Some(&mask)).unwrap();
+
+        assert!(f.commit(&mut d).is_none(), "no document edit was made");
+        assert_eq!(d.pixels().as_bytes(), before.as_bytes());
+    }
+
+    #[test]
     fn moving_a_selection_leaves_the_hole_behind() {
         let mut d = doc_of(RED);
         let mut f = Floating::lift_masked(&mut d, Rect::new(0, 0, 3, 3), None).unwrap();
         f.xform = f.xform.moved_by(5.0, 5.0);
         f.commit(&mut d);
 
-        assert_eq!(at(&d, 1, 1), [0, 0, 0, 0], "where it was is still empty");
+        assert_eq!(at(&d, 1, 1), [255, 0, 0, 0], "where it was is still empty");
         assert_eq!(at(&d, 6, 6), RED, "and it landed where it was dragged");
     }
 

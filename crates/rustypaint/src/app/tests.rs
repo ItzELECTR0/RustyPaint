@@ -688,7 +688,7 @@ fn dragging_a_selection_lifts_it_off_the_canvas() {
     drag_selection(&mut app, (2.0, 2.0), (8.0, 8.0));
 
     assert!(app.floating.is_some(), "there should be something floating");
-    assert_eq!(pixel(&app, 4, 4), [0, 0, 0, 0], "and a hole where it was");
+    assert_eq!(pixel(&app, 4, 4), [255, 0, 0, 0], "and a hole where it was");
     assert_eq!(pixel(&app, 12, 12), RED, "elsewhere untouched");
 }
 
@@ -724,7 +724,7 @@ fn undo_cancels_a_live_selection_before_touching_document_history() {
     assert!(app.floating.is_some(), "redo picks the selection back up");
     assert_eq!(
         pixel(&app, 4, 4),
-        [0, 0, 0, 0],
+        [255, 0, 0, 0],
         "with its hole back under it"
     );
 }
@@ -788,7 +788,7 @@ fn moving_a_selection_and_putting_it_down_is_one_undo_step() {
     send(&mut app, Message::Deselect);
 
     assert!(app.floating.is_none());
-    assert_eq!(pixel(&app, 1, 1), [0, 0, 0, 0], "the hole stays behind");
+    assert_eq!(pixel(&app, 1, 1), [255, 0, 0, 0], "the hole stays behind");
     assert_eq!(pixel(&app, 9, 9), RED, "and it landed where it was dragged");
 
     send(&mut app, Message::Undo);
