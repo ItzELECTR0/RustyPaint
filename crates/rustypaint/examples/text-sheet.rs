@@ -64,6 +64,30 @@ fn main() {
             false,
         ),
         (
+            "Outline".into(),
+            TextStyle {
+                bold: true,
+                colour: [255, 214, 0, 255],
+                outline: Some([0, 0, 0, 255]),
+                thickness: 5.0,
+                ..base.clone()
+            },
+            "ZAP! WOOSH!",
+            false,
+        ),
+        (
+            "Hollow".into(),
+            TextStyle {
+                bold: true,
+                fill: false,
+                outline: Some([200, 0, 0, 255]),
+                thickness: 2.0,
+                ..base.clone()
+            },
+            "SPLASH!",
+            false,
+        ),
+        (
             "Left".into(),
             TextStyle {
                 align: Align::Left,

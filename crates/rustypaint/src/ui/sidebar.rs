@@ -42,6 +42,7 @@ pub fn panel<'a>(
     style: ShapeStyle,
     blur_settings: blur::Settings,
     text_style: &'a TextStyle,
+    text_outline_target: bool,
     width: f32,
     colour_target: bool,
     live: Option<Live>,
@@ -63,7 +64,7 @@ pub fn panel<'a>(
             custom_menu,
         ),
         Tab::Stickers => stickers(history, brush.tool == Tool::Blur, blur_settings, typed),
-        Tab::Text => text_panel(text_style, custom, custom_menu),
+        Tab::Text => text_panel(text_style, text_outline_target, typed, custom, custom_menu),
         Tab::Canvas => canvas_panel(canvas, size, transparent),
     };
 
@@ -246,7 +247,7 @@ fn shape_style_panel<'a>(
         paint = paint.push(section(i18n::fill())).push(paint_row(
             style.fill,
             target,
-            true,
+            Message::ShapeColourTargetPicked(true),
             Message::ShapeFillTypePicked,
         ));
     }
@@ -254,8 +255,8 @@ fn shape_style_panel<'a>(
         .push(section(i18n::line_type()))
         .push(paint_row(
             style.outline,
-            target,
-            false,
+            !target,
+            Message::ShapeColourTargetPicked(false),
             Message::ShapeLineTypePicked,
         ))
         .push(swatches(
@@ -336,34 +337,33 @@ fn wide_button<'a>(label: &'a str, press: Message) -> Element<'a, Message> {
 
 fn paint_row<'a>(
     colour: Option<[u8; 4]>,
-    target: bool,
-    is_fill: bool,
+    targeted: bool,
+    aim: Message,
     picked: fn(shapes::Paint) -> Message,
 ) -> Element<'a, Message> {
     let shown = colour.unwrap_or([255, 255, 255, 0]);
-    let swatch = button(Space::new().width(Length::Fill).height(Length::Fill))
+    let swatch = container(Space::new().width(Length::Fill).height(Length::Fill))
         .width(Length::Fixed(44.0))
         .height(Length::Fixed(34.0))
-        .style(move |_theme, _status| {
+        .style(move |_theme| {
             let c = theme::colours();
-            button::Style {
+            container::Style {
                 background: Some(from_bytes(shown).into()),
                 border: iced::Border {
-                    color: if target == is_fill {
-                        c.accent
-                    } else {
-                        c.border
-                    },
-                    width: if target == is_fill { 2.0 } else { 1.0 },
+                    color: if targeted { c.accent } else { c.border },
+                    width: if targeted { 2.0 } else { 1.0 },
                     radius: 0.0.into(),
                 },
                 ..Default::default()
             }
-        })
-        .on_press(Message::ShapeColourTargetPicked(is_fill));
+        });
 
+    // One click aims the palette at this colour, a second opens the picker on it.
     row![
-        swatch,
+        mouse_area(swatch)
+            .on_press(aim)
+            .on_double_click(Message::PickerOpened(Picking::Current))
+            .interaction(iced::mouse::Interaction::Pointer),
         iced::widget::pick_list(shapes::Paint::ALL, Some(shapes::Paint::of(colour)), picked)
             .style(controls::pick_list_style)
             .menu_style(controls::menu_style)
@@ -377,6 +377,8 @@ fn paint_row<'a>(
 
 fn text_panel<'a>(
     style: &'a TextStyle,
+    outline_target: bool,
+    typed: Option<(Field, &'a str)>,
     custom: &[[u8; 4]],
     custom_menu: Option<usize>,
 ) -> Element<'a, Message> {
@@ -398,24 +400,7 @@ fn text_panel<'a>(
     .style(controls::pick_list_style)
     .menu_style(controls::menu_style)
     .text_size(13)
-    .width(Length::Fixed(90.0));
-
-    let colour = from_bytes(style.colour);
-    let well = button(
-        Space::new()
-            .width(Length::Fixed(36.0))
-            .height(Length::Fixed(32.0)),
-    )
-    .style(move |_theme, _status| button::Style {
-        background: Some(colour.into()),
-        border: iced::Border {
-            color: theme::colours().border,
-            width: 1.0,
-            radius: 0.0.into(),
-        },
-        ..Default::default()
-    })
-    .on_press(Message::PickerOpened(Picking::Current));
+    .width(Length::Fill);
 
     let weight = row![
         letter(i18n::text_bold(), style.bold, Message::TextBoldToggled),
@@ -439,23 +424,64 @@ fn text_panel<'a>(
     ]
     .spacing(4);
 
+    let mut options = column![
+        family,
+        size,
+        weight,
+        aligns,
+        checkbox(style.background)
+            .style(controls::checkbox_style)
+            .label(i18n::text_background_fill())
+            .text_size(13)
+            .on_toggle(Message::TextBackgroundToggled),
+    ]
+    .spacing(10);
+    if style.outline.is_some() {
+        options = options
+            .push(field_row(
+                i18n::text_outline_thickness(),
+                Field::TextThickness,
+                style.thickness,
+                typed,
+            ))
+            .push(
+                slider(
+                    crate::text::MIN_THICKNESS..=crate::text::MAX_THICKNESS,
+                    style
+                        .thickness
+                        .clamp(crate::text::MIN_THICKNESS, crate::text::MAX_THICKNESS),
+                    Message::TextThicknessChanged,
+                )
+                .style(controls::slider_style),
+            );
+    }
+
+    let current = match style.outline {
+        Some(outline) if outline_target => outline,
+        _ => style.colour,
+    };
+    let paint = column![
+        section(i18n::fill()),
+        paint_row(
+            style.fill.then_some(style.colour),
+            !outline_target,
+            Message::TextColourTargetPicked(false),
+            Message::TextFillPicked,
+        ),
+        section(i18n::text_outline()),
+        paint_row(
+            style.outline,
+            outline_target,
+            Message::TextColourTargetPicked(true),
+            Message::TextOutlinePicked,
+        ),
+        swatches(current, custom, custom_menu),
+    ]
+    .spacing(8);
+
     Panel::new(i18n::text_heading())
-        .card(
-            i18n::options(),
-            column![
-                family,
-                row![size, well].spacing(6).align_y(iced::Alignment::Center),
-                weight,
-                aligns,
-                checkbox(style.background)
-                    .style(controls::checkbox_style)
-                    .label(i18n::text_background_fill())
-                    .text_size(13)
-                    .on_toggle(Message::TextBackgroundToggled),
-            ]
-            .spacing(10),
-        )
-        .card(i18n::colour(), swatches(style.colour, custom, custom_menu))
+        .card(i18n::options(), options)
+        .card(i18n::colour(), paint)
         .hint(i18n::text_hint())
         .into()
 }

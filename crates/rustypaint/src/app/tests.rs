@@ -3230,6 +3230,42 @@ fn a_colour_lands_on_the_text_about_to_be_typed() {
 }
 
 #[test]
+fn the_text_and_the_brush_keep_their_own_colours() {
+    let mut app = app(60, 60);
+    let brush = app.brush.colour;
+    let last = crate::ui::theme::SWATCHES.len() - 1;
+    send(&mut app, Message::TabPicked(Tab::Text));
+    send(&mut app, Message::ColourPicked(last));
+    let text = sidebar::to_bytes(crate::ui::theme::SWATCHES[last]);
+    assert_eq!(app.text_style.colour, text, "the text took it");
+    assert_eq!(app.brush.colour, brush, "and the brush did not");
+
+    send(&mut app, Message::TabPicked(Tab::Brushes));
+    send(&mut app, Message::ColourPicked(last - 1));
+    assert_ne!(app.brush.colour, brush, "the brush took this one");
+    assert_eq!(app.text_style.colour, text, "and the text did not");
+}
+
+#[test]
+fn text_always_keeps_a_fill_or_an_outline() {
+    let mut app = app(60, 60);
+    send(&mut app, Message::TabPicked(Tab::Text));
+    send(&mut app, Message::TextFillPicked(shapes::Paint::None));
+    assert!(!app.text_style.fill);
+    assert_eq!(
+        app.text_style.outline,
+        Some(app.text_style.colour),
+        "taking the fill away left an outline to see"
+    );
+
+    send(&mut app, Message::TextOutlinePicked(shapes::Paint::None));
+    assert!(
+        app.text_style.fill,
+        "and taking that away brought the fill back"
+    );
+}
+
+#[test]
 fn a_setting_with_nothing_selected_does_not_rewrite_what_is_there() {
     let written = |fiddle: bool| {
         let mut app = app(400, 200);

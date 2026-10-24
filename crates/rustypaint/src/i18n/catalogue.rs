@@ -247,6 +247,8 @@ catalogue! {
         text_italic => "text-italic",
         text_underline => "text-underline",
         text_background_fill => "text-background-fill",
+        text_outline => "text-outline",
+        text_outline_thickness => "text-outline-thickness",
         text_hint => "text-hint",
 
         // Stickers

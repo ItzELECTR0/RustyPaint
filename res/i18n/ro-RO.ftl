@@ -251,6 +251,8 @@ text-bold = B
 text-italic = I
 text-underline = U
 text-background-fill = Umplere de fundal
+text-outline = Contur
+text-outline-thickness = Grosime contur
 text-hint = Trage pe canvas pentru a creea text.
 
 ## Stickers

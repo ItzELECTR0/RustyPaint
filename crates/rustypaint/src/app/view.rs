@@ -812,6 +812,7 @@ impl App {
                         self.shape_style,
                         self.blur_settings,
                         &self.text_style,
+                        self.text_outline_target,
                         metrics::SIDE_PANEL_WIDTH,
                         self.colour_target,
                         self.live_drawing(),

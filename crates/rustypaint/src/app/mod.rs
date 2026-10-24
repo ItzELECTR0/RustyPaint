@@ -185,6 +185,7 @@ pub enum Field {
     Stabilizer,
     Tolerance,
     ShapeThickness,
+    TextThickness,
     BlurStrength,
     BlurAngle,
     BlurDetail,
@@ -216,6 +217,7 @@ impl Field {
                 crate::paint::brush::THICKNESS_CEILING,
             ),
             Field::ShapeThickness => (shapes::MIN_THICKNESS, shapes::MAX_THICKNESS),
+            Field::TextThickness => (crate::text::MIN_THICKNESS, crate::text::MAX_THICKNESS),
             Field::BlurStrength => (
                 crate::paint::blur::MIN_STRENGTH,
                 crate::paint::blur::MAX_STRENGTH,
@@ -328,6 +330,7 @@ impl Field {
             Field::Stabilizer => Message::StabilizerChanged(value),
             Field::Tolerance => Message::ToleranceChanged(value),
             Field::ShapeThickness => Message::ShapeThicknessChanged(value),
+            Field::TextThickness => Message::TextThicknessChanged(value),
             Field::BlurStrength => Message::BlurStrengthChanged(value),
             Field::BlurAngle => Message::BlurAngleChanged(value),
             Field::BlurDetail => Message::BlurDetailChanged(value),
@@ -355,6 +358,7 @@ impl Message {
                 | Message::StabilizerChanged(_)
                 | Message::ToleranceChanged(_)
                 | Message::ShapeThicknessChanged(_)
+                | Message::TextThicknessChanged(_)
                 | Message::BlurStrengthChanged(_)
                 | Message::BlurAngleChanged(_)
                 | Message::BlurDetailChanged(_)
@@ -402,6 +406,7 @@ pub struct App {
     custom_colour_menu: Option<usize>,
     picking_field: Option<bool>,
     text_style: TextStyle,
+    text_outline_target: bool,
     caret_on: bool,
     float_version: u64,
     grab_from: Option<Grabbed>,
@@ -584,6 +589,10 @@ pub enum Message {
     TextUnderlineToggled,
     TextAlignPicked(Align),
     TextBackgroundToggled(bool),
+    TextFillPicked(shapes::Paint),
+    TextOutlinePicked(shapes::Paint),
+    TextColourTargetPicked(bool),
+    TextThicknessChanged(f32),
     TextEdited(TextAction),
     ThicknessChanged(f32),
     HardnessChanged(f32),
@@ -774,6 +783,7 @@ impl App {
             live_redo: None,
             drawing: Drawing::Shape(shapes::ShapeKind::Rectangle),
             text_style: TextStyle::default(),
+            text_outline_target: false,
             caret_on: true,
             shape_style: shapes::ShapeStyle::default(),
             blur_settings: crate::paint::blur::Settings::default(),
@@ -1038,16 +1048,34 @@ impl App {
         self.window.width >= wanted
     }
 
+    // Text keeps colours of its own, so the palette on the Text tab never reaches the brush.
     fn take_colour(&mut self, colour: [u8; 4]) {
+        if self.tab == Tab::Text {
+            if self.text_outline_target {
+                self.text_style.outline = Some(colour);
+            } else {
+                self.text_style.fill = true;
+                self.text_style.colour = colour;
+            }
+            return self.restyle_text();
+        }
         self.brush.colour = colour;
         if self.colour_target {
             self.shape_style.fill = Some(colour);
         } else {
             self.shape_style.outline = Some(colour);
         }
-        self.text_style.colour = colour;
         self.restyle_shape();
-        self.restyle_text();
+    }
+
+    pub(super) fn colour_in_hand(&self) -> [u8; 4] {
+        if self.tab != Tab::Text {
+            return self.brush.colour;
+        }
+        match self.text_style.outline {
+            Some(outline) if self.text_outline_target => outline,
+            _ => self.text_style.colour,
+        }
     }
 
     // Half-typed text belongs to the box and the tool it was typed in, so a stale one ages out on

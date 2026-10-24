@@ -443,6 +443,7 @@ impl App {
         let Some(boxed) = floating.text_box() else {
             return;
         };
+        let inset = boxed.inset() as i32;
 
         use crate::text::Action as A;
         use cosmic_text::Motion as M;
@@ -462,11 +463,17 @@ impl App {
             TextAction::Delete => A::Delete,
             TextAction::Click(x, y) => {
                 let (x, y) = local(x, y, xform);
-                A::Click { x, y }
+                A::Click {
+                    x: x - inset,
+                    y: y - inset,
+                }
             }
             TextAction::Drag(x, y) => {
                 let (x, y) = local(x, y, xform);
-                A::Drag { x, y }
+                A::Drag {
+                    x: x - inset,
+                    y: y - inset,
+                }
             }
             TextAction::Motion(motion) => {
                 let (select, motion) = match motion {

@@ -251,6 +251,8 @@ text-bold = B
 text-italic = I
 text-underline = U
 text-background-fill = Background fill
+text-outline = Outline
+text-outline-thickness = Outline thickness
 text-hint = Drag on the canvas to make a text box.
 
 ## Stickers

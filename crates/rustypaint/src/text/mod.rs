@@ -30,6 +30,9 @@ pub const DEFAULT_SIZE: f32 = 48.0;
 
 pub const DEFAULT_FAMILY: &str = "sans-serif";
 
+pub const MIN_THICKNESS: f32 = 1.0;
+pub const MAX_THICKNESS: f32 = 32.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Align {
     Left,
@@ -57,6 +60,9 @@ pub struct TextStyle {
     pub underline: bool,
     pub align: Align,
     pub background: bool,
+    pub fill: bool,
+    pub outline: Option<[u8; 4]>,
+    pub thickness: f32,
 }
 
 impl Default for TextStyle {
@@ -70,13 +76,21 @@ impl Default for TextStyle {
             underline: false,
             align: Align::Left,
             background: false,
+            fill: true,
+            outline: None,
+            thickness: 4.0,
         }
     }
 }
 
 impl TextStyle {
     pub fn slack(&self) -> f32 {
-        (self.size * 0.25).ceil().clamp(2.0, 64.0)
+        (self.size * 0.25).ceil().clamp(2.0, 64.0) + 2.0 * self.margin()
+    }
+
+    // The outline is drawn inside the box, so the letters sit in from every edge by its width.
+    fn margin(&self) -> f32 {
+        self.outline.map_or(0.0, |_| self.thickness.ceil())
     }
 
     pub fn line_height(&self) -> f32 {
@@ -415,6 +429,11 @@ impl TextBox {
             return false;
         };
         let before = self.state();
+        // These belong to the whole box, so a selection cannot narrow them.
+        self.style.background = style.background;
+        self.style.fill = style.fill;
+        self.style.outline = style.outline;
+        self.style.thickness = style.thickness;
 
         let mut guard = FONTS.lock().expect("font system");
         let (fonts, _) = &mut *guard;
@@ -469,7 +488,11 @@ impl TextBox {
                 .flat_map(|run| run.glyphs.iter().map(|glyph| glyph.font_size))
                 .fold(self.style.size, f32::max)
         });
-        (largest * 0.25).ceil().clamp(2.0, 64.0)
+        (largest * 0.25).ceil().clamp(2.0, 64.0) + 2.0 * self.style.margin()
+    }
+
+    pub fn inset(&self) -> f32 {
+        self.style.margin()
     }
 
     pub fn restyled_from(text: &str, style: TextStyle, width: f32) -> Self {
@@ -506,8 +529,51 @@ impl TextBox {
 
         let mut guard = FONTS.lock().expect("font system");
         let (fonts, cache) = &mut *guard;
+        let inset = self.style.margin() as i32;
 
+        if let Some([r, g, b, a]) = self.style.outline {
+            let mut letters = vec![0u8; pixels.len()];
+            let mut target = Target {
+                pixels: &mut letters,
+                width: w,
+                height: h,
+                inset,
+            };
+            self.draw_letters(fonts, cache, &mut target, false, false, true);
+            let coverage: Vec<u8> = letters.as_chunks::<4>().0.iter().map(|p| p[3]).collect();
+            let ring = spread(&coverage, w as usize, h as usize, self.style.thickness);
+            let pixels = pixels.as_chunks_mut::<4>().0.iter_mut();
+            for ((px, reach), seen) in pixels.zip(ring).zip(coverage) {
+                let mut reach = u32::from(reach);
+                if !self.style.fill {
+                    reach = reach * (255 - u32::from(seen)) / 255;
+                }
+                blend(px, [r, g, b], u32::from(a) * reach / 255);
+            }
+        }
+
+        let mut target = Target {
+            pixels: &mut pixels,
+            width: w,
+            height: h,
+            inset,
+        };
+        self.draw_letters(fonts, cache, &mut target, editing, caret, self.style.fill);
+
+        Rgba8::from_raw(w, h, pixels)
+    }
+
+    fn draw_letters(
+        &self,
+        fonts: &mut FontSystem,
+        cache: &mut SwashCache,
+        target: &mut Target<'_>,
+        editing: bool,
+        caret: bool,
+        glyphs: bool,
+    ) {
         let hidden = colour_of([0, 0, 0, 0]);
+        let mut selected: Vec<(i32, i32, u32, u32)> = Vec::new();
         self.editor.draw(
             fonts,
             cache,
@@ -528,30 +594,25 @@ impl TextBox {
                 colour_of(self.style.colour)
             },
             |x, y, rw, rh, colour| {
-                blend_rect(
-                    &mut Target {
-                        pixels: &mut pixels,
-                        width: w,
-                        height: h,
-                    },
-                    x,
-                    y,
-                    rw,
-                    rh,
-                    colour,
-                );
+                // Glyphs arrive a pixel at a time and the selection as whole rows, so hollow
+                // letters still show where they are selected.
+                if !glyphs && rw == 1 && rh == 1 {
+                    let inside = |&(sx, sy, sw, sh): &(i32, i32, u32, u32)| {
+                        x >= sx && y >= sy && x < sx + sw as i32 && y < sy + sh as i32
+                    };
+                    if !selected.iter().any(inside) {
+                        return;
+                    }
+                } else if !glyphs && colour == colour_of(SELECTION) {
+                    selected.push((x, y, rw, rh));
+                }
+                blend_rect(target, x, y, rw, rh, colour);
             },
         );
 
-        if self.style.underline {
-            self.draw_underline(&mut Target {
-                pixels: &mut pixels,
-                width: w,
-                height: h,
-            });
+        if glyphs && self.style.underline {
+            self.draw_underline(target);
         }
-
-        Rgba8::from_raw(w, h, pixels)
     }
 
     fn draw_underline(&self, target: &mut Target<'_>) {
@@ -622,6 +683,7 @@ struct Target<'a> {
     pixels: &'a mut [u8],
     width: u32,
     height: u32,
+    inset: i32,
 }
 
 fn blend_rect(
@@ -633,6 +695,7 @@ fn blend_rect(
     colour: cosmic_text::Color,
 ) {
     let (pixels, w, h) = (&mut *target.pixels, target.width, target.height);
+    let (x, y) = (x + target.inset, y + target.inset);
     let alpha = colour.a() as u32;
     if alpha == 0 {
         return;
@@ -649,19 +712,65 @@ fn blend_rect(
                 continue;
             }
             let i = (py as usize * w as usize + px as usize) * 4;
-            let under = u32::from(pixels[i + 3]);
-            let out = alpha + under * (255 - alpha) / 255;
-            if out == 0 {
-                continue;
-            }
-            for c in 0..3 {
-                let s = u32::from(src[c]) * alpha;
-                let u = u32::from(pixels[i + c]) * under * (255 - alpha) / 255;
-                pixels[i + c] = ((s + u) / out) as u8;
-            }
-            pixels[i + 3] = out as u8;
+            blend(&mut pixels[i..i + 4], src, alpha);
         }
     }
+}
+
+fn blend(pixel: &mut [u8], src: [u8; 3], alpha: u32) {
+    if alpha == 0 {
+        return;
+    }
+    let under = u32::from(pixel[3]);
+    let out = alpha + under * (255 - alpha) / 255;
+    if out == 0 {
+        return;
+    }
+    for c in 0..3 {
+        let s = u32::from(src[c]) * alpha;
+        let u = u32::from(pixel[c]) * under * (255 - alpha) / 255;
+        pixel[c] = ((s + u) / out) as u8;
+    }
+    pixel[3] = out as u8;
+}
+
+// How strongly the outline covers each pixel: anything within `radius` of a letter's edge. Distances
+// run along each row first and then down each column, so the ring comes out round.
+fn spread(coverage: &[u8], width: usize, height: usize, radius: f32) -> Vec<u8> {
+    let reach = radius.ceil() as usize + 1;
+    let far = reach as u32 + 1;
+    let mut across = vec![far; coverage.len()];
+    for (row, out) in coverage.chunks(width).zip(across.chunks_mut(width)) {
+        let mut run = far;
+        for (seen, gap) in row.iter().zip(out.iter_mut()) {
+            run = if *seen >= 128 { 0 } else { (run + 1).min(far) };
+            *gap = run;
+        }
+        run = far;
+        for (seen, gap) in row.iter().zip(out.iter_mut()).rev() {
+            run = if *seen >= 128 { 0 } else { (run + 1).min(far) };
+            *gap = (*gap).min(run);
+        }
+    }
+
+    let mut ring = vec![0u8; coverage.len()];
+    for y in 0..height {
+        let (top, bottom) = (y.saturating_sub(reach), (y + reach).min(height - 1));
+        for x in 0..width {
+            let nearest = (top..=bottom)
+                .filter_map(|row| {
+                    let gap = across[row * width + x];
+                    let dy = row.abs_diff(y) as u32;
+                    (gap < far).then_some(gap * gap + dy * dy)
+                })
+                .min();
+            if let Some(squared) = nearest {
+                let edge = (radius + 0.5 - (squared as f32).sqrt()).clamp(0.0, 1.0);
+                ring[y * width + x] = (edge * 255.0).round() as u8;
+            }
+        }
+    }
+    ring
 }
 
 #[cfg(test)]
@@ -951,6 +1060,56 @@ mod tests {
         let a = ink(&plain.render(400, 80, false, false).unwrap());
         let b = ink(&ruled.render(400, 80, false, false).unwrap());
         assert!(b > a, "the rule should add ink: {a} then {b}");
+    }
+
+    #[test]
+    fn an_outline_rings_the_letters_and_stays_under_them() {
+        let ringed = TextStyle {
+            outline: Some([255, 0, 0, 255]),
+            ..Default::default()
+        };
+        let plain = typed("Zap", TextStyle::default(), 400.0);
+        let ringed = typed("Zap", ringed, 400.0);
+        let a = plain.render(400, 100, false, false).unwrap();
+        let b = ringed.render(400, 100, false, false).unwrap();
+        let count = |pixels: &Rgba8, want: [u8; 3]| {
+            pixels
+                .as_bytes()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|p| p[3] == 255 && [p[0], p[1], p[2]] == want)
+                .count()
+        };
+        assert!(ink(&b) > ink(&a), "the ring should add ink");
+        assert!(
+            count(&b, [255, 0, 0]) > 100,
+            "the ring is in its own colour"
+        );
+        assert!(count(&b, [0, 0, 0]) > 100, "the letters stay on top");
+    }
+
+    #[test]
+    fn without_a_fill_only_the_ring_is_left() {
+        let hollow = TextStyle {
+            fill: false,
+            outline: Some([255, 0, 0, 255]),
+            ..Default::default()
+        };
+        let drawn = typed("Zap", hollow, 400.0)
+            .render(400, 100, false, false)
+            .unwrap();
+        let pixels = drawn.as_bytes().as_chunks::<4>().0;
+        assert!(
+            pixels
+                .iter()
+                .all(|p| p[3] == 0 || [p[0], p[1], p[2]] == [255, 0, 0]),
+            "nothing but the ring is drawn"
+        );
+        assert!(
+            pixels.iter().filter(|p| p[3] == 255).count() > 100,
+            "and the ring is there"
+        );
     }
 
     #[test]

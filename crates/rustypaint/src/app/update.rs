@@ -411,7 +411,7 @@ impl App {
                         .cutting_out
                         .as_ref()
                         .map_or(self.brush.colour, |c| c.ground),
-                    _ => self.brush.colour,
+                    _ => self.colour_in_hand(),
                 };
                 self.picker = Some(Picker::on(colour));
                 self.picking_colour = Some(picking);
@@ -815,6 +815,29 @@ impl App {
             }
             Message::TextBackgroundToggled(on) => {
                 self.text_style.background = on;
+                self.restyle_text();
+            }
+            // Fill and outline cannot both go, or the text would vanish.
+            Message::TextFillPicked(paint) => {
+                let style = &mut self.text_style;
+                style.fill = paint == shapes::Paint::Solid;
+                if !style.fill && style.outline.is_none() {
+                    style.outline = Some(style.colour);
+                }
+                self.text_outline_target = !style.fill;
+                self.restyle_text();
+            }
+            Message::TextOutlinePicked(paint) => {
+                let style = &mut self.text_style;
+                let solid = paint == shapes::Paint::Solid;
+                style.outline = solid.then_some(style.outline.unwrap_or(style.colour));
+                style.fill |= !solid;
+                self.text_outline_target = solid;
+                self.restyle_text();
+            }
+            Message::TextColourTargetPicked(outline) => self.text_outline_target = outline,
+            Message::TextThicknessChanged(v) => {
+                self.text_style.thickness = v;
                 self.restyle_text();
             }
             Message::TextEdited(action) => self.edit_text(action),

@@ -28,6 +28,18 @@ Live drawing labels follow the current source and point count, not the preset us
 Open paths with two points are lines, longer ones are curves, and closed paths are shapes. The
 picker keeps the original curve presets; editable paths show their point count separately.
 
+A text box's background, whether it is filled, and its outline belong to the whole box rather
+than to a run, so they apply even while part of the text is selected. The fill colour stays per
+run like every other text style. Fill and outline cannot both be off, since the text would vanish.
+The outline sits inside the box like a shape's: the letters move in by its width, and pointer
+positions are moved by the same inset before they reach the editor. It is spread from the letters'
+own pixels, underline included, so it follows anything the font draws; without a fill the letters
+are cut back out of it. Hollow text still shows its selection by telling cosmic-text's one-pixel
+glyph rectangles apart from its full-row selection ones, so recheck that after a cosmic-text bump.
+
+Text colours are separate from the brush. On the Text tab the palette and picker change only the
+text, aimed at the fill or the outline; on every other tab they change only the brush and shapes.
+
 Document history stores before-and-after regions for local edits and copy-on-write whole buffers for
 canvas-wide changes. Brush strokes store only the tiles they changed (see `.agents/brushes.md`).
 Live objects sit outside that history. Undo first resolves live state: text uses its own edit
