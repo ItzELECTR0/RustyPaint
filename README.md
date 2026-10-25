@@ -22,20 +22,12 @@ It also has some QoL features like dark mode, editable curve and shape points, s
 
 It detects image types from their contents, opens several icon and obscure bitmap formats, and Save as can convert between the formats it writes.
 
-## How do I cut something out?
+## Will there be more expansions/features over the original?
 
-Open Smart cutout, draw a box around what you want, and choose Next. You can keep the subject, keep
-the background instead, or keep one colour you click out of the picture. Add and Remove then correct
-the selection, and each stroke only changes what it reaches: follow the edge to nudge it, or paint
-further in to take the whole area. Edges come out on whole pixels, so what you see is what you lift.
-Preview it on the shaded original, a checkerboard or any colour you like, adjust the edge, then
-choose Done. Undo also works while refining.
-
-I bundle a replaceable MobileSAM model under GPLv3-compatible MIT and Apache-2.0 licences.
-It runs entirely on your computer, without downloads or image uploads. Settings has a Smart Cutout
-section: turn object recognition off to select by colour alone, or point it at a folder of your own.
-Replacement folders need the compatible encoder and decoder described in the
-[model notice](res/models/mobile-sam/NOTICE.md).
+RustyPaint is meant to be used for simple and quick edits, just like Paint3D was for me.
+It knows it's purpose and won't overstep.
+However, I do have some plans for things that might make it better while keeping to that purpose.
+No promises, but I want to make RustyPaint something that I'm proud of and something I can use daily without issue.
 
 ## Screenshots
 
